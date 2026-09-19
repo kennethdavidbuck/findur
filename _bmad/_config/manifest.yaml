@@ -1,0 +1,31 @@
+installation:
+  version: 6.12.0
+  installDate: 2026-09-19T14:18:19.290Z
+  lastUpdated: 2026-09-19T14:18:19.290Z
+  installShims: false
+modules:
+  - name: core
+    version: 6.12.0
+    installDate: 2026-09-19T14:18:19.166Z
+    lastUpdated: 2026-09-19T14:18:19.286Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null
+  - name: bmm
+    version: 6.12.0
+    installDate: 2026-09-19T14:18:19.240Z
+    lastUpdated: 2026-09-19T14:18:19.287Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null
+  - name: bmad-loop
+    version: v0.11.1
+    installDate: 2026-09-19T14:18:19.254Z
+    lastUpdated: 2026-09-19T14:18:19.290Z
+    source: external
+    npmPackage: null
+    repoUrl: https://github.com/bmad-code-org/bmad-loop
+    channel: stable
+    sha: bb7cebec4ee4f0fa2783a56ffd0b1b8bc67c4ec5
+ides:
+  - codex
