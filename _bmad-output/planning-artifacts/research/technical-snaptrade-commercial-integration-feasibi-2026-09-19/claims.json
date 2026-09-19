@@ -1,0 +1,7 @@
+[
+  {"claim":"OAuth app model and scopes","class":"compatibility","pub_date":"2026-09"},
+  {"claim":"Commercial API-key model","class":"compatibility","pub_date":"2026-09"},
+  {"claim":"Portfolio and activity data capability","class":"capability","pub_date":"2026-09"},
+  {"claim":"Data freshness and webhook semantics","class":"capability","pub_date":"2026-09"},
+  {"claim":"Data-use restrictions","class":"policy","pub_date":"2026-05"}
+]
