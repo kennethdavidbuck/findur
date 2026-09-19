@@ -1,6 +1,6 @@
 ---
 name: Findur
-status: draft
+status: final
 sources:
   - ../../briefs/brief-findur-2026-09-19/brief.md
   - ../../briefs/brief-findur-2026-09-19/addendum.md
