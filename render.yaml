@@ -10,7 +10,6 @@ services:
     buildCommand: cd backend && mkdir -p bin && go build -o bin/findur ./cmd/findur && go build -o bin/migrate ./cmd/migrate
     startCommand: ./scripts/render-start.sh
     healthCheckPath: /api/healthz
-    maxShutdownDelaySeconds: 30
     envVars:
       - key: DATABASE_URL
         fromDatabase:
