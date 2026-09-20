@@ -131,14 +131,12 @@ jobs:
         id: publish
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_IMAGE }}
           BUILD_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           test -n "$DOCKERHUB_USERNAME"
-          test -n "$DOCKERHUB_IMAGE"
           local_image="findur-backend:$BUILD_SHA"
-          remote_image="docker.io/$DOCKERHUB_USERNAME/$DOCKERHUB_IMAGE:$BUILD_SHA"
+          remote_image="docker.io/kdbuck/findur:$BUILD_SHA"
           test "$(docker image inspect "$local_image" --format '{{.Architecture}}')" = 'amd64'
           docker tag "$local_image" "$remote_image"
           push_log="$RUNNER_TEMP/findur-docker-push.log"
@@ -163,8 +161,6 @@ jobs:
       RENDER_BACKEND_SERVICE_ID: ${{ secrets.RENDER_BACKEND_SERVICE_ID }}
       RENDER_FRONTEND_DEPLOY_HOOK_URL: ${{ secrets.RENDER_FRONTEND_DEPLOY_HOOK_URL }}
       PUBLIC_ORIGIN: ${{ secrets.PUBLIC_ORIGIN }}
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_IMAGE: ${{ secrets.DOCKERHUB_IMAGE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -177,12 +173,10 @@ jobs:
           test -n "$RENDER_API_TOKEN"
           test -n "$RENDER_BACKEND_SERVICE_ID"
           test -n "$RENDER_FRONTEND_DEPLOY_HOOK_URL"
-          test -n "$DOCKERHUB_USERNAME"
-          test -n "$DOCKERHUB_IMAGE"
           curl --fail --silent --show-error --max-time 20 \
             -H "Authorization: Bearer $RENDER_API_TOKEN" \
             -H 'Content-Type: application/json' \
-            --data "{\"imageUrl\":\"docker.io/$DOCKERHUB_USERNAME/$DOCKERHUB_IMAGE@$IMAGE_DIGEST\"}" \
+            --data "{\"imageUrl\":\"docker.io/kdbuck/findur@$IMAGE_DIGEST\"}" \
             "https://api.render.com/v1/services/$RENDER_BACKEND_SERVICE_ID/deploys" >/dev/null
           case "$RENDER_FRONTEND_DEPLOY_HOOK_URL" in
             *\?*) ref_separator='&' ;;

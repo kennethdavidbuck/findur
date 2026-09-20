@@ -85,17 +85,17 @@ npm --prefix frontend run build
 
 ## Deploy to Render
 
-Create a Blueprint from the root `render.yaml`. It defines `findur-api-kdb`, `findur-web-kdb`, and a free `findur-db` in Virginia. Independent Render auto-deploy is disabled: after every main-branch check passes, GitHub Actions publishes the backend's `linux/amd64` image to Docker Hub under the full Git SHA, deploys that image's immutable digest through the Render API, invokes the protected frontend deploy hook for the same commit, and waits for public evidence that both surfaces report the same revision. Configure `DOCKERHUB_USERNAME`, `DOCKERHUB_IMAGE`, `DOCKERHUB_TOKEN`, `RENDER_API_TOKEN`, `RENDER_BACKEND_SERVICE_ID`, `RENDER_FRONTEND_DEPLOY_HOOK_URL`, and `PUBLIC_ORIGIN` as GitHub Actions secrets. Normal releases publish no mutable application tag.
+Create a Blueprint from the root `render.yaml`. It defines `findur-api-kdb`, `findur-web-kdb`, and a free `findur-db` in Virginia. Independent Render auto-deploy is disabled: after every main-branch check passes, GitHub Actions publishes the backend's `linux/amd64` image to the public repository `docker.io/kdbuck/findur` under the full Git SHA, deploys that image's immutable digest through the Render API, invokes the protected frontend deploy hook for the same commit, and waits for public evidence that both surfaces report the same revision. Configure `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `RENDER_API_TOKEN`, `RENDER_BACKEND_SERVICE_ID`, `RENDER_FRONTEND_DEPLOY_HOOK_URL`, and `PUBLIC_ORIGIN` as GitHub Actions secrets. Normal releases publish no mutable application tag.
 
-One-time Render provisioning requires an explicit bootstrap operation. Before the first Blueprint sync, build and verify a backend image from a real full Git SHA, push it to the public repository `docker.io/kennethdavidbuck/findur:<FULL_SHA>`, then create the `bootstrap-once` tag for that exact digest once. Do not move or reuse that tag. Because Render requires subsequent image URLs to keep the configured host, namespace, and repository, `DOCKERHUB_USERNAME` and `DOCKERHUB_IMAGE` must identify the `kennethdavidbuck/findur` repository configured by this Blueprint. Render pulls the public image without registry credentials; the Docker Hub secrets are used only by GitHub Actions to publish. After provisioning, every normal release pushes the already integration-tested Compose image under its full-SHA tag and tells Render to deploy the resulting digest; normal releases never rebuild that backend artifact, edit `render.yaml`, or deploy `bootstrap-once`.
+One-time Render provisioning requires an explicit bootstrap operation. Before the first Blueprint sync, build and verify a backend image from a real full Git SHA, push it to `docker.io/kdbuck/findur:<FULL_SHA>`, then create the `bootstrap-once` tag for that exact digest once. Do not move or reuse that tag. Render pulls the public image without registry credentials; the Docker Hub secrets are used only by GitHub Actions to authenticate publication. After provisioning, every normal release pushes the already integration-tested Compose image under its full-SHA tag and tells Render to deploy the resulting digest; normal releases never rebuild that backend artifact, edit `render.yaml`, or deploy `bootstrap-once`.
 
 After the first full-SHA image passes the Compose integration gate, provision the bootstrap reference exactly once:
 
 ```sh
-docker tag "findur-backend:$FULL_SHA" "docker.io/kennethdavidbuck/findur:$FULL_SHA"
-docker push "docker.io/kennethdavidbuck/findur:$FULL_SHA"
-docker tag "findur-backend:$FULL_SHA" docker.io/kennethdavidbuck/findur:bootstrap-once
-docker push docker.io/kennethdavidbuck/findur:bootstrap-once
+docker tag "findur-backend:$FULL_SHA" "docker.io/kdbuck/findur:$FULL_SHA"
+docker push "docker.io/kdbuck/findur:$FULL_SHA"
+docker tag "findur-backend:$FULL_SHA" "docker.io/kdbuck/findur:bootstrap-once"
+docker push "docker.io/kdbuck/findur:bootstrap-once"
 ```
 
 Render free PostgreSQL databases expire after 30 days and are not production resources. Create the Blueprint at the start of the intended evaluation window.
