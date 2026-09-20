@@ -12,13 +12,17 @@ import (
 )
 
 const (
-	SessionIdleLifetime     = 12 * time.Hour
+	// SessionIdleLifetime is the rolling inactivity window for an active session.
+	SessionIdleLifetime = 12 * time.Hour
+	// SessionAbsoluteLifetime is the fixed maximum lifetime that renewal cannot extend.
 	SessionAbsoluteLifetime = 7 * 24 * time.Hour
 )
 
 var (
+	// ErrUnauthenticated indicates that no active session could be derived.
 	ErrUnauthenticated = errors.New("session is not authenticated")
-	ErrForbidden       = errors.New("request is forbidden")
+	// ErrForbidden indicates that an authenticated request defense failed.
+	ErrForbidden = errors.New("request is forbidden")
 )
 
 // Actor is the immutable owner identity derived from an authenticated session.

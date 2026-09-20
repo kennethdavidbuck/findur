@@ -13,6 +13,7 @@ import (
 // SessionRepository persists session lifecycle state independently of OAuth initiation.
 type SessionRepository struct{ pool *pgxpool.Pool }
 
+// NewSessionRepository creates PostgreSQL-backed session lifecycle storage.
 func NewSessionRepository(pool *pgxpool.Pool) *SessionRepository {
 	return &SessionRepository{pool: pool}
 }
