@@ -12,3 +12,7 @@ Findur is an early-stage application. Planning artifacts live in `_bmad-output/p
 - Use Conventional Commit messages for every commit, such as `docs: add research report` or `feat(auth): add OAuth callback`.
 
 <!-- /bmad:context -->
+
+## Pull requests
+
+- Use `.github/pull_request_template.md` for every pull request. Complete every section, remove placeholder text, report only verification that actually ran, and write `Not applicable` where a section does not apply.

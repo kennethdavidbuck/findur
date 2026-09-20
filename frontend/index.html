@@ -1,12 +1,39 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme-preference="system">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#11131a" />
+    <meta
+      name="description"
+      content="Explore Findur, an 18+ evaluation concept for portfolio-first introductions and progressive identity reveal."
+    />
+    <meta name="theme-color" content="#EEF3FF" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <title>Findur</title>
+    <script>
+      try {
+        const preference = localStorage.getItem('findur-theme')
+        const systemDark = matchMedia('(prefers-color-scheme: dark)').matches
+        const theme = preference === 'dark' || (preference !== 'light' && systemDark) ? 'dark' : 'light'
+        const locale = localStorage.getItem('findur-locale') === 'fr' ? 'fr' : 'en'
+        document.documentElement.dataset.theme = theme
+        document.documentElement.dataset.themePreference =
+          preference === 'dark' || preference === 'light' ? preference : 'system'
+        document.documentElement.lang = locale
+        document.documentElement.style.colorScheme = theme
+        document.querySelector('meta[name="theme-color"]').content =
+          theme === 'dark' ? '#0B1020' : '#EEF3FF'
+      } catch {
+        const systemDark = matchMedia('(prefers-color-scheme: dark)').matches
+        const theme = systemDark ? 'dark' : 'light'
+        document.documentElement.dataset.theme = theme
+        document.documentElement.dataset.themePreference = 'system'
+        document.documentElement.style.colorScheme = theme
+        document.querySelector('meta[name="theme-color"]').content =
+          theme === 'dark' ? '#0B1020' : '#EEF3FF'
+      }
+    </script>
+    <title>Findur — Portfolio-first introductions</title>
   </head>
   <body>
     <div id="root"></div>

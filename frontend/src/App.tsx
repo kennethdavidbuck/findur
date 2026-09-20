@@ -1,79 +1,75 @@
-import { useEffect, useState } from 'react'
-import { Button } from 'react-aria-components'
+import { useEffect, useRef, useState } from 'react'
+import { PublicLayout } from './components/PublicLayout'
+import { I18nProvider, useI18n } from './i18n'
+import { AboutPage } from './pages/AboutPage'
+import { LandingPage } from './pages/LandingPage'
+import { ThemeProvider } from './theme'
 
-type ConnectionState = 'checking' | 'connected' | 'unavailable'
+type PublicRoute = '/' | '/about'
 
-type HealthResponse = {
-  status: string
+function routeFromPath(pathname: string): PublicRoute {
+  return pathname === '/about' || pathname === '/about/' ? '/about' : '/'
 }
 
-const healthTimeoutMs = 5_000
-
-async function fetchHealth(): Promise<ConnectionState> {
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), healthTimeoutMs)
-  try {
-    const response = await fetch('/api/healthz', {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    })
-    if (!response.ok) {
-      return 'unavailable'
-    }
-    const body = (await response.json()) as HealthResponse
-    return body.status === 'ok' ? 'connected' : 'unavailable'
-  } catch {
-    return 'unavailable'
-  } finally {
-    window.clearTimeout(timeout)
+function normalizePublicPath() {
+  const route = routeFromPath(window.location.pathname)
+  const canonicalPath = route
+  if (window.location.pathname !== canonicalPath) {
+    window.history.replaceState(null, '', canonicalPath)
   }
+  return route
+}
+
+function PublicApp() {
+  const [route, setRoute] = useState<PublicRoute>(normalizePublicPath)
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const mounted = useRef(false)
+  const { messages } = useI18n()
+
+  useEffect(() => {
+    const handlePopState = () => setRoute(normalizePublicPath())
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  useEffect(() => {
+    const metadata = route === '/about' ? messages.meta.about : messages.meta.home
+    document.title = metadata.title
+    const description = document.querySelector<HTMLMetaElement>('meta[name="description"]')
+    description?.setAttribute('content', metadata.description)
+  }, [messages, route])
+
+  useEffect(() => {
+    if (mounted.current) {
+      headingRef.current?.focus()
+    } else {
+      mounted.current = true
+    }
+  }, [route])
+
+  const navigate = (nextRoute: PublicRoute) => {
+    if (nextRoute === route) return
+    window.history.pushState(null, '', nextRoute)
+    setRoute(nextRoute)
+  }
+
+  return (
+    <PublicLayout route={route} onNavigate={navigate}>
+      {route === '/about' ? (
+        <AboutPage headingRef={headingRef} onNavigate={navigate} />
+      ) : (
+        <LandingPage headingRef={headingRef} onNavigate={navigate} />
+      )}
+    </PublicLayout>
+  )
 }
 
 export function App() {
-  const [connection, setConnection] = useState<ConnectionState>('checking')
-
-  useEffect(() => {
-    let active = true
-    void fetchHealth().then((state) => {
-      if (active) {
-        setConnection(state)
-      }
-    })
-    return () => {
-      active = false
-    }
-  }, [])
-
-  const message = {
-    checking: 'Checking service connection…',
-    connected: 'Service connected',
-    unavailable: 'Service temporarily unavailable',
-  }[connection]
-
   return (
-    <main>
-      <section className="status-card" aria-labelledby="status-heading">
-        <p className="eyebrow">Findur</p>
-        <h1 id="status-heading">Walking skeleton</h1>
-        <div className={`connection connection--${connection}`} role="status" aria-live="polite">
-          <span className="connection__dot" aria-hidden="true" />
-          {message}
-        </div>
-        <p className="description">
-          The public shell is online. Product features will arrive only after the delivery path is proven.
-        </p>
-        {connection === 'unavailable' ? (
-          <Button
-            className="retry"
-            onPress={() => {
-              setConnection('checking')
-              void fetchHealth().then(setConnection)
-            }}
-          >
-            Check again
-          </Button>
-        ) : null}
-      </section>
-    </main>
+    <I18nProvider>
+      <ThemeProvider>
+        <PublicApp />
+      </ThemeProvider>
+    </I18nProvider>
   )
 }
