@@ -39,6 +39,7 @@ dist/
 out/
 target/
 coverage/
+backend/bin/
 
 # Common dependency directories
 node_modules/
@@ -55,4 +56,3 @@ __pycache__/
 .nyc_output/
 .tox/
 .nox/
-

@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: findur
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d findur"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/findur?sslmode=disable
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: 1.27.1
+          cache-dependency-path: backend/go.sum
+      - name: Verify formatting
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+      - name: Build
+        run: |
+          mkdir -p bin
+          go build -o bin/findur ./cmd/findur
+          go build -o bin/migrate ./cmd/migrate
+      - name: Apply migrations twice
+        run: |
+          go run ./cmd/migrate
+          go run ./cmd/migrate
+      - name: Verify migration-first process boundary
+        run: |
+          set -eu
+          process_log="$RUNNER_TEMP/findur-process.log"
+          ../scripts/render-start.sh >"$process_log" 2>&1 &
+          process_id=$!
+          cleanup() {
+            kill -TERM "$process_id" 2>/dev/null || true
+            wait "$process_id" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:10000/api/healthz >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$process_id" 2>/dev/null; then
+              cat "$process_log"
+              exit 1
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              cat "$process_log"
+              exit 1
+            fi
+            sleep 1
+          done
+
+          test "$(curl --fail --silent --show-error http://localhost:10000/api/healthz)" = '{"status":"ok"}'
+          test "$(curl --fail --silent --show-error http://localhost:10000/api/readyz)" = '{"status":"ready"}'
+          kill -TERM "$process_id"
+          if ! wait "$process_id"; then
+            cat "$process_log"
+            exit 1
+          fi
+          trap - EXIT
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Test
+        run: npm test -- --run
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
