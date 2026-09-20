@@ -1,6 +1,7 @@
 package migrations
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -10,6 +11,34 @@ import (
 func TestNormalizeUpErrorTreatsNoChangeAsSuccess(t *testing.T) {
 	if err := normalizeUpError(migrate.ErrNoChange); err != nil {
 		t.Fatalf("normalizeUpError(ErrNoChange) = %v, want nil", err)
+	}
+}
+
+func TestRunUpSignalsGracefulStopOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	gracefulStop := make(chan bool)
+	done := make(chan error, 1)
+	go func() {
+		done <- runUp(ctx, func() error {
+			close(started)
+			<-gracefulStop
+			return nil
+		}, gracefulStop)
+	}()
+
+	<-started
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("runUp() error = %v, want context cancellation", err)
+	}
+}
+
+func TestUpRejectsCanceledContextBeforeOpeningDrivers(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := Up(ctx, "invalid-source", "invalid-database"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Up() error = %v, want context cancellation", err)
 	}
 }
 

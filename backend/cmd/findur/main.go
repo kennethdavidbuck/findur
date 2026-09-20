@@ -3,21 +3,34 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/kennethdavidbuck/findur/backend/internal/platform/buildinfo"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/config"
 
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/httpapi"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/lifecycle"
+	"github.com/kennethdavidbuck/findur/backend/internal/platform/migrations"
+	"github.com/kennethdavidbuck/findur/backend/internal/platform/provider"
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+		healthcheckConfig, err := config.LoadHealthcheck()
+		client := &http.Client{Timeout: 2 * time.Second}
+		if err != nil || localHealthcheck(healthcheckConfig, client) != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -28,10 +41,40 @@ func main() {
 	}
 }
 
+type healthcheckClient interface {
+	Do(*http.Request) (*http.Response, error)
+}
+
+func localHealthcheck(cfg config.HealthcheckConfig, client healthcheckClient) error {
+	request, err := http.NewRequest(http.MethodGet, cfg.URL, nil)
+	if err != nil {
+		return err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	_, _ = io.Copy(io.Discard, response.Body)
+	if response.StatusCode != http.StatusOK {
+		return errors.New("health endpoint unavailable")
+	}
+	return nil
+}
+
 func run(rootCtx context.Context, logger *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return errInvalidConfiguration
+	}
+	if cfg.Production && buildinfo.ValidateProduction() != nil {
+		return errInvalidConfiguration
+	}
+	if err := migrations.Up(rootCtx, cfg.MigrationURL, cfg.DatabaseURL); err != nil {
+		if rootCtx.Err() != nil {
+			return nil
+		}
+		return errMigration
 	}
 	pool, err := pgxpool.New(rootCtx, cfg.DatabaseURL)
 	if err != nil {
@@ -48,7 +91,13 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		return startupResult
 	}
 
-	server := newServer(cfg.Address, httpapi.NewHandler(logger, readiness), logger)
+	var diagnostics *httpapi.Diagnostics
+	if cfg.FixtureBaseURL != nil {
+		providerHTTPClient := &http.Client{Timeout: config.ProviderTimeout}
+		providerClient := provider.NewClient(cfg.FixtureBaseURL, cfg.FixtureProviderToken, providerHTTPClient)
+		diagnostics = httpapi.NewDiagnostics(cfg.FixtureBaseURL, providerClient)
+	}
+	server := newServer(cfg.Address, httpapi.NewHandler(logger, readiness, buildinfo.SHA, diagnostics), logger)
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("http server starting", "address", cfg.Address)
@@ -109,6 +158,7 @@ func startupPingResult(rootCtx context.Context, pingErr error) error {
 var (
 	errInvalidConfiguration = errors.New("invalid configuration")
 	errDatabase             = errors.New("database unavailable")
+	errMigration            = errors.New("database migration failed")
 	errHTTPServer           = errors.New("http server failure")
 	errShutdown             = errors.New("shutdown deadline exceeded")
 )
@@ -119,6 +169,8 @@ func failureCategory(err error) string {
 		return "invalid_configuration"
 	case errors.Is(err, errDatabase):
 		return "database_unavailable"
+	case errors.Is(err, errMigration):
+		return "migration_failure"
 	case errors.Is(err, errHTTPServer):
 		return "http_server_failure"
 	case errors.Is(err, errShutdown):

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 
@@ -44,6 +44,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
 })
 
 describe('public site', () => {
@@ -182,5 +183,67 @@ describe('public site', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       'Find a different pattern in the same sky.',
     )
+  })
+
+  it('loads the unlinked status route with one same-origin readiness request', async () => {
+	window.history.replaceState(null, '', '/__status')
+	const fetchMock = vi.fn().mockResolvedValue(
+	  new Response(JSON.stringify({
+	    status: 'ready',
+	    buildSha: '0123456789abcdef0123456789abcdef01234567',
+	  }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+	)
+	vi.stubGlobal('fetch', fetchMock)
+
+	render(<App />)
+
+	expect(await screen.findByText('Build identity malformed')).toBeInTheDocument()
+	expect(fetchMock).toHaveBeenCalledTimes(1)
+	expect(fetchMock).toHaveBeenCalledWith('/api/readyz', expect.objectContaining({
+	  cache: 'no-store',
+	  credentials: 'same-origin',
+	}))
+	expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+  })
+
+
+  it('reports API failures categorically without exposing response details', async () => {
+	window.history.replaceState(null, '', '/__status')
+	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('private failure', { status: 503 })))
+
+	render(<App />)
+
+	expect(await screen.findByText('API unavailable')).toBeInTheDocument()
+	expect(screen.queryByText('private failure')).not.toBeInTheDocument()
+  })
+
+  it('renders the diagnostic page in the selected French locale', async () => {
+    window.localStorage.setItem('findur-locale', 'fr')
+    window.history.replaceState(null, '', '/__status')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: 'ready',
+      buildSha: 'invalid',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })))
+
+    render(<App />)
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('État de la version Findur')
+    expect(await screen.findByText('Identité de version non valide')).toBeInTheDocument()
+    expect(screen.getByText('Version de l’interface')).toBeInTheDocument()
+    expect(document.title).toBe('État de la version — Findur')
+  })
+
+  it('bounds a pending readiness request and reports the API unavailable', () => {
+    vi.useFakeTimers()
+    window.history.replaceState(null, '', '/__status')
+    const fetchMock = vi.fn().mockReturnValue(new Promise(() => {}))
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    act(() => vi.advanceTimersByTime(5_000))
+
+    expect(screen.getByText('API unavailable')).toBeInTheDocument()
+    const request = fetchMock.mock.calls[0][1] as RequestInit
+    expect(request.signal?.aborted).toBe(true)
   })
 })

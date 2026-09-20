@@ -3,11 +3,13 @@ import { PublicLayout } from './components/PublicLayout'
 import { I18nProvider, useI18n } from './i18n'
 import { AboutPage } from './pages/AboutPage'
 import { LandingPage } from './pages/LandingPage'
+import { StatusPage } from './pages/StatusPage'
 import { ThemeProvider } from './theme'
 
-type PublicRoute = '/' | '/about'
+type PublicRoute = '/' | '/about' | '/__status'
 
 function routeFromPath(pathname: string): PublicRoute {
+  if (pathname === '/__status' || pathname === '/__status/') return '/__status'
   return pathname === '/about' || pathname === '/about/' ? '/about' : '/'
 }
 
@@ -33,6 +35,10 @@ function PublicApp() {
   }, [])
 
   useEffect(() => {
+    if (route === '/__status') {
+      document.title = messages.status.metaTitle
+      return
+    }
     const metadata = route === '/about' ? messages.meta.about : messages.meta.home
     document.title = metadata.title
     const description = document.querySelector<HTMLMetaElement>('meta[name="description"]')
@@ -53,12 +59,15 @@ function PublicApp() {
     setRoute(nextRoute)
   }
 
+  const navigatePublic = (nextRoute: '/' | '/about') => navigate(nextRoute)
+
   return (
-    <PublicLayout route={route} onNavigate={navigate}>
+    route === '/__status' ? <StatusPage /> :
+    <PublicLayout route={route} onNavigate={navigatePublic}>
       {route === '/about' ? (
-        <AboutPage headingRef={headingRef} onNavigate={navigate} />
+        <AboutPage headingRef={headingRef} onNavigate={navigatePublic} />
       ) : (
-        <LandingPage headingRef={headingRef} onNavigate={navigate} />
+        <LandingPage headingRef={headingRef} onNavigate={navigatePublic} />
       )}
     </PublicLayout>
   )

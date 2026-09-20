@@ -107,6 +107,22 @@ const copy = {
         'Findur currently pairs private owner data with clearly labeled synthetic candidates. It is not a public multi-user service. Authentication, connected data, and discovery remain outside this public-site slice.',
       backHome: 'Return home',
     },
+    status: {
+      metaTitle: 'Build status — Findur',
+      eyebrow: 'Deployment diagnostic',
+      title: 'Findur build status',
+      states: {
+        checking: 'Checking exact build…',
+        match: 'Exact build verified',
+        unavailable: 'API unavailable',
+        malformed: 'Build identity malformed',
+        stale: 'Build identity stale',
+        mismatch: 'Build identity mismatch',
+      },
+      frontendRevision: 'Frontend revision',
+      apiRevision: 'API revision',
+      notAvailable: 'not available',
+    },
     footer: {
       statement: 'Evidence, not advice. Compatibility, not worth.',
       boundary: '18+ evaluation demonstration · No public signup',
@@ -214,6 +230,22 @@ const copy = {
       statusBody:
         'Findur associe actuellement les données privées du propriétaire à des profils synthétiques clairement identifiés. Il ne s’agit pas d’un service public multiutilisateur. L’authentification, les données connectées et la découverte restent hors de cette partie du site public.',
       backHome: 'Retour à l’accueil',
+    },
+    status: {
+      metaTitle: 'État de la version — Findur',
+      eyebrow: 'Diagnostic de déploiement',
+      title: 'État de la version Findur',
+      states: {
+        checking: 'Vérification de la version exacte…',
+        match: 'Version exacte vérifiée',
+        unavailable: 'API indisponible',
+        malformed: 'Identité de version non valide',
+        stale: 'Identité de version périmée',
+        mismatch: 'Identités de version différentes',
+      },
+      frontendRevision: 'Version de l’interface',
+      apiRevision: 'Version de l’API',
+      notAvailable: 'non disponible',
     },
     footer: {
       statement: 'Des indices, pas des conseils. Une compatibilité, pas une valeur.',

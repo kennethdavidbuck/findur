@@ -1,0 +1,11 @@
+.git
+.github
+_bmad
+_bmad-output
+docs
+**/.env*
+**/node_modules
+**/dist
+backend/bin
+test/integration
+
