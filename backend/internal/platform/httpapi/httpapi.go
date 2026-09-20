@@ -25,6 +25,13 @@ type statusWriter struct {
 	status int
 }
 
+type requestIDContextKey struct{}
+
+func requestIDFromContext(ctx context.Context) string {
+	requestID, _ := ctx.Value(requestIDContextKey{}).(string)
+	return requestID
+}
+
 func (w *statusWriter) WriteHeader(status int) {
 	w.status = status
 	w.ResponseWriter.WriteHeader(status)
@@ -35,7 +42,8 @@ func (w *statusWriter) Unwrap() http.ResponseWriter {
 }
 
 // NewHandler builds the complete HTTP handler with safe request metadata.
-func NewHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics) http.Handler {
+// NewHandler builds the API. The optional initiator preserves the diagnostic-only composition.
+func NewHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiators ...authorizationInitiator) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeStatus(w, http.StatusOK, "ok", buildSHA)
@@ -55,6 +63,11 @@ func NewHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diag
 	if diagnostics != nil {
 		diagnostics.register(mux)
 	}
+	var initiator authorizationInitiator
+	if len(initiators) > 0 {
+		initiator = initiators[0]
+	}
+	registerAuthorizationAPI(mux, logger, initiator)
 
 	return requestMetadata(logger, admission(readiness, buildSHA, mux))
 }
@@ -75,6 +88,7 @@ func requestMetadata(logger *slog.Logger, next http.Handler) http.Handler {
 		requestID := newRequestID()
 		w.Header().Set("X-Request-ID", requestID)
 		recorder := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+		r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, requestID))
 		next.ServeHTTP(recorder, r)
 		logger.InfoContext(r.Context(), "http request",
 			"request_id", requestID,
@@ -92,6 +106,8 @@ func routeCategory(path string) string {
 		return "healthz"
 	case "/api/readyz":
 		return "readyz"
+	case "/api/auth/snaptrade/authorize":
+		return "authorization_begin"
 	default:
 		if strings.HasPrefix(path, "/api/__fixture/") {
 			return "fixture"

@@ -58,11 +58,9 @@ describe('public site', () => {
       'Find a different pattern in the same sky.',
     )
     expect(screen.getByText('18+ evaluation demo')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Owner access' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Owner access' })).toHaveAccessibleDescription(
-      'Secure owner access is coming later.',
-    )
-    expect(screen.getByText('Secure owner access is coming later.')).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Owner access' })).toHaveAttribute('href', '/connect')
+    expect(screen.getByRole('link', { name: 'Owner access' })).toHaveAccessibleDescription('Review the secure connection boundary.')
+    expect(screen.getByText('Review the secure connection boundary.')).toBeVisible()
     expect(screen.getAllByRole('navigation')).toHaveLength(1)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -172,6 +170,49 @@ describe('public site', () => {
         'Find a different pattern in the same sky.',
       ),
     )
+  })
+
+  it('renders complete staged consent without an implicit backend request', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    fireEvent.click(screen.getByRole('link', { name: 'Owner access' }))
+
+    const heading = screen.getByRole('heading', { level: 1, name: /without sharing your brokerage password/i })
+    await waitFor(() => expect(heading).toHaveFocus())
+    expect(window.location.pathname).toBe('/connect')
+    expect(screen.getByText('No account is included by default.')).toBeVisible()
+    expect(screen.getByText(/Balances, positions, activities, signal derivation/)).toBeVisible()
+    expect(screen.getByText(/Findur never sees or stores/)).toBeVisible()
+    expect(screen.getByText(/cannot trade and does not provide financial advice/)).toBeVisible()
+    expect(screen.getByText(/deleting your data from app-controlled active storage/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Continue to SnapTrade' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Continue to SnapTrade' })).toHaveAccessibleDescription(/Authorization is not available yet/)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('preserves consent route and focus while locale and theme change', async () => {
+    window.history.replaceState(null, '', '/connect')
+    render(<App />)
+    fireEvent.click(screen.getAllByRole('radio', { name: 'FR' })[0])
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Connectez-vous sans partager votre mot de passe de courtage.')
+    expect(screen.getByText('Aucun compte n’est inclus par défaut.')).toBeVisible()
+    expect(screen.getByText(/Findur ne peut effectuer aucune opération/)).toBeVisible()
+    expect(screen.getByText(/supprimer vos données du stockage actif/)).toBeVisible()
+    expect(window.location.pathname).toBe('/connect')
+    fireEvent.click(screen.getAllByRole('radio', { name: 'Sombre' })[0])
+    await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'dark'))
+    expect(window.location.pathname).toBe('/connect')
+  })
+
+  it('returns from consent without making an authorization request', () => {
+    window.history.replaceState(null, '', '/connect')
+    const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    fireEvent.click(screen.getByRole('link', { name: 'Return home' }))
+    expect(window.location.pathname).toBe('/')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('normalizes an unknown public path to the landing route', () => {

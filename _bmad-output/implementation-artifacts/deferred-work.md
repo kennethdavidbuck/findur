@@ -7,3 +7,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-public-site-foundation.md`
   summary: Re-derive the canonical public-site spec so the footer does not repeat Home and About navigation.
   evidence: The user explicitly removed redundant footer route links during implementation, superseding `public-surface-contract.md`, which still requires them; bmad-spec is the canonical spec's sole writer.
+- source_spec: `_bmad-output/implementation-artifacts/spec-0-2-begin-hosted-snaptrade-authorization-safely.md`
+  summary: Define an OIDC discovery metadata cache freshness and refresh policy before initiation is opened in production.
+  evidence: The Story 0.2 client intentionally caches validated discovery metadata until process restart, while the provider's endpoint-rotation expectations and an appropriate refresh SLA are not established by the current architecture or provider contract.

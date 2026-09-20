@@ -4,7 +4,7 @@ import { useI18n } from '../i18n'
 
 type AboutPageProps = {
   headingRef: RefObject<HTMLHeadingElement | null>
-  onNavigate: (route: '/' | '/about') => void
+  onNavigate: (route: '/' | '/about' | '/connect') => void
 }
 
 export function AboutPage({ headingRef, onNavigate }: AboutPageProps) {

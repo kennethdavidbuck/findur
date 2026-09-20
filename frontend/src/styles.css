@@ -271,6 +271,23 @@ p { line-height: 1.65; }
   cursor: not-allowed;
 }
 
+.owner-button[aria-current="page"] { box-shadow: inset 0 -3px var(--secondary); }
+
+.consent-page { border-top: 1px solid var(--border-strong); }
+.consent-panel { max-width: var(--reading-max); }
+.consent-panel h1 { max-width: 16ch; }
+.consent-sections { display: grid; gap: 1px; margin-block: 3rem; background: var(--border-strong); border: 1px solid var(--border-strong); }
+.consent-sections section { padding: clamp(1.25rem, 4vw, 2rem); background: var(--surface); }
+.consent-sections h2 { margin-bottom: 0.75rem; font-size: clamp(1.3rem, 3vw, 1.7rem); letter-spacing: -0.02em; }
+.consent-sections p:last-child, .consent-sections li:last-child { margin-bottom: 0; }
+.consent-sections ul { padding-left: 1.4rem; margin-bottom: 0; }
+.consent-sections li { margin-bottom: 0.7rem; line-height: 1.55; }
+.consent-emphasis { padding-left: 1rem; border-left: 4px solid var(--secondary); font-weight: 750; }
+.consent-eligibility { color: var(--secondary); }
+.consent-unavailable { max-width: 38rem; color: var(--text-muted); }
+.consent-panel form { margin-block: 1.5rem; }
+.consent-panel .action[data-disabled] { color: var(--text-muted); border-color: var(--border-strong); background: var(--surface-subtle); cursor: not-allowed; }
+
 .eyebrow, .mono-label, .step-number, .demo-marker, .footer-boundary {
   color: var(--text-muted);
   font-family: "IBM Plex Mono", ui-monospace, monospace;

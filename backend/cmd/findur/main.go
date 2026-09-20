@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"io"
 	"log"
@@ -13,12 +14,15 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/buildinfo"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/config"
 
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/httpapi"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/lifecycle"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/migrations"
+	"github.com/kennethdavidbuck/findur/backend/internal/platform/oidc"
+	postgresadapter "github.com/kennethdavidbuck/findur/backend/internal/platform/postgres"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/provider"
 )
 
@@ -97,7 +101,21 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		providerClient := provider.NewClient(cfg.FixtureBaseURL, cfg.FixtureProviderToken, providerHTTPClient)
 		diagnostics = httpapi.NewDiagnostics(cfg.FixtureBaseURL, providerClient)
 	}
-	server := newServer(cfg.Address, httpapi.NewHandler(logger, readiness, buildinfo.SHA, diagnostics), logger)
+	var authorization *auth.Service
+	if cfg.Authorization.Enabled {
+		discoveryClient := oidc.NewDiscoveryClient(cfg.Authorization.Issuer, &http.Client{Timeout: config.ProviderTimeout})
+		authorization, err = auth.NewService(auth.Config{
+			Enabled: true, ClientID: cfg.Authorization.ClientID, CallbackURL: cfg.Authorization.CallbackURL,
+			AllowedReturns: cfg.Authorization.AllowedReturns, DefaultReturn: "/connect",
+			HashKey: cfg.Authorization.HashKey, EncryptionKey: cfg.Authorization.EncryptionKey,
+			Random: rand.Reader, Clock: time.Now, OperationTimeout: config.AuthorizationTimeout,
+		}, postgresadapter.NewOAuthAttemptRepository(pool), discoveryClient)
+		if err != nil {
+			pool.Close()
+			return errInvalidConfiguration
+		}
+	}
+	server := newServer(cfg.Address, httpapi.NewHandler(logger, readiness, buildinfo.SHA, diagnostics, authorization), logger)
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("http server starting", "address", cfg.Address)
