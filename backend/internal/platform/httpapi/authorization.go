@@ -17,15 +17,31 @@ type authorizationInitiator interface {
 	Begin(context.Context, string) (auth.BeginResult, error)
 }
 
+type authorizationCompleter interface {
+	Complete(context.Context, auth.CallbackInput) (auth.CallbackResult, error)
+}
+
+type authorizationStatusProvider interface {
+	Status(context.Context, string) (auth.AuthorizationStatus, error)
+}
+
+type callbackCookies struct{ attempt, session string }
+type callbackCookieKey struct{}
+
 const authorizationRequestLimit = 4 << 10
 
 type authorizationAPI struct {
 	logger    *slog.Logger
 	initiator authorizationInitiator
+	completer authorizationCompleter
+	status    authorizationStatusProvider
 }
 
-func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator) {
-	api := &authorizationAPI{logger: logger, initiator: initiator}
+func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter) {
+	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer}
+	if provider, ok := completer.(authorizationStatusProvider); ok {
+		api.status = provider
+	}
 	strict := generated.NewStrictHandlerWithOptions(api, nil, generated.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
 			writeGeneratedError(w, http.StatusBadRequest, generated.InvalidRequest)
@@ -53,6 +69,16 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 		},
 		func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/auth/snaptrade/callback" || r.URL.Path == "/api/auth/status" {
+					cookies := callbackCookies{}
+					if cookie, err := r.Cookie("findur_oauth_attempt"); err == nil {
+						cookies.attempt = cookie.Value
+					}
+					if cookie, err := r.Cookie("findur_session"); err == nil {
+						cookies.session = cookie.Value
+					}
+					r = r.WithContext(context.WithValue(r.Context(), callbackCookieKey{}, cookies))
+				}
 				r.Body = http.MaxBytesReader(w, r.Body, authorizationRequestLimit)
 				next.ServeHTTP(w, r)
 			})
@@ -72,6 +98,62 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 		w.Header().Set("Allow", http.MethodPost)
 		writeGeneratedError(w, http.StatusMethodNotAllowed, generated.InvalidRequest)
 	})
+}
+
+func (a *authorizationAPI) GetAuthorizationStatus(ctx context.Context, _ generated.GetAuthorizationStatusRequestObject) (generated.GetAuthorizationStatusResponseObject, error) {
+	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
+	status := auth.AuthorizationStatus{}
+	if a.status != nil {
+		var err error
+		status, err = a.status.Status(ctx, cookies.session)
+		if err != nil {
+			a.logger.WarnContext(ctx, "authorization status unavailable", "request_id", requestIDFromContext(ctx), "category", "session_check_failed")
+		}
+	}
+	return generated.GetAuthorizationStatus200JSONResponse{Body: generated.AuthorizationStatus{AuthorizationAvailable: status.AuthorizationAvailable, Authenticated: status.Authenticated}, Headers: generated.GetAuthorizationStatus200ResponseHeaders{CacheControl: "no-store"}}, nil
+}
+
+type callbackRedirect struct {
+	location string
+	cookies  []*http.Cookie
+}
+
+func (r callbackRedirect) VisitCompleteSnapTradeAuthorizationResponse(w http.ResponseWriter) error {
+	for _, cookie := range r.cookies {
+		http.SetCookie(w, cookie)
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Location", r.location)
+	w.WriteHeader(http.StatusSeeOther)
+	return nil
+}
+
+func (a *authorizationAPI) CompleteSnapTradeAuthorization(ctx context.Context, request generated.CompleteSnapTradeAuthorizationRequestObject) (generated.CompleteSnapTradeAuthorizationResponseObject, error) {
+	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
+	value := func(input *string) string {
+		if input == nil {
+			return ""
+		}
+		return *input
+	}
+	result := auth.CallbackResult{Route: "/connect/result"}
+	var err error
+	if a.completer != nil {
+		result, err = a.completer.Complete(ctx, auth.CallbackInput{State: value(request.Params.State), Code: value(request.Params.Code), ProviderError: value(request.Params.Error), Binding: cookies.attempt, ExistingSession: cookies.session})
+	}
+	expireAttempt := &http.Cookie{Name: "findur_oauth_attempt", Value: "", Path: "/api/auth/snaptrade/callback", MaxAge: -1, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode}
+	set := []*http.Cookie{expireAttempt}
+	if err == nil && result.Success && result.Session != "" {
+		set = append(set,
+			&http.Cookie{Name: "findur_session", Value: result.Session, Path: "/", MaxAge: int(auth.SessionAbsoluteLifetime / time.Second), Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode},
+			&http.Cookie{Name: "findur_csrf", Value: result.CSRF, Path: "/", MaxAge: int(auth.SessionAbsoluteLifetime / time.Second), Secure: true, HttpOnly: false, SameSite: http.SameSiteStrictMode})
+	}
+	category := "restart_required"
+	if err == nil && result.Success {
+		category = "succeeded"
+	}
+	a.logger.InfoContext(ctx, "authorization callback completed", "request_id", requestIDFromContext(ctx), "category", category)
+	return callbackRedirect{location: result.Route, cookies: set}, nil
 }
 
 func (a *authorizationAPI) BeginSnapTradeAuthorization(ctx context.Context, request generated.BeginSnapTradeAuthorizationRequestObject) (generated.BeginSnapTradeAuthorizationResponseObject, error) {

@@ -1,8 +1,23 @@
 openapi: 3.1.0
 info:
   title: Findur API
-  version: 0.2.0
+  version: 0.3.0
 paths:
+  /api/auth/status:
+    get:
+      operationId: getAuthorizationStatus
+      summary: Report categorical authorization availability and session state
+      responses:
+        '200':
+          description: Browser-safe authorization capability and authentication state
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: no-store }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorizationStatus'
   /api/auth/snaptrade/authorize:
     post:
       operationId: beginSnapTradeAuthorization
@@ -32,8 +47,50 @@ paths:
           $ref: '#/components/responses/SafeError'
         '503':
           $ref: '#/components/responses/SafeError'
+  /api/auth/snaptrade/callback:
+    get:
+      operationId: completeSnapTradeAuthorization
+      summary: Consume a single-use hosted authorization callback
+      parameters:
+        - in: query
+          name: code
+          description: Single-use authorization code returned on provider success.
+          schema: { type: string, minLength: 1 }
+        - in: query
+          name: state
+          description: Opaque correlation state issued by Findur.
+          schema: { type: string, minLength: 1 }
+        - in: query
+          name: error
+          description: Provider error category returned instead of a code.
+          schema: { type: string, minLength: 1 }
+        - in: query
+          name: error_description
+          description: Provider detail accepted for protocol compatibility and intentionally ignored.
+          schema: { type: string }
+      responses:
+        '303':
+          description: Redirect to a clean, categorical browser result
+          headers:
+            Location:
+              required: true
+              schema: { type: string }
+            Set-Cookie:
+              required: true
+              schema:
+                type: array
+                items: { type: string }
+        '400':
+          $ref: '#/components/responses/SafeError'
 components:
   schemas:
+    AuthorizationStatus:
+      type: object
+      additionalProperties: false
+      required: [authorizationAvailable, authenticated]
+      properties:
+        authorizationAvailable: { type: boolean }
+        authenticated: { type: boolean }
     BeginAuthorizationRequest:
       type: object
       additionalProperties: false
@@ -47,7 +104,7 @@ components:
       properties:
         code:
           type: string
-          enum: [invalid_request, authorization_unavailable, initialization_failed]
+          enum: [invalid_request, authorization_unavailable, initialization_failed, restart_required]
   responses:
     SafeError:
       description: Categorical, non-sensitive failure

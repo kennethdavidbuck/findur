@@ -16,9 +16,92 @@ import (
 )
 
 type beginFunc func(context.Context, string) (auth.BeginResult, error)
+type completeFunc func(context.Context, auth.CallbackInput) (auth.CallbackResult, error)
+type statusCompleter struct {
+	status          auth.AuthorizationStatus
+	receivedSession string
+}
+
+func (s *statusCompleter) Complete(context.Context, auth.CallbackInput) (auth.CallbackResult, error) {
+	return auth.CallbackResult{}, nil
+}
+func (s *statusCompleter) Status(_ context.Context, session string) (auth.AuthorizationStatus, error) {
+	s.receivedSession = session
+	return s.status, nil
+}
 
 func (f beginFunc) Begin(ctx context.Context, route string) (auth.BeginResult, error) {
 	return f(ctx, route)
+}
+func (f completeFunc) Complete(ctx context.Context, input auth.CallbackInput) (auth.CallbackResult, error) {
+	return f(ctx, input)
+}
+
+func callbackHandler(completer authorizationCompleter) http.Handler {
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	return NewHandlerWithCallback(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, completer)
+}
+
+func TestAuthorizationStatusIsNoStoreAndServerAuthoritative(t *testing.T) {
+	for name, completer := range map[string]*statusCompleter{
+		"available unauthenticated": {status: auth.AuthorizationStatus{AuthorizationAvailable: true}},
+		"available authenticated":   {status: auth.AuthorizationStatus{AuthorizationAvailable: true, Authenticated: true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			handler := callbackHandler(completer)
+			request := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+			request.AddCookie(&http.Cookie{Name: "findur_session", Value: "opaque"})
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != "no-store" || completer.receivedSession != "opaque" {
+				t.Fatalf("status=%d headers=%v session=%q", response.Code, response.Header(), completer.receivedSession)
+			}
+			wantAuthenticated := strings.Contains(name, "authenticated") && !strings.Contains(name, "unauthenticated")
+			if strings.Contains(response.Body.String(), `"authenticated":true`) != wantAuthenticated || strings.Contains(response.Body.String(), "opaque") {
+				t.Fatalf("body=%q", response.Body.String())
+			}
+		})
+	}
+	t.Run("gate closed", func(t *testing.T) {
+		handler := callbackHandler(nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/auth/status", nil))
+		if response.Code != http.StatusOK || response.Body.String() != `{"authenticated":false,"authorizationAvailable":false}`+"\n" {
+			t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+		}
+	})
+}
+
+func TestAuthorizationCallbackRotatesSecureCookiesAndRedirectsCleanly(t *testing.T) {
+	handler := callbackHandler(completeFunc(func(_ context.Context, input auth.CallbackInput) (auth.CallbackResult, error) {
+		if input.State != "state" || input.Code != "code" || input.Binding != "binding" {
+			t.Fatalf("input=%+v", input)
+		}
+		return auth.CallbackResult{Route: "/connect/result", Session: "session-secret", CSRF: "csrf-secret", Success: true}, nil
+	}))
+	request := httptest.NewRequest(http.MethodGet, "/api/auth/snaptrade/callback?state=state&code=code", nil)
+	request.AddCookie(&http.Cookie{Name: "findur_oauth_attempt", Value: "binding"})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/connect/result" || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("response=%d %v", response.Code, response.Header())
+	}
+	cookies := response.Result().Cookies()
+	if len(cookies) != 3 || cookies[0].MaxAge != -1 || !cookies[1].Secure || !cookies[1].HttpOnly || cookies[1].Domain != "" || cookies[2].HttpOnly || cookies[2].SameSite != http.SameSiteStrictMode {
+		t.Fatalf("cookies=%+v", cookies)
+	}
+}
+
+func TestAuthorizationCallbackFailureIsCategorical(t *testing.T) {
+	handler := callbackHandler(completeFunc(func(context.Context, auth.CallbackInput) (auth.CallbackResult, error) {
+		return auth.CallbackResult{Route: "/connect/result"}, errors.New("private provider detail")
+	}))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/auth/snaptrade/callback?error=access_denied&error_description=private-provider-detail", nil))
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/connect/result" || strings.Contains(response.Body.String(), "provider") || len(response.Result().Cookies()) != 1 {
+		t.Fatalf("status=%d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
+	}
 }
 
 func authorizationHandler(initiator authorizationInitiator) http.Handler {

@@ -2,6 +2,7 @@ import type { RefObject } from 'react'
 import { Button } from 'react-aria-components'
 import { useI18n } from '../i18n'
 import { PublicLink } from '../components/PublicLayout'
+import { useAuthorizationStatus } from '../auth-status'
 
 type ConsentPageProps = {
   headingRef: RefObject<HTMLHeadingElement | null>
@@ -11,6 +12,8 @@ type ConsentPageProps = {
 export function ConsentPage({ headingRef, onNavigate }: ConsentPageProps) {
   const { messages } = useI18n()
   const consent = messages.consent
+	const authorization = useAuthorizationStatus()
+	const available = !authorization.resolving && authorization.status.authorizationAvailable
 
   return (
     <section className="consent-page section-pad">
@@ -40,10 +43,10 @@ export function ConsentPage({ headingRef, onNavigate }: ConsentPageProps) {
         </div>
 
         <p className="mono-label consent-eligibility">{consent.eligibility}</p>
-        <form action="/api/auth/snaptrade/authorize" method="post" aria-describedby="authorization-unavailable">
+		<form action="/api/auth/snaptrade/authorize" method="post" aria-describedby={available ? undefined : "authorization-unavailable"}>
           <input type="hidden" name="returnTo" value="/portfolio" />
-          <Button className="action action--primary" type="submit" isDisabled aria-describedby="authorization-unavailable">{consent.action}</Button>
-          <p className="consent-unavailable" id="authorization-unavailable" role="status">{consent.unavailable}</p>
+		  <Button className="action action--primary" type="submit" isDisabled={!available} aria-describedby={available ? undefined : "authorization-unavailable"}>{consent.action}</Button>
+		  {!available && <p className="consent-unavailable" id="authorization-unavailable" role="status">{authorization.resolving ? consent.checking : consent.unavailable}</p>}
         </form>
         <PublicLink className="text-link" href="/" onNavigate={onNavigate}>{consent.back}</PublicLink>
       </div>

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/migrations"
@@ -65,6 +66,9 @@ func TestOAuthAttemptRepositoryAgainstPostgres(t *testing.T) {
 	if err := repository.Claim(ctx, pending.StateHash, bytes.Repeat([]byte{9}, 32), now); !errors.Is(err, auth.ErrNotClaimable) {
 		t.Fatalf("wrong binding claim error=%v", err)
 	}
+	if _, err := repository.ClaimCallback(ctx, pending.StateHash, bytes.Repeat([]byte{9}, 32), now); !errors.Is(err, auth.ErrNotClaimable) {
+		t.Fatalf("callback accepted mismatched binding: %v", err)
+	}
 
 	const claimers = 16
 	results := make(chan error, claimers)
@@ -90,6 +94,54 @@ func TestOAuthAttemptRepositoryAgainstPostgres(t *testing.T) {
 		t.Fatalf("successful claims=%d, want 1", successes)
 	}
 
+	completed := attempt(20, now.Add(10*time.Minute))
+	if err := repository.Create(ctx, completed); err != nil {
+		t.Fatal(err)
+	}
+	claim, err := repository.ClaimCallback(ctx, completed.StateHash, completed.BrowserBindingHash, now)
+	if err != nil || !bytes.Equal(claim.NonceHash, completed.NonceHash) {
+		t.Fatalf("callback claim=%+v err=%v", claim, err)
+	}
+	userID := uuid.New()
+	final := auth.Finalization{StateHash: completed.StateHash, Provider: "snaptrade", Subject: "isolated-subject", UserID: userID,
+		AccessToken: []byte("encrypted-access"), RefreshToken: []byte("encrypted-refresh"), EnvelopeVersion: 1, TokenExpiresAt: now.Add(time.Hour),
+		SessionHash: bytes.Repeat([]byte{30}, 32), CSRFHash: bytes.Repeat([]byte{31}, 32), SessionIdleExpiresAt: now.Add(30 * time.Minute), SessionAbsoluteExpiresAt: now.Add(12 * time.Hour), CompletedAt: now, ReturnRoute: "/portfolio"}
+	if err := repository.FinalizeCallback(ctx, final); err != nil {
+		t.Fatal(err)
+	}
+	if active, err := repository.SessionActive(ctx, final.SessionHash, now); err != nil || !active {
+		t.Fatalf("active=%v err=%v", active, err)
+	}
+	replay, err := repository.ClaimCallback(ctx, completed.StateHash, completed.BrowserBindingHash, now)
+	if err != nil || replay.TerminalOutcome != "succeeded" || replay.TerminalRoute != "/connect/result" || replay.UserID != userID {
+		t.Fatalf("replay=%+v err=%v", replay, err)
+	}
+	var users, identities, authorizations, sessions int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM external_identities),(SELECT count(*) FROM provider_authorizations),(SELECT count(*) FROM sessions)`).Scan(&users, &identities, &authorizations, &sessions); err != nil {
+		t.Fatal(err)
+	}
+	if users != 1 || identities != 1 || authorizations != 1 || sessions != 1 {
+		t.Fatalf("partial finalization: %d %d %d %d", users, identities, authorizations, sessions)
+	}
+	rollback := attempt(40, now.Add(10*time.Minute))
+	if err := repository.Create(ctx, rollback); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.ClaimCallback(ctx, rollback.StateHash, rollback.BrowserBindingHash, now); err != nil {
+		t.Fatal(err)
+	}
+	failedFinal := final
+	failedFinal.StateHash, failedFinal.Subject, failedFinal.UserID = rollback.StateHash, "rollback-subject", uuid.New()
+	if err := repository.FinalizeCallback(ctx, failedFinal); err == nil {
+		t.Fatal("finalization with duplicate session hash succeeded")
+	}
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM users),(SELECT count(*) FROM external_identities),(SELECT count(*) FROM provider_authorizations),(SELECT count(*) FROM sessions)`).Scan(&users, &identities, &authorizations, &sessions); err != nil {
+		t.Fatal(err)
+	}
+	if users != 1 || identities != 1 || authorizations != 1 || sessions != 1 {
+		t.Fatalf("rollback left partial state: %d %d %d %d", users, identities, authorizations, sessions)
+	}
+
 	expired := attempt(2, now.Add(-time.Minute))
 	if err := repository.Create(ctx, expired); err != nil {
 		t.Fatal(err)
@@ -97,13 +149,16 @@ func TestOAuthAttemptRepositoryAgainstPostgres(t *testing.T) {
 	if err := repository.Claim(ctx, expired.StateHash, expired.BrowserBindingHash, now); !errors.Is(err, auth.ErrNotClaimable) {
 		t.Fatalf("expired claim error=%v", err)
 	}
+	if _, err := repository.ClaimCallback(ctx, expired.StateHash, expired.BrowserBindingHash, now); !errors.Is(err, auth.ErrNotClaimable) {
+		t.Fatalf("callback accepted expired attempt: %v", err)
+	}
 	deleted, err := repository.Cleanup(ctx, now)
 	if err != nil || deleted != 1 {
 		t.Fatalf("first cleanup deleted=%d error=%v", deleted, err)
 	}
 	deleted, err = repository.Cleanup(ctx, now.Add(11*time.Minute))
-	if err != nil || deleted != 1 {
-		t.Fatalf("claimed cleanup deleted=%d error=%v", deleted, err)
+	if err != nil || deleted != 3 {
+		t.Fatalf("claimed, terminal, and abandoned-exchange cleanup deleted=%d error=%v", deleted, err)
 	}
 
 	canceled, cancelOperation := context.WithCancel(context.Background())

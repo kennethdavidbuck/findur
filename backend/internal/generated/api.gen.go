@@ -28,6 +28,7 @@ const (
 	AuthorizationUnavailable ErrorCode = "authorization_unavailable"
 	InitializationFailed     ErrorCode = "initialization_failed"
 	InvalidRequest           ErrorCode = "invalid_request"
+	RestartRequired          ErrorCode = "restart_required"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -39,9 +40,17 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case InvalidRequest:
 		return true
+	case RestartRequired:
+		return true
 	default:
 		return false
 	}
+}
+
+// AuthorizationStatus defines model for AuthorizationStatus.
+type AuthorizationStatus struct {
+	Authenticated          bool `json:"authenticated"`
+	AuthorizationAvailable bool `json:"authorizationAvailable"`
 }
 
 // BeginAuthorizationRequest defines model for BeginAuthorizationRequest.
@@ -60,6 +69,21 @@ type ErrorCode string
 // SafeError defines model for SafeError.
 type SafeError = Error
 
+// CompleteSnapTradeAuthorizationParams defines parameters for CompleteSnapTradeAuthorization.
+type CompleteSnapTradeAuthorizationParams struct {
+	// Code Single-use authorization code returned on provider success.
+	Code *string `form:"code,omitempty" json:"code,omitempty"`
+
+	// State Opaque correlation state issued by Findur.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Error Provider error category returned instead of a code.
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+
+	// ErrorDescription Provider detail accepted for protocol compatibility and intentionally ignored.
+	ErrorDescription *string `form:"error_description,omitempty" json:"error_description,omitempty"`
+}
+
 // BeginSnapTradeAuthorizationJSONRequestBody defines body for BeginSnapTradeAuthorization for application/json ContentType.
 type BeginSnapTradeAuthorizationJSONRequestBody = BeginAuthorizationRequest
 
@@ -71,6 +95,12 @@ type ServerInterface interface {
 	// BeginSnapTradeAuthorization Begin a short-lived hosted SnapTrade authorization attempt
 	// (POST /api/auth/snaptrade/authorize)
 	BeginSnapTradeAuthorization(w http.ResponseWriter, r *http.Request)
+	// CompleteSnapTradeAuthorization Consume a single-use hosted authorization callback
+	// (GET /api/auth/snaptrade/callback)
+	CompleteSnapTradeAuthorization(w http.ResponseWriter, r *http.Request, params CompleteSnapTradeAuthorizationParams)
+	// GetAuthorizationStatus Report categorical authorization availability and session state
+	// (GET /api/auth/status)
+	GetAuthorizationStatus(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -87,6 +117,92 @@ func (siw *ServerInterfaceWrapper) BeginSnapTradeAuthorization(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.BeginSnapTradeAuthorization(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CompleteSnapTradeAuthorization operation middleware
+func (siw *ServerInterfaceWrapper) CompleteSnapTradeAuthorization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CompleteSnapTradeAuthorizationParams
+
+	// ------------- Optional query parameter "code" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "code", r.URL.Query(), &params.Code, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "state" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "state", r.URL.Query(), &params.State, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error", r.URL.Query(), &params.Error, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "error_description" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "error_description", r.URL.Query(), &params.ErrorDescription, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "error_description"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "error_description", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CompleteSnapTradeAuthorization(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAuthorizationStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetAuthorizationStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAuthorizationStatus(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -216,7 +332,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/status", wrapper.GetAuthorizationStatus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/snaptrade/authorize", wrapper.BeginSnapTradeAuthorization)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/snaptrade/callback", wrapper.CompleteSnapTradeAuthorization)
 
 	return m
 }
@@ -314,11 +432,85 @@ func (response BeginSnapTradeAuthorization503JSONResponse) VisitBeginSnapTradeAu
 	return err
 }
 
+type CompleteSnapTradeAuthorizationRequestObject struct {
+	Params CompleteSnapTradeAuthorizationParams
+}
+
+type CompleteSnapTradeAuthorizationResponseObject interface {
+	VisitCompleteSnapTradeAuthorizationResponse(w http.ResponseWriter) error
+}
+
+type CompleteSnapTradeAuthorization303ResponseHeaders struct {
+	Location  string
+	SetCookie []string
+}
+
+type CompleteSnapTradeAuthorization303Response struct {
+	Headers CompleteSnapTradeAuthorization303ResponseHeaders
+}
+
+func (response CompleteSnapTradeAuthorization303Response) VisitCompleteSnapTradeAuthorizationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.Header().Set("Set-Cookie", fmt.Sprint(response.Headers.SetCookie))
+	w.WriteHeader(303)
+	return nil
+}
+
+type CompleteSnapTradeAuthorization400JSONResponse struct{ SafeErrorJSONResponse }
+
+func (response CompleteSnapTradeAuthorization400JSONResponse) VisitCompleteSnapTradeAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAuthorizationStatusRequestObject struct {
+}
+
+type GetAuthorizationStatusResponseObject interface {
+	VisitGetAuthorizationStatusResponse(w http.ResponseWriter) error
+}
+
+type GetAuthorizationStatus200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetAuthorizationStatus200JSONResponse struct {
+	Body    AuthorizationStatus
+	Headers GetAuthorizationStatus200ResponseHeaders
+}
+
+func (response GetAuthorizationStatus200JSONResponse) VisitGetAuthorizationStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// BeginSnapTradeAuthorization Begin a short-lived hosted SnapTrade authorization attempt
 	// (POST /api/auth/snaptrade/authorize)
 	BeginSnapTradeAuthorization(ctx context.Context, request BeginSnapTradeAuthorizationRequestObject) (BeginSnapTradeAuthorizationResponseObject, error)
+	// CompleteSnapTradeAuthorization Consume a single-use hosted authorization callback
+	// (GET /api/auth/snaptrade/callback)
+	CompleteSnapTradeAuthorization(ctx context.Context, request CompleteSnapTradeAuthorizationRequestObject) (CompleteSnapTradeAuthorizationResponseObject, error)
+	// GetAuthorizationStatus Report categorical authorization availability and session state
+	// (GET /api/auth/status)
+	GetAuthorizationStatus(ctx context.Context, request GetAuthorizationStatusRequestObject) (GetAuthorizationStatusResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -409,21 +601,77 @@ func (sh *strictHandler) BeginSnapTradeAuthorization(w http.ResponseWriter, r *h
 	}
 }
 
+// CompleteSnapTradeAuthorization operation middleware
+func (sh *strictHandler) CompleteSnapTradeAuthorization(w http.ResponseWriter, r *http.Request, params CompleteSnapTradeAuthorizationParams) {
+	var request CompleteSnapTradeAuthorizationRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CompleteSnapTradeAuthorization(ctx, request.(CompleteSnapTradeAuthorizationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CompleteSnapTradeAuthorization")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CompleteSnapTradeAuthorizationResponseObject); ok {
+		if err := validResponse.VisitCompleteSnapTradeAuthorizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAuthorizationStatus operation middleware
+func (sh *strictHandler) GetAuthorizationStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetAuthorizationStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAuthorizationStatus(ctx, request.(GetAuthorizationStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAuthorizationStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAuthorizationStatusResponseObject); ok {
+		if err := validResponse.VisitGetAuthorizationStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"rFRNT9xADP0rkdtjslm65ZIbrFoJqQcE3BBCQ8ZLTBN78DhLKdr/Xk3S/eJLQuKU+Yif33u25wlq6YIw",
-	"skWonkAxBuGIw+bcLfCHqmja1MKGbGnpQmipdkbC5V0UTmexbrBzafVVcQEVfCm3yOV4G8sRbbVa5eAx",
-	"1kohgUAFc2d4K0q1a/OMhYuIHMloidnCUdsrQg4NOo86UJu7usFiLmwq7Uj8vidFD5Vpj/kOn1o4GlTA",
-	"UkSTAcgeA0IF0ZT4NtFZrdYRA/ox3hIf9daI0t9B5xne9xhH9d5TOnLtqUpANUpuLVwbMYewc5RIWa98",
-	"IWn9POeGhdzcYW2wymHj9QdS1OIxfZH7DqpLIF66lvy1/iecg9vVcd2zWzpq3U2bjCAmI9euL5PV6OEq",
-	"f4Xt1uDLMenVCwXpN+LFKJesTXc/iX2v2dHpCeSwRI1jvaeTb5Np0iwB2QWCCmaTg8kUcgjOmkFa6QKV",
-	"iX0Z2QVT57Fcixk0BxkrkvwYBJx4qMbinbMLFylir4owysBox+IfP62r326X5Mgu7p/i4eGhWIh2Ra8t",
-	"cjLSf06isUY70zubztJnf87O0JNibZlJZg1mnmItS1T0WSPR0Gd77ZIh+yDEtj99v2TU8/7gJZnOoIJe",
-	"CV5rqXO0Yi7ym/B9oJfjmsP36fQttzYulNsHLEUcHH4w4nA6+1BEekT6rnP6uG7DzGWxEbWipeXW4k1z",
-	"PjPbmWEXxmL+GwA=",
+	"tFbBbuM2EP0Vgu1Rjr1N96LbxmiLBRZokOxtEQRjcmxzl+Iww6FTN/C/F5RqWXbkAEnTk21ZnHnvzeMj",
+	"n7ShJlLAIEnXT5oxRQoJ2x+3sMTfmInLD0NBMEj5CjF6Z0Achen3RKE8S2aNDZRvPzMuda1/mh4qT7t/",
+	"07SrttvtKm0xGXaxFNG1noPgitgZ8JUKFCYJQ3LiNqiW4Hxm1JVeI1jkFtoczBoncwrC5DvgD9kxWl0L",
+	"Z6wGeAyFJLrWgSZJqC0k24i61knYhVWBs9vtV7TVP2VZE7u/W4q3ApLbx2CtK0/AXzNFZHFFpyX4hJWO",
+	"g0dPGrKsMUhRqWB62rdcEHmEoHeVhmGTTxtwHhYex97dVQN6384trE6a3vU8afEdjZSeV7hy4YjdDT5k",
+	"TPJKeoySOXylAdpezJG2vYle0cKQbcXAkJvC2oUNeGfv+V/AJwLe5wADKVxw4sDv/yweQquLjkmA5b7X",
+	"864aITBUu8XxXMvymgvLTgEnZXD6dxdsZvXp+rOu9AY5dd6eXVxezIoMFDFAdLrWlxcfLma60hFk3bKd",
+	"QnTTQmiaAkRhsDjd82tliNQNqUjUcvpsdd3N8zZA/FpWHA1WdzQwyRXZ7bvt4PMOKooM6/41eXx8nCyJ",
+	"m0lmj6EIad+nUTejQVJdzi7Lx3Gm3KB1jEaUkJI1KuuSoQ0yWrWmJGjVkYMUBhvJBTlOmi/U8Xk5ZApN",
+	"EF3rzE6PWeoWZTIn+uHw5ULPo6nSv85m59TqVZgewrqs+PDxlSs+zi5ftaIEZm4a4O3ehgpUWhPLxLvN",
+	"QeLenCdigwg2sXPNmPkNeL8A86OAWuGI9efURI+CZ90fgaFBacf47dQbty6sPE5yOsVVXKq6eEOrKKjI",
+	"tHEWWaVsDKZ00aaLrvVDRt7qSgdoysTKQj2cZOPCFwwrWev6w4gjThH9GeEhozLEjL7DkgQElUspo1WL",
+	"rery5RyA9u3/guB6zxTLiJXpjuTtQQ0XkiBYRUsFrVDnoLQF3gWKRQHnFRiDsdhpSVwmImTIq+JRELdw",
+	"3slWQSgIBUN3wPitcqtAjPZFlPfDxi9txLvXRg4oU47vSpnD3UYtmB4TsmJM2b8pad4eLU6wSSMl+nkA",
+	"M2zfmDlHeTCnkHKDJREO+2w0c/ttfpID/Z1rdO//gTJ2RTuZ0C+z2bsde2PtRq6xV914JwmWz4IFIgyc",
+	"Orir9Vv9/7/i9hO6wUgsR9Y8yefuMnUAnDClA9JS758BAA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

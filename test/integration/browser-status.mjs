@@ -58,6 +58,39 @@ export async function verifyBrowserStatus({ browserUrl, publicOrigin, expectedSh
     assert.match(evidence.text, new RegExp(expectedSha))
     assert.equal(evidence.readyRequests.length, 1, 'status page makes exactly one readiness call')
     assert.equal(new URL(evidence.readyRequests[0]).origin, evidence.origin, 'readiness is same-origin')
+
+	await webdriver(`/session/${sessionId}/url`, {
+	  method: 'POST', headers: { 'Content-Type': 'application/json' },
+	  body: JSON.stringify({ url: 'http://127.0.0.1:8080/connect' }),
+	})
+	let actionReady = false
+	for (let attempt = 0; attempt < 40; attempt += 1) {
+	  actionReady = await webdriver(`/session/${sessionId}/execute/sync`, {
+		method: 'POST', headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ script: `const button=document.querySelector('form[action="/api/auth/snaptrade/authorize"] button'); return Boolean(button && !button.disabled)`, args: [] }),
+	  })
+	  if (actionReady) break
+	  await new Promise((resolve) => setTimeout(resolve, 100))
+	}
+	assert.equal(actionReady, true, 'authorization action opens only after the server capability check')
+	await webdriver(`/session/${sessionId}/execute/sync`, {
+	  method: 'POST', headers: { 'Content-Type': 'application/json' },
+	  body: JSON.stringify({ script: `document.querySelector('form[action="/api/auth/snaptrade/authorize"] button').click()`, args: [] }),
+	})
+	let oauthEvidence
+	for (let attempt = 0; attempt < 60; attempt += 1) {
+	  oauthEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
+		method: 'POST', headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ script: `return { path: location.pathname, search: location.search, heading: document.querySelector('h1')?.innerText }`, args: [] }),
+	  })
+	  if (oauthEvidence.path === '/connect/result') break
+	  await new Promise((resolve) => setTimeout(resolve, 250))
+	}
+	assert.deepEqual(oauthEvidence, { path: '/connect/result', search: '', heading: 'Your private session is ready.' })
+	const browserCookies = await webdriver(`/session/${sessionId}/cookie`)
+	assert.ok(browserCookies.some((cookie) => cookie.name === 'findur_session' && cookie.httpOnly && cookie.secure), 'opaque secure session cookie is issued')
+	assert.ok(browserCookies.some((cookie) => cookie.name === 'findur_csrf' && !cookie.httpOnly && cookie.secure), 'separate secure CSRF cookie is issued')
+	assert.ok(!browserCookies.some((cookie) => cookie.name === 'findur_oauth_attempt'), 'attempt cookie is expired')
   } finally {
     await webdriver(`/session/${sessionId}`, { method: 'DELETE' })
   }

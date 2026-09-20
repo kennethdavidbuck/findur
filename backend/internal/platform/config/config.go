@@ -32,6 +32,7 @@ type Config struct {
 	DatabaseURL          string
 	MigrationURL         string
 	Production           bool
+	Integration          bool
 	FixtureBaseURL       *url.URL
 	FixtureProviderToken string
 	Authorization        AuthorizationConfig
@@ -39,13 +40,17 @@ type Config struct {
 
 // AuthorizationConfig is explicit product policy and validated OIDC configuration.
 type AuthorizationConfig struct {
-	Enabled        bool
-	ClientID       string
-	CallbackURL    string
-	Issuer         string
-	HashKey        []byte
-	EncryptionKey  []byte
-	AllowedReturns []string
+	Enabled         bool
+	ClientID        string
+	ClientSecret    string
+	CallbackURL     string
+	Issuer          string
+	HashKey         []byte
+	EncryptionKey   []byte
+	SessionHashKey  []byte
+	TokenKeys       map[int][]byte
+	CurrentTokenKey int
+	AllowedReturns  []string
 }
 
 // HealthcheckConfig contains the validated local probe target used by container health checks.
@@ -95,6 +100,7 @@ func Load() (Config, error) {
 		DatabaseURL:          databaseURL,
 		MigrationURL:         migrationURL,
 		Production:           production,
+		Integration:          appEnvironment == "integration",
 		FixtureBaseURL:       fixtureBaseURL,
 		FixtureProviderToken: fixtureToken,
 		Authorization:        authorization,
@@ -106,18 +112,15 @@ func loadAuthorizationConfig(appEnvironment string) (AuthorizationConfig, error)
 	if err != nil {
 		return AuthorizationConfig{}, errors.New("AUTH_INITIATION_ENABLED must be true or false")
 	}
-	// Story 0.3 must deliberately remove this production safety closure.
-	if appEnvironment == "production" {
-		enabled = false
-	}
 	result := AuthorizationConfig{Enabled: enabled, AllowedReturns: []string{"/connect", "/portfolio"}}
 	if !enabled {
 		return result, nil
 	}
 	result.ClientID = strings.TrimSpace(os.Getenv("SNAPTRADE_OAUTH_CLIENT_ID"))
+	result.ClientSecret = strings.TrimSpace(os.Getenv("SNAPTRADE_OAUTH_CLIENT_SECRET"))
 	result.CallbackURL = strings.TrimSpace(os.Getenv("SNAPTRADE_OAUTH_CALLBACK_URL"))
 	result.Issuer = strings.TrimSpace(os.Getenv("SNAPTRADE_OIDC_ISSUER"))
-	if result.ClientID == "" || result.CallbackURL == "" || result.Issuer == "" {
+	if result.ClientID == "" || result.ClientSecret == "" || result.CallbackURL == "" || result.Issuer == "" {
 		return AuthorizationConfig{}, errors.New("enabled authorization requires complete OAuth configuration")
 	}
 	issuer, err := validateHTTPURL(result.Issuer, appEnvironment == "integration")
@@ -145,6 +148,23 @@ func loadAuthorizationConfig(appEnvironment string) (AuthorizationConfig, error)
 	if subtle.ConstantTimeCompare(result.HashKey, result.EncryptionKey) == 1 {
 		return AuthorizationConfig{}, errors.New("OAuth hashing and encryption keys must be independent")
 	}
+	result.SessionHashKey, err = decodeKey("SESSION_HASH_KEY")
+	if err != nil {
+		return AuthorizationConfig{}, err
+	}
+	tokenKey, err := decodeKey("OAUTH_TOKEN_KEY_V1")
+	if err != nil {
+		return AuthorizationConfig{}, err
+	}
+	for _, other := range [][]byte{result.HashKey, result.EncryptionKey, result.SessionHashKey} {
+		if subtle.ConstantTimeCompare(tokenKey, other) == 1 {
+			return AuthorizationConfig{}, errors.New("OAuth token encryption key must be independent")
+		}
+	}
+	if subtle.ConstantTimeCompare(result.SessionHashKey, result.HashKey) == 1 || subtle.ConstantTimeCompare(result.SessionHashKey, result.EncryptionKey) == 1 {
+		return AuthorizationConfig{}, errors.New("session hashing key must be independent")
+	}
+	result.TokenKeys, result.CurrentTokenKey = map[int][]byte{1: tokenKey}, 1
 	return result, nil
 }
 

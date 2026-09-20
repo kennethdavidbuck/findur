@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/auth/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Report categorical authorization availability and session state */
+        get: operations["getAuthorizationStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/snaptrade/authorize": {
         parameters: {
             query?: never;
@@ -21,16 +38,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/snaptrade/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Consume a single-use hosted authorization callback */
+        get: operations["completeSnapTradeAuthorization"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AuthorizationStatus: {
+            authorizationAvailable: boolean;
+            authenticated: boolean;
+        };
         BeginAuthorizationRequest: {
             returnTo?: string;
         };
         Error: {
             /** @enum {string} */
-            code: "invalid_request" | "authorization_unavailable" | "initialization_failed";
+            code: "invalid_request" | "authorization_unavailable" | "initialization_failed" | "restart_required";
         };
     };
     responses: {
@@ -52,6 +90,27 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getAuthorizationStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Browser-safe authorization capability and authentication state */
+            200: {
+                headers: {
+                    "Cache-Control": "no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthorizationStatus"];
+                };
+            };
+        };
+    };
     beginSnapTradeAuthorization: {
         parameters: {
             query?: never;
@@ -78,6 +137,36 @@ export interface operations {
             400: components["responses"]["SafeError"];
             415: components["responses"]["SafeError"];
             503: components["responses"]["SafeError"];
+        };
+    };
+    completeSnapTradeAuthorization: {
+        parameters: {
+            query?: {
+                /** @description Single-use authorization code returned on provider success. */
+                code?: string;
+                /** @description Opaque correlation state issued by Findur. */
+                state?: string;
+                /** @description Provider error category returned instead of a code. */
+                error?: string;
+                /** @description Provider detail accepted for protocol compatibility and intentionally ignored. */
+                error_description?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to a clean, categorical browser result */
+            303: {
+                headers: {
+                    Location: string;
+                    "Set-Cookie": string[];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["SafeError"];
         };
     };
 }

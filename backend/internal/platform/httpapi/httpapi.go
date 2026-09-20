@@ -44,6 +44,18 @@ func (w *statusWriter) Unwrap() http.ResponseWriter {
 // NewHandler builds the complete HTTP handler with safe request metadata.
 // NewHandler builds the API. The optional initiator preserves the diagnostic-only composition.
 func NewHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiators ...authorizationInitiator) http.Handler {
+	var initiator authorizationInitiator
+	if len(initiators) > 0 {
+		initiator = initiators[0]
+	}
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, nil)
+}
+
+func NewHandlerWithCallback(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, integrationFixtures ...http.Handler) http.Handler {
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, integrationFixtures...)
+}
+
+func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, integrationFixtures ...http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeStatus(w, http.StatusOK, "ok", buildSHA)
@@ -63,11 +75,10 @@ func NewHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diag
 	if diagnostics != nil {
 		diagnostics.register(mux)
 	}
-	var initiator authorizationInitiator
-	if len(initiators) > 0 {
-		initiator = initiators[0]
+	if len(integrationFixtures) > 0 && integrationFixtures[0] != nil {
+		mux.Handle("/api/__fixture/oidc/", integrationFixtures[0])
 	}
-	registerAuthorizationAPI(mux, logger, initiator)
+	registerAuthorizationAPI(mux, logger, initiator, completer)
 
 	return requestMetadata(logger, admission(readiness, buildSHA, mux))
 }
@@ -108,6 +119,10 @@ func routeCategory(path string) string {
 		return "readyz"
 	case "/api/auth/snaptrade/authorize":
 		return "authorization_begin"
+	case "/api/auth/status":
+		return "authorization_status"
+	case "/api/auth/snaptrade/callback":
+		return "authorization_callback"
 	default:
 		if strings.HasPrefix(path, "/api/__fixture/") {
 			return "fixture"

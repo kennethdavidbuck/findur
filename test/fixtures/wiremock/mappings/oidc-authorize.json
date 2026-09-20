@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "urlPath": "/oauth/authorize",
+    "queryParameters": {
+      "response_type": { "equalTo": "code" },
+      "scope": { "equalTo": "openid read" },
+      "code_challenge_method": { "equalTo": "S256" }
+    }
+  },
+  "response": {
+    "status": 302,
+    "headers": {
+      "Location": "{{request.query.redirect_uri}}?code={{request.query.nonce}}&state={{request.query.state}}",
+      "Cache-Control": "no-store"
+    },
+    "transformers": ["response-template"]
+  }
+}

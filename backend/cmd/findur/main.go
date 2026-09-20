@@ -22,6 +22,7 @@ import (
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/lifecycle"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/migrations"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/oidc"
+	"github.com/kennethdavidbuck/findur/backend/internal/platform/oidcfixture"
 	postgresadapter "github.com/kennethdavidbuck/findur/backend/internal/platform/postgres"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/provider"
 )
@@ -102,20 +103,40 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		diagnostics = httpapi.NewDiagnostics(cfg.FixtureBaseURL, providerClient)
 	}
 	var authorization *auth.Service
+	var callback *auth.CallbackService
+	var syntheticOIDC http.Handler
 	if cfg.Authorization.Enabled {
 		discoveryClient := oidc.NewDiscoveryClient(cfg.Authorization.Issuer, &http.Client{Timeout: config.ProviderTimeout})
+		repository := postgresadapter.NewOAuthAttemptRepository(pool)
 		authorization, err = auth.NewService(auth.Config{
 			Enabled: true, ClientID: cfg.Authorization.ClientID, CallbackURL: cfg.Authorization.CallbackURL,
 			AllowedReturns: cfg.Authorization.AllowedReturns, DefaultReturn: "/connect",
 			HashKey: cfg.Authorization.HashKey, EncryptionKey: cfg.Authorization.EncryptionKey,
 			Random: rand.Reader, Clock: time.Now, OperationTimeout: config.AuthorizationTimeout,
-		}, postgresadapter.NewOAuthAttemptRepository(pool), discoveryClient)
+		}, repository, discoveryClient)
 		if err != nil {
 			pool.Close()
 			return errInvalidConfiguration
 		}
+		callback, err = auth.NewCallbackService(auth.CallbackConfig{
+			Provider: "snaptrade", CallbackURL: cfg.Authorization.CallbackURL,
+			AttemptHashKey: cfg.Authorization.HashKey, SessionHashKey: cfg.Authorization.SessionHashKey,
+			VerifierKey: cfg.Authorization.EncryptionKey, TokenKeys: cfg.Authorization.TokenKeys, CurrentTokenKey: cfg.Authorization.CurrentTokenKey,
+			Random: rand.Reader, Clock: time.Now, OperationTimeout: config.AuthorizationTimeout,
+		}, repository, oidc.NewCallbackClient(discoveryClient, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL))
+		if err != nil {
+			pool.Close()
+			return errInvalidConfiguration
+		}
+		if cfg.Integration && cfg.FixtureBaseURL != nil {
+			syntheticOIDC, err = oidcfixture.New(cfg.Authorization.Issuer, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL)
+			if err != nil {
+				pool.Close()
+				return errInvalidConfiguration
+			}
+		}
 	}
-	server := newServer(cfg.Address, httpapi.NewHandler(logger, readiness, buildinfo.SHA, diagnostics, authorization), logger)
+	server := newServer(cfg.Address, httpapi.NewHandlerWithCallback(logger, readiness, buildinfo.SHA, diagnostics, authorization, callback, syntheticOIDC), logger)
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("http server starting", "address", cfg.Address)

@@ -11,10 +11,30 @@ services:
       url: docker.io/kdbuck/findur:bootstrap-once
     healthCheckPath: /api/healthz
     envVars:
+      - key: APP_ENV
+        value: production
       - key: DATABASE_URL
         fromDatabase:
           name: findur-db
           property: connectionString
+      - key: AUTH_INITIATION_ENABLED
+        sync: false
+      - key: SNAPTRADE_OAUTH_CLIENT_ID
+        sync: false
+      - key: SNAPTRADE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: SNAPTRADE_OAUTH_CALLBACK_URL
+        sync: false
+      - key: SNAPTRADE_OIDC_ISSUER
+        sync: false
+      - key: OAUTH_HASH_KEY
+        sync: false
+      - key: OAUTH_ENCRYPTION_KEY
+        sync: false
+      - key: SESSION_HASH_KEY
+        sync: false
+      - key: OAUTH_TOKEN_KEY_V1
+        sync: false
 
   - type: web
     name: findur-web-kdb
