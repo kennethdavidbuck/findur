@@ -1,4 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Findur">
-  <rect width="64" height="64" rx="14" fill="#11131a"/>
-  <path d="M18 16h30v8H28v10h16v8H28v16H18z" fill="#f8e16c"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Findur constellation mark">
+  <rect width="64" height="64" fill="#0B1020"/>
+  <g fill="none" stroke="#7182A5" stroke-width="2">
+    <path d="M19 20 42 15 47 39 25 48 19 20Z"/>
+    <path d="m19 20 28 19M42 15 25 48"/>
+  </g>
+  <circle cx="19" cy="20" r="6" fill="#65EADB"/>
+  <circle cx="42" cy="15" r="4" fill="#8EB3FF"/>
+  <circle cx="47" cy="39" r="5" fill="#FFD078"/>
+  <path d="m25 42 6 6-6 6-6-6 6-6Z" fill="#D9A5FF"/>
 </svg>

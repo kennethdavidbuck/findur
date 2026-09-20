@@ -1,11 +1,11 @@
 {
   "name": "Findur",
   "short_name": "Findur",
-  "description": "Findur service status",
+  "description": "An 18+ evaluation concept for portfolio-first introductions and progressive identity reveal.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#11131a",
-  "theme_color": "#11131a",
+  "background_color": "#0B1020",
+  "theme_color": "#0B1020",
   "icons": [
     {
       "src": "/icon.svg",
