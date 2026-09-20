@@ -8,7 +8,7 @@ services:
     autoDeployTrigger: off
     image:
       # One-time provisioning reference only; normal releases deploy full-SHA images by digest.
-      url: docker.io/kennethdavidbuck/findur-api:bootstrap-once
+      url: docker.io/kdbuck/findur:bootstrap-once
     healthCheckPath: /api/healthz
     envVars:
       - key: DATABASE_URL
