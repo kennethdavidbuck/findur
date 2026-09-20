@@ -1,6 +1,6 @@
 # Findur
 
-Findur is an early-stage application. This repository contains a PostgreSQL-backed Go API and React frontend whose production artifacts independently carry the exact Git revision used to build them. It includes a feature-gated, synthetic-testable start to hosted SnapTrade authorization; callback completion and live provider access are not enabled.
+Findur is an early-stage application. This repository contains a PostgreSQL-backed Go API and React frontend whose production artifacts independently carry the exact Git revision used to build them. It includes feature-gated hosted SnapTrade OAuth with callback completion, isolated identity binding, encrypted provider authorization storage, and opaque server-side sessions. Protected application routes and portfolio retrieval are not yet enabled.
 
 ## Repository layout
 
@@ -25,7 +25,7 @@ This keeps the stack attached and streams service logs. Press `Ctrl+C` to stop i
 
 Compose uses a deterministic synthetic build identity by default for local development and tags the resulting application images with it. CI overrides that value with the real full Git SHA; neither path creates a mutable application tag.
 
-Open `http://localhost:8080`. The unlinked deployment diagnostic is at `http://localhost:8080/__status`.
+Open `http://127.0.0.1:8080`. The unlinked deployment diagnostic is at `http://127.0.0.1:8080/__status`. PostgreSQL is available to host tools at `127.0.0.1:5432` by default; set `POSTGRES_HOST_PORT` to override that port.
 
 For rebuild/restart development with Compose watch:
 
@@ -33,7 +33,7 @@ For rebuild/restart development with Compose watch:
 ./scripts/compose-watch.sh
 ```
 
-To run the complete synthetic integration suite over service DNS, including an actual headless Chromium execution of `/__status`:
+To run the complete synthetic integration suite over service DNS, including a headless Chromium OAuth callback and session flow:
 
 ```sh
 ./scripts/compose-test.sh
@@ -44,7 +44,7 @@ Pass `--volumes` to `./scripts/compose-down.sh` when you intentionally want to r
 
 The Compose integration runner does not receive a Docker socket or use Docker-in-Docker. The Go repository component test uses Testcontainers from the host and therefore requires Docker, just like the Compose suite. No live provider endpoint or real account data is used.
 
-The Compose stack alone enables initiation against WireMock using synthetic configuration. Production forces the initiation gate closed until callback completion ships. Native development also defaults closed; opening it requires an explicit non-production gate, issuer/client/callback configuration, and independent unpadded-base64 32-byte hashing and encryption keys. HTTP callbacks are accepted only on loopback hosts; otherwise the callback must use HTTPS.
+The Compose stack enables a complete synthetic OAuth flow against WireMock by default; choosing Continue to SnapTrade automatically completes the local authorization without contacting SnapTrade. Shell environment variables can override the synthetic issuer, client credentials, callback, gate, and cryptographic keys for a live local test. Use the same loopback hostname for the entry URL and registered callback because the correlation cookie is host-only. Production and native development default closed; opening authorization requires the explicit gate, issuer, confidential client credentials, callback, and independent unpadded-base64 32-byte hashing/encryption keys. HTTP callbacks are accepted only on loopback hosts; otherwise the callback must use HTTPS.
 
 For the native workflow, start PostgreSQL and provide its connection string. No `.env` file is required or tracked.
 
