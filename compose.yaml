@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: findur
       POSTGRES_PASSWORD: synthetic-local-only
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U findur -d findur"]
+      test: ["CMD-SHELL", "psql -U findur -d findur -c 'SELECT 1' >/dev/null"]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -35,9 +35,16 @@ services:
       args:
         BUILD_SHA: ${BUILD_SHA:-0123456789abcdef0123456789abcdef01234567}
     environment:
+      APP_ENV: integration
       DATABASE_URL: postgresql://findur:synthetic-local-only@postgres:5432/findur?sslmode=disable
       FIXTURE_BASE_URL: http://wiremock:8080
       FIXTURE_PROVIDER_BEARER_TOKEN: synthetic-access-token
+      AUTH_INITIATION_ENABLED: "true"
+      SNAPTRADE_OAUTH_CLIENT_ID: synthetic-oauth-client
+      SNAPTRADE_OAUTH_CALLBACK_URL: https://findur.example/api/auth/snaptrade/callback
+      SNAPTRADE_OIDC_ISSUER: http://wiremock:8080
+      OAUTH_HASH_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+      OAUTH_ENCRYPTION_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE
     depends_on:
       postgres:
         condition: service_healthy

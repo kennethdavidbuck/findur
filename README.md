@@ -1,6 +1,6 @@
 # Findur
 
-Findur is an early-stage application. This repository contains a PostgreSQL-backed Go API and React frontend whose production artifacts independently carry the exact Git revision used to build them. It deliberately does not include product, OAuth, or live SnapTrade behavior yet.
+Findur is an early-stage application. This repository contains a PostgreSQL-backed Go API and React frontend whose production artifacts independently carry the exact Git revision used to build them. It includes a feature-gated, synthetic-testable start to hosted SnapTrade authorization; callback completion and live provider access are not enabled.
 
 ## Repository layout
 
@@ -42,7 +42,9 @@ To run the complete synthetic integration suite over service DNS, including an a
 
 Pass `--volumes` to `./scripts/compose-down.sh` when you intentionally want to reset local PostgreSQL data.
 
-No Docker socket, Docker-in-Docker, Testcontainers, live provider endpoint, or real account data is used.
+The Compose integration runner does not receive a Docker socket or use Docker-in-Docker. The Go repository component test uses Testcontainers from the host and therefore requires Docker, just like the Compose suite. No live provider endpoint or real account data is used.
+
+The Compose stack alone enables initiation against WireMock using synthetic configuration. Production forces the initiation gate closed until callback completion ships. Native development also defaults closed; opening it requires an explicit non-production gate, issuer/client/callback configuration, and independent unpadded-base64 32-byte hashing and encryption keys. HTTP callbacks are accepted only on loopback hosts; otherwise the callback must use HTTPS.
 
 For the native workflow, start PostgreSQL and provide its connection string. No `.env` file is required or tracked.
 
@@ -68,6 +70,7 @@ Vite serves the shell on `http://localhost:5173` and proxies `/api/*` to `VITE_A
 
 ```sh
 cd backend
+go generate ./...
 go test ./...
 go vet ./...
 go build ./cmd/findur ./cmd/migrate

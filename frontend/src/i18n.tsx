@@ -18,7 +18,7 @@ const copy = {
     },
     owner: {
       action: 'Owner access',
-      unavailable: 'Secure owner access is coming later.',
+      unavailable: 'Review the secure connection boundary.',
     },
     meta: {
       home: {
@@ -30,6 +30,10 @@ const copy = {
         title: 'About Findur',
         description:
           'Learn why Findur explores portfolio context, deliberate disclosure, and progressive identity reveal.',
+      },
+      connect: {
+        title: 'Connect with SnapTrade — Findur',
+        description: 'Review the staged consent boundary before securely connecting SnapTrade to Findur.',
       },
     },
     home: {
@@ -107,6 +111,28 @@ const copy = {
         'Findur currently pairs private owner data with clearly labeled synthetic candidates. It is not a public multi-user service. Authentication, connected data, and discovery remain outside this public-site slice.',
       backHome: 'Return home',
     },
+    consent: {
+      eyebrow: 'Secure connection · staged consent',
+      title: 'Connect without sharing your brokerage password.',
+      intro: 'SnapTrade hosts authorization. Findur never sees or stores the credentials you use with your brokerage.',
+      initialTitle: 'What this step allows',
+      initialBody: 'Authorization initially permits only connection status and the minimum masked account inventory needed for a later account-selection step.',
+      noDefault: 'No account is included by default.',
+      laterTitle: 'What remains off',
+      laterBody: 'Balances, positions, activities, signal derivation, profile previews, and Discovery stay unavailable until you explicitly include at least one account in a later step.',
+      disclosureTitle: 'Private use and possible disclosure are separate choices',
+      disclosureBody: 'Connecting does not publish financial information or reveal it to another person. Later inclusion, private analysis, preview, and disclosure each require their own product boundary.',
+      limitsTitle: 'Important limits',
+      limits: [
+        'Findur cannot trade and does not provide financial advice.',
+        'Portfolio information is context—not a judgment of wealth, responsibility, compatibility, or personal worth.',
+        'Disconnecting SnapTrade means leaving Findur and deleting your data from app-controlled active storage.',
+      ],
+      action: 'Continue to SnapTrade',
+      unavailable: 'Authorization is not available yet. Callback completion will be enabled in the next release step.',
+      back: 'Return home',
+      eligibility: 'For eligible adult SnapTrade test users only · evaluation demonstration · no public signup',
+    },
     status: {
       metaTitle: 'Build status — Findur',
       eyebrow: 'Deployment diagnostic',
@@ -142,7 +168,7 @@ const copy = {
     },
     owner: {
       action: 'Accès propriétaire',
-      unavailable: 'L’accès propriétaire sécurisé sera offert plus tard.',
+      unavailable: 'Consultez les limites de la connexion sécurisée.',
     },
     meta: {
       home: {
@@ -154,6 +180,10 @@ const copy = {
         title: 'À propos de Findur',
         description:
           'Découvrez pourquoi Findur explore le contexte du portefeuille, un partage délibéré et une identité révélée progressivement.',
+      },
+      connect: {
+        title: 'Connexion avec SnapTrade — Findur',
+        description: 'Consultez le consentement par étapes avant de connecter SnapTrade à Findur de façon sécurisée.',
       },
     },
     home: {
@@ -230,6 +260,28 @@ const copy = {
       statusBody:
         'Findur associe actuellement les données privées du propriétaire à des profils synthétiques clairement identifiés. Il ne s’agit pas d’un service public multiutilisateur. L’authentification, les données connectées et la découverte restent hors de cette partie du site public.',
       backHome: 'Retour à l’accueil',
+    },
+    consent: {
+      eyebrow: 'Connexion sécurisée · consentement par étapes',
+      title: 'Connectez-vous sans partager votre mot de passe de courtage.',
+      intro: 'SnapTrade héberge l’autorisation. Findur ne voit ni ne conserve jamais les identifiants utilisés auprès de votre maison de courtage.',
+      initialTitle: 'Ce que cette étape autorise',
+      initialBody: 'L’autorisation permet d’abord uniquement de connaître l’état de la connexion et l’inventaire minimal et masqué des comptes nécessaire à une sélection ultérieure.',
+      noDefault: 'Aucun compte n’est inclus par défaut.',
+      laterTitle: 'Ce qui demeure désactivé',
+      laterBody: 'Les soldes, positions, activités, signaux dérivés, aperçus du profil et la découverte demeurent indisponibles jusqu’à ce que vous incluiez explicitement au moins un compte lors d’une étape ultérieure.',
+      disclosureTitle: 'L’usage privé et un partage éventuel sont des choix distincts',
+      disclosureBody: 'La connexion ne publie aucune information financière et ne la révèle à personne. L’inclusion, l’analyse privée, l’aperçu et le partage nécessitent chacun une décision distincte.',
+      limitsTitle: 'Limites importantes',
+      limits: [
+        'Findur ne peut effectuer aucune opération et ne fournit aucun conseil financier.',
+        'Le portefeuille offre un contexte : il ne juge ni la richesse, ni la responsabilité, ni la compatibilité, ni la valeur personnelle.',
+        'Déconnecter SnapTrade signifie quitter Findur et supprimer vos données du stockage actif contrôlé par l’application.',
+      ],
+      action: 'Continuer vers SnapTrade',
+      unavailable: 'L’autorisation n’est pas encore disponible. Le retour d’autorisation sera activé à la prochaine étape de livraison.',
+      back: 'Retour à l’accueil',
+      eligibility: 'Réservé aux adultes admissibles au test SnapTrade · démonstration d’évaluation · aucune inscription publique',
     },
     status: {
       metaTitle: 'État de la version — Findur',

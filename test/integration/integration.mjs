@@ -17,6 +17,32 @@ const ready = await request('/api/readyz')
 assert.equal(ready.status, 200)
 assert.deepEqual(await ready.json(), { status: 'ready', buildSha: expectedSha })
 
+const authorization = await request('/api/auth/snaptrade/authorize', {
+  method: 'POST',
+  redirect: 'manual',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ returnTo: '/portfolio' }),
+})
+assert.equal(authorization.status, 303)
+assert.equal(authorization.headers.get('cache-control'), 'no-store')
+const authorizationLocation = new URL(authorization.headers.get('location'))
+assert.equal(authorizationLocation.origin, 'http://wiremock:8080')
+assert.equal(authorizationLocation.pathname, '/oauth/authorize')
+assert.equal(authorizationLocation.searchParams.get('scope'), 'openid read')
+assert.equal(authorizationLocation.searchParams.get('redirect_uri'), 'https://findur.example/api/auth/snaptrade/callback')
+assert.equal(authorizationLocation.searchParams.get('response_type'), 'code')
+assert.equal(authorizationLocation.searchParams.get('code_challenge_method'), 'S256')
+for (const parameter of ['state', 'nonce', 'code_challenge']) assert.ok(authorizationLocation.searchParams.get(parameter))
+const attemptCookie = authorization.headers.getSetCookie()[0]
+assert.match(attemptCookie, /^findur_oauth_attempt=/)
+assert.match(attemptCookie, /; Path=\/api\/auth\/snaptrade\/callback/)
+const cookieMaxAge = Number(attemptCookie.match(/; Max-Age=(\d+)/)?.[1])
+assert.ok(cookieMaxAge >= 1 && cookieMaxAge <= 600, `bounded cookie Max-Age: ${cookieMaxAge}`)
+assert.match(attemptCookie, /; HttpOnly/)
+assert.match(attemptCookie, /; Secure/)
+assert.match(attemptCookie, /; SameSite=Lax/)
+assert.doesNotMatch(attemptCookie, /Domain=/i)
+
 const statusRoute = await request('/__status')
 assert.equal(statusRoute.status, 200)
 const html = await statusRoute.text()

@@ -1,9 +1,9 @@
 import type { MouseEvent, ReactNode } from 'react'
-import { Button, Radio, RadioGroup } from 'react-aria-components'
+import { Radio, RadioGroup } from 'react-aria-components'
 import { type Locale, useI18n } from '../i18n'
 import { type ThemePreference, useTheme } from '../theme'
 
-type PublicRoute = '/' | '/about'
+type PublicRoute = '/' | '/about' | '/connect'
 
 type PublicLayoutProps = {
   children: ReactNode
@@ -17,9 +17,10 @@ type PublicLinkProps = {
   current?: boolean
   href: PublicRoute
   onNavigate: (route: PublicRoute) => void
+  describedBy?: string
 }
 
-export function PublicLink({ children, className, current, href, onNavigate }: PublicLinkProps) {
+export function PublicLink({ children, className, current, href, onNavigate, describedBy }: PublicLinkProps) {
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault()
@@ -27,7 +28,7 @@ export function PublicLink({ children, className, current, href, onNavigate }: P
   }
 
   return (
-    <a className={className} href={href} aria-current={current ? 'page' : undefined} onClick={handleClick}>
+    <a className={className} href={href} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} onClick={handleClick}>
       {children}
     </a>
   )
@@ -84,9 +85,9 @@ export function PublicLayout({ children, route, onNavigate }: PublicLayoutProps)
             </PublicLink>
           </nav>
           <div className="owner-entry">
-            <Button className="owner-button" isDisabled aria-describedby="owner-access-note">
+            <PublicLink className="owner-button" href="/connect" current={route === '/connect'} onNavigate={onNavigate} describedBy="owner-access-note">
               {messages.owner.action}
-            </Button>
+            </PublicLink>
             <span className="owner-status" id="owner-access-note">{messages.owner.unavailable}</span>
           </div>
         </div>

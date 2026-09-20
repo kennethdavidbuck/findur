@@ -1,0 +1,70 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 09-20-2026 13:07
+last_updated: 09-20-2026 14:46
+project: findur
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-0: in-progress
+  0-1-deploy-and-verify-the-exact-build: done
+  0-2-begin-hosted-snaptrade-authorization-safely: review
+  0-3-complete-oauth-and-establish-an-isolated-session: backlog
+  0-4-protect-the-authenticated-experience-and-end-sessions: backlog
+  0-5-prove-authenticated-snaptrade-access-with-masked-inventory: backlog
+  epic-0-retrospective: optional
+
+  epic-1: backlog
+  1-1-select-and-confirm-included-accounts: backlog
+  1-2-inspect-the-private-portfolio-showcase: backlog
+  1-3-refresh-portfolio-data-without-provider-call-storms: backlog
+  1-4-trace-source-data-to-product-use: backlog
+  1-5-disconnect-snaptrade-and-leave-findur: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-derive-a-private-portfolio-matching-profile: backlog
+  2-2-complete-the-minimum-personal-profile: backlog
+  2-3-set-discovery-distance-and-compatibility-preferences: backlog
+  2-4-preview-and-save-a-disclosure-level: backlog
+  2-5-preview-the-complete-live-owner-profile-and-readiness: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-generate-a-reproducible-synthetic-population: backlog
+  3-2-assemble-an-eligible-and-ordered-swipe-deck: backlog
+  3-3-explore-a-portfolio-first-candidate-card-and-detail: backlog
+  3-4-make-one-durable-pass-or-interested-decision: backlog
+  3-5-respond-to-an-in-session-incoming-interest: backlog
+  3-6-reveal-a-mutual-match-once: backlog
+  3-7-recover-safely-from-discovery-changes-and-failures: backlog
+  epic-3-retrospective: optional

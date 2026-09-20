@@ -1,0 +1,61 @@
+openapi: 3.1.0
+info:
+  title: Findur API
+  version: 0.2.0
+paths:
+  /api/auth/snaptrade/authorize:
+    post:
+      operationId: beginSnapTradeAuthorization
+      summary: Begin a short-lived hosted SnapTrade authorization attempt
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BeginAuthorizationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BeginAuthorizationRequest'
+      responses:
+        '303':
+          description: Redirect to the discovered hosted authorization endpoint
+          headers:
+            Location:
+              required: true
+              schema: { type: string, format: uri }
+            Set-Cookie:
+              required: true
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/SafeError'
+        '415':
+          $ref: '#/components/responses/SafeError'
+        '503':
+          $ref: '#/components/responses/SafeError'
+components:
+  schemas:
+    BeginAuthorizationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        returnTo:
+          type: string
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          enum: [invalid_request, authorization_unavailable, initialization_failed]
+  responses:
+    SafeError:
+      description: Categorical, non-sensitive failure
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: no-store }
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

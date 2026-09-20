@@ -30,6 +30,8 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify formatting
         run: test -z "$(gofmt -l .)"
+      - name: Verify generated API is current
+        run: go generate ./... && git diff --exit-code -- api internal/generated
       - name: Vet
         run: go vet ./...
       - name: Test
@@ -55,6 +57,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install locked dependencies
         run: npm ci
+      - name: Verify generated browser API is current
+        run: npm run generate:api && git diff --exit-code -- src/generated/api.ts
       - name: Test
         run: npm test -- --run
       - name: Typecheck
@@ -99,7 +103,7 @@ jobs:
             schema_state=$(docker compose exec -T postgres \
               psql -U findur -d findur -Atc \
               "SELECT version::text || ':' || dirty::text FROM schema_migrations")
-            test "$schema_state" = '1:false'
+            test "$schema_state" = '2:false'
           }
 
           assert_schema
