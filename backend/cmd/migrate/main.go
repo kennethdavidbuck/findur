@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 
@@ -16,7 +17,7 @@ func main() {
 		logger.Error("migration configuration is invalid", "category", "invalid_configuration")
 		os.Exit(1)
 	}
-	if err := migrations.Up(cfg.MigrationURL, cfg.DatabaseURL); err != nil {
+	if err := migrations.Up(context.Background(), cfg.MigrationURL, cfg.DatabaseURL); err != nil {
 		logger.Error("database migration failed", "category", "migration_failure")
 		os.Exit(1)
 	}

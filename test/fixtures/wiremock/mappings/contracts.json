@@ -1,0 +1,46 @@
+{
+  "mappings": [
+    {
+      "request": { "method": "POST", "urlPath": "/unsafe-json", "bodyPatterns": [{ "equalToJson": "{\"text\":\"<script>&\\\"\"}" }] },
+      "response": { "status": 200, "jsonBody": { "accepted": true }, "headers": { "Cache-Control": "no-store" } }
+    },
+    {
+      "request": { "method": "GET", "urlPath": "/callback", "queryParameters": { "code": { "equalTo": "a+b/c=" }, "state": { "equalTo": "synthetic-state" } } },
+      "response": { "status": 204 }
+    },
+    {
+      "request": { "method": "GET", "urlPath": "/cookies/set" },
+      "response": { "status": 200, "headers": { "Set-Cookie": ["findur_session=synthetic; Path=/; HttpOnly; SameSite=Lax", "findur_csrf=synthetic; Path=/; SameSite=Strict"] } }
+    },
+    {
+      "request": { "method": "GET", "urlPath": "/cookies/replay", "headers": { "Cookie": { "contains": "findur_session=synthetic" } } },
+      "response": { "status": 200, "jsonBody": { "replayed": true } }
+    },
+    {
+      "request": { "method": "GET", "urlPath": "/cached" },
+      "response": { "status": 200, "body": "synthetic-cache", "headers": { "Cache-Control": "private, max-age=60", "ETag": "synthetic-etag" } }
+    },
+    {
+      "request": { "method": "GET", "urlPath": "/failure" },
+      "response": { "status": 429, "jsonBody": { "category": "rate_limited" }, "headers": { "Retry-After": "7" } }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/provider/accounts",
+        "headers": {
+          "Authorization": { "equalTo": "Bearer synthetic-access-token" },
+          "clientId": { "absent": true },
+          "consumerKey": { "absent": true },
+          "userId": { "absent": true },
+          "userSecret": { "absent": true },
+          "timestamp": { "absent": true },
+          "Signature": { "absent": true },
+          "SnapTrade-Client-Id": { "absent": true },
+          "SnapTrade-Consumer-Key": { "absent": true }
+        }
+      },
+      "response": { "status": 200, "jsonBody": { "accounts": [] } }
+    }
+  ]
+}

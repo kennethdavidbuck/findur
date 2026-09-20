@@ -1,0 +1,93 @@
+import assert from 'node:assert/strict'
+import { verifyBrowserStatus } from './browser-status.mjs'
+
+const base = process.env.BASE_URL
+const expectedSha = process.env.EXPECTED_SHA
+const browser = process.env.BROWSER_URL
+const request = (path, init = {}) => fetch(`${base}${path}`, {
+  ...init,
+  signal: init.signal ?? AbortSignal.timeout(15_000),
+})
+
+const health = await request('/api/healthz')
+assert.equal(health.status, 200)
+assert.deepEqual(await health.json(), { status: 'ok', buildSha: expectedSha })
+
+const ready = await request('/api/readyz')
+assert.equal(ready.status, 200)
+assert.deepEqual(await ready.json(), { status: 'ready', buildSha: expectedSha })
+
+const statusRoute = await request('/__status')
+assert.equal(statusRoute.status, 200)
+const html = await statusRoute.text()
+assert.match(html, new RegExp(`<meta name="findur-build-sha" content="${expectedSha}"`))
+const assetPath = html.match(/<script[^>]+src="([^"]+)"/)?.[1]
+assert.ok(assetPath, 'SPA module asset is present')
+const assetResponse = await request(assetPath)
+assert.equal(assetResponse.ok, true, 'frontend module request succeeds')
+assert.match(
+  assetResponse.headers.get('content-type') || '',
+  /^(application|text)\/(javascript|x-javascript|ecmascript)(?:;|$)/i,
+  'frontend module has a JavaScript-compatible content type',
+)
+const asset = await assetResponse.text()
+assert.doesNotMatch(asset, /<(!doctype|html|body)(?:[\s>])/i, 'frontend module is not an HTML fallback')
+assert.ok(asset.includes(expectedSha), 'frontend bundle independently contains the expected SHA')
+
+const fallback = await request('/not-a-real-public-route')
+assert.match(await fallback.text(), /<div id="root"><\/div>/)
+
+const unsafe = await request('/api/__fixture/proxy/unsafe-json', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ text: '<script>&"' }),
+})
+assert.equal(unsafe.status, 200)
+assert.equal(unsafe.headers.get('cache-control'), 'no-store')
+
+const callback = await request('/api/__fixture/proxy/callback?code=a%2Bb%2Fc%3D&state=synthetic-state')
+assert.equal(callback.status, 204)
+
+const cookieResponse = await request('/api/__fixture/proxy/cookies/set')
+const cookies = cookieResponse.headers.getSetCookie()
+assert.equal(cookies.length, 2)
+assert.ok(cookies.every((cookie) => !/domain=/i.test(cookie)), 'cookies remain host-only')
+const cookieHeader = cookies.map((cookie) => cookie.split(';', 1)[0]).join('; ')
+const replay = await request('/api/__fixture/proxy/cookies/replay', { headers: { Cookie: cookieHeader } })
+assert.equal(replay.status, 200)
+
+const cached = await request('/api/__fixture/proxy/cached')
+assert.equal(cached.headers.get('cache-control'), 'private, max-age=60')
+assert.equal(cached.headers.get('etag'), 'synthetic-etag')
+
+const failure = await request('/api/__fixture/proxy/failure')
+assert.equal(failure.status, 429)
+assert.equal(failure.headers.get('retry-after'), '7')
+
+const provider = await request('/api/__fixture/provider/accounts')
+assert.equal(provider.status, 200)
+assert.deepEqual(await provider.json(), { accounts: [] })
+assert.equal(
+  (await request('/api/__fixture/provider/accounts', {
+    headers: {
+      Authorization: 'Bearer browser-token-must-be-ignored',
+      clientId: 'forbidden',
+      consumerKey: 'forbidden',
+      userId: 'forbidden',
+      userSecret: 'forbidden',
+      timestamp: 'forbidden',
+      Signature: 'forbidden',
+    },
+  })).status,
+  200,
+  'the backend replaces browser authentication with its server-held bearer and strips Commercial fields',
+)
+assert.equal(
+  (await request('/api/__fixture/provider/not-allowlisted')).status,
+  404,
+  'provider paths are allowlisted',
+)
+
+await verifyBrowserStatus({ browserUrl: browser, publicOrigin: base, expectedSha })
+
+console.log('integration contracts passed')

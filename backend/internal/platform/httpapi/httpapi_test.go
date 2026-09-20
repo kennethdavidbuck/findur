@@ -19,7 +19,7 @@ type pingFunc func(context.Context) error
 func (f pingFunc) Ping(ctx context.Context) error { return f(ctx) }
 
 func testHandler(readiness *Readiness) http.Handler {
-	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness)
+	return NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil)
 }
 
 func TestLivenessDoesNotTouchDatabase(t *testing.T) {
@@ -39,7 +39,7 @@ func TestLivenessDoesNotTouchDatabase(t *testing.T) {
 	if calls.Load() != 0 {
 		t.Fatalf("database calls = %d, want 0", calls.Load())
 	}
-	if body := response.Body.String(); body != "{\"status\":\"ok\"}\n" {
+	if body := response.Body.String(); body != "{\"status\":\"ok\",\"buildSha\":\"development\"}\n" {
 		t.Fatalf("body = %q", body)
 	}
 }
@@ -70,12 +70,12 @@ func TestReadinessFailsSafelyWhenDatabaseIsUnavailable(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/api/readyz", nil)
 	response := httptest.NewRecorder()
-	NewHandler(logger, readiness).ServeHTTP(response, request)
+	NewHandler(logger, readiness, "development", nil).ServeHTTP(response, request)
 
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
 	}
-	if body := response.Body.String(); body != "{\"status\":\"unavailable\"}\n" {
+	if body := response.Body.String(); body != "{\"status\":\"unavailable\",\"buildSha\":\"development\"}\n" {
 		t.Fatalf("body = %q", body)
 	}
 	if strings.Contains(response.Body.String(), "secret") || strings.Contains(response.Body.String(), "private-host") {
@@ -86,6 +86,20 @@ func TestReadinessFailsSafelyWhenDatabaseIsUnavailable(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), "secret") || strings.Contains(logs.String(), "private-host") {
 		t.Fatalf("logs expose database details: %s", logs.String())
+	}
+}
+
+func TestBothProbesReportIndependentlyInjectedBuildSHA(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	handler := NewHandler(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, sha, nil)
+	for _, path := range []string{"/api/healthz", "/api/readyz"} {
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+		if !strings.Contains(response.Body.String(), `"buildSha":"`+sha+`"`) {
+			t.Fatalf("%s body = %q, want build SHA", path, response.Body.String())
+		}
 	}
 }
 
@@ -166,7 +180,7 @@ func TestClientCancellationUsesSafeCategory(t *testing.T) {
 	cancel()
 	request := httptest.NewRequest(http.MethodGet, "/api/readyz", nil).WithContext(requestCtx)
 	response := httptest.NewRecorder()
-	NewHandler(logger, readiness).ServeHTTP(response, request)
+	NewHandler(logger, readiness, "development", nil).ServeHTTP(response, request)
 
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
@@ -196,7 +210,7 @@ func TestRequestLogsDoNotContainUnmatchedPathDetails(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/secret-value", nil)
 	response := httptest.NewRecorder()
-	NewHandler(logger, readiness).ServeHTTP(response, request)
+	NewHandler(logger, readiness, "development", nil).ServeHTTP(response, request)
 
 	if strings.Contains(logs.String(), "secret-value") {
 		t.Fatalf("request log exposes unmatched path: %s", logs.String())

@@ -2,13 +2,13 @@
 services:
   - type: web
     name: findur-api-kdb
-    runtime: go
+    runtime: image
     plan: free
     region: virginia
-    branch: main
-    autoDeployTrigger: checksPass
-    buildCommand: cd backend && mkdir -p bin && go build -o bin/findur ./cmd/findur && go build -o bin/migrate ./cmd/migrate
-    startCommand: ./scripts/render-start.sh
+    autoDeployTrigger: off
+    image:
+      # One-time provisioning reference only; normal releases deploy full-SHA images by digest.
+      url: docker.io/kennethdavidbuck/findur-api:bootstrap-once
     healthCheckPath: /api/healthz
     envVars:
       - key: DATABASE_URL
@@ -20,12 +20,14 @@ services:
     name: findur-web-kdb
     runtime: static
     branch: main
-    autoDeployTrigger: checksPass
-    buildCommand: npm --prefix frontend ci && npm --prefix frontend run build
+    autoDeployTrigger: off
+    buildCommand: VITE_BUILD_SHA="$RENDER_GIT_COMMIT" npm --prefix frontend ci && VITE_BUILD_SHA="$RENDER_GIT_COMMIT" npm --prefix frontend run build
     staticPublishPath: frontend/dist
     envVars:
       - key: NODE_VERSION
         value: 26.9.0
+      - key: VITE_REQUIRE_BUILD_SHA
+        value: "true"
     routes:
       - type: rewrite
         source: /api/*
