@@ -4,6 +4,10 @@ import { App } from './App'
 
 type MediaChangeListener = (event: MediaQueryListEvent) => void
 
+const emptyInventory = () => new Response(JSON.stringify({
+  state: 'empty', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [],
+}), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
 function installMatchMedia(initialDark = false) {
   let matches = initialDark
   const listeners = new Set<MediaChangeListener>()
@@ -205,7 +209,7 @@ describe('public site', () => {
 		unmount()
 		window.history.replaceState(null, '', '/connect/result')
 		render(<App />)
-		expect(await screen.findByRole('heading', { level: 1, name: 'Choose accounts before anything else.' })).toHaveFocus()
+		expect(await screen.findByRole('heading', { level: 1, name: 'Your masked account inventory' })).toHaveFocus()
 		expect(window.location.pathname).toBe('/portfolio')
 	})
 
@@ -217,7 +221,7 @@ describe('public site', () => {
 		expect(screen.getByRole('status')).toHaveTextContent('Checking your secure session…')
 		expect(screen.queryByText('Choose accounts before anything else.')).not.toBeInTheDocument()
 		resolveStatus(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
-		const heading = await screen.findByRole('heading', { level: 1, name: 'Choose accounts before anything else.' })
+		const heading = await screen.findByRole('heading', { level: 1, name: 'Your masked account inventory' })
 		await waitFor(() => expect(heading).toHaveFocus())
 		for (const name of ['Discovery', 'Portfolio', 'Profile']) expect(screen.getAllByRole('link', { name })).toHaveLength(1)
 		expect(screen.getAllByRole('navigation')).toHaveLength(1)
@@ -227,7 +231,191 @@ describe('public site', () => {
 		expect(window.location.pathname).toBe('/profile')
 		window.history.back()
 		window.dispatchEvent(new PopStateEvent('popstate'))
-		await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Choose accounts before anything else.' })).toHaveFocus())
+		await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Your masked account inventory' })).toHaveFocus())
+	})
+
+	it('renders connection state before minimized accounts without render-driven repeats', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		const inventory = {
+			state: 'ready', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [{
+				id: 'connection-1', brokerageLabel: 'Synthetic Broker', status: 'active', syncMode: 'delayed', available: true, eligible: true,
+				accounts: [
+					{ id: 'account-1', category: 'investment', type: 'Margin', maskedLabel: 'Retirement (•••• 8443)', available: true, eligible: true, syncState: 'complete' },
+					{ id: 'account-2', category: 'unknown', type: 'unknown', maskedLabel: 'Everyday account', available: true, eligible: false, syncState: 'complete' },
+				],
+			}],
+		}
+		const fetchMock = vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
+			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })
+			: new Response(JSON.stringify(inventory), { status: 200 })))
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+
+		expect(await screen.findByText('Retirement (•••• 8443)')).toBeVisible()
+		expect(screen.getByText(/No account is included by default/)).toBeVisible()
+		const status = screen.getByRole('heading', { name: 'Connection status' })
+		const account = screen.getByText('Retirement (•••• 8443)')
+		expect(status.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+		expect(document.body).not.toHaveTextContent('Q6542138443')
+		expect(document.body).not.toHaveTextContent('$')
+		expect(screen.getAllByText(/Availability:/).length).toBeGreaterThan(0)
+		expect(screen.getAllByText(/Later-inclusion eligibility:/).length).toBeGreaterThan(0)
+		expect(screen.getByText('Connection sync mode: Delayed')).toBeVisible()
+		expect(screen.getAllByText('Account sync state: Complete')).toHaveLength(2)
+		expect(screen.getByText('Category: Category unavailable')).toBeVisible()
+		expect(screen.getByText('Everyday account')).toBeVisible()
+
+		fireEvent.click(screen.getAllByRole('radio', { name: 'FR' })[0])
+		expect(await screen.findByRole('heading', { level: 1, name: 'Votre inventaire de comptes masqués' })).toHaveFocus()
+		fireEvent.click(screen.getAllByRole('radio', { name: 'Sombre' })[0])
+		await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'dark'))
+		expect(fetchMock).toHaveBeenCalledTimes(2)
+	})
+
+	it('shares one in-flight initial inventory request across a development remount', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		let resolveInventory!: (response: Response) => void
+		const inventoryResponse = new Promise<Response>((resolve) => { resolveInventory = resolve })
+		const fetchMock = vi.fn().mockImplementation((path: string) => path === '/api/auth/status'
+			? Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			: inventoryResponse)
+		vi.stubGlobal('fetch', fetchMock)
+		const first = render(<App />)
+		await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === '/api/portfolio/inventory')).toHaveLength(1))
+		first.unmount()
+		render(<App />)
+		await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === '/api/auth/status')).toHaveLength(2))
+		resolveInventory(emptyInventory())
+		expect(await screen.findByText('No brokerage connections are available.')).toBeVisible()
+		expect(fetchMock.mock.calls.filter(([path]) => path === '/api/portfolio/inventory')).toHaveLength(1)
+	})
+
+	it('does not share an old in-flight inventory request with a session after logout', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		const oldInventoryRequest = new Promise<Response>(() => undefined)
+		let inventoryCalls = 0
+		const fetchMock = vi.fn().mockImplementation((path: string) => {
+			if (path === '/api/auth/status') return Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			if (path === '/api/auth/logout') return Promise.resolve(new Response(null, { status: 204 }))
+			if (path === '/api/portfolio/inventory') {
+				inventoryCalls += 1
+				return inventoryCalls === 1 ? oldInventoryRequest : Promise.resolve(emptyInventory())
+			}
+			throw new Error(`unexpected request ${path}`)
+		})
+		vi.stubGlobal('fetch', fetchMock)
+		const first = render(<App />)
+		await waitFor(() => expect(inventoryCalls).toBe(1))
+		fireEvent.click(screen.getByRole('button', { name: 'Log out' }))
+		await waitFor(() => expect(window.location.pathname).toBe('/'))
+		first.unmount()
+		window.history.replaceState(null, '', '/portfolio')
+		render(<App />)
+		expect(await screen.findByText('No brokerage connections are available.')).toBeVisible()
+		expect(inventoryCalls).toBe(2)
+	})
+
+	it('lets a pending observer explicitly check persisted status without polling', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		const pending = { state: 'pending', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [] }
+		const ready = { state: 'empty', generation: 1, updatedAt: '2026-09-20T12:00:01Z', connections: [] }
+		const fetchMock = vi.fn()
+			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify(pending), { status: 200 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify(ready), { status: 200 }))
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+		const check = await screen.findByRole('button', { name: 'Check inventory status' })
+		expect(fetchMock).toHaveBeenCalledTimes(2)
+		fireEvent.click(check)
+		expect(await screen.findByText('No brokerage connections are available.')).toBeVisible()
+		expect(fetchMock).toHaveBeenCalledTimes(3)
+	})
+
+	it.each([
+		['disabled', 'Your brokerage connection needs repair before Findur can retrieve accounts.', 'Return to SnapTrade authorization'],
+		['unauthorized', 'SnapTrade authorization is no longer valid.', 'Return to SnapTrade authorization'],
+		['rate_limited', 'SnapTrade asked Findur to wait before trying again.', 'Retry masked inventory'],
+		['malformed', 'SnapTrade returned account information Findur could not safely use.', 'Retry masked inventory'],
+	] as const)('renders the %s categorical recovery branch', async (state, message, action) => {
+		window.history.replaceState(null, '', '/portfolio')
+		const inventory = {
+			state, generation: 1, updatedAt: '2026-09-20T12:00:00Z', retryAt: state === 'rate_limited' ? '2026-09-20T12:01:00Z' : undefined,
+			connections: state === 'disabled' ? [{ id: 'disabled', brokerageLabel: 'Synthetic Broker', status: 'disabled', syncMode: 'unknown', available: false, eligible: false, accounts: [] }] : [],
+		}
+		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
+			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })
+			: new Response(JSON.stringify(inventory), { status: 200 }))))
+		render(<App />)
+		expect(await screen.findByText(message)).toBeVisible()
+		expect(screen.getByRole('button', { name: action })).toBeVisible()
+		if (state === 'disabled') {
+			expect(screen.getByText('Synthetic Broker')).toBeVisible()
+			expect(screen.getByText('Availability: Unavailable')).toBeVisible()
+			expect(screen.getByText('Later-inclusion eligibility: Not eligible')).toBeVisible()
+		}
+	})
+
+	it('uses the explicit defended retry action for a recoverable inventory state', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		document.cookie = 'findur_csrf=inventory-csrf; Path=/'
+		const unavailable = { state: 'unavailable', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [] }
+		const ready = { state: 'empty', generation: 2, updatedAt: '2026-09-20T12:01:00Z', connections: [] }
+		const fetchMock = vi.fn()
+			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify(unavailable), { status: 200 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify(ready), { status: 200 }))
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+
+		fireEvent.click(await screen.findByRole('button', { name: 'Retry masked inventory' }))
+		expect(await screen.findByText('No brokerage connections are available.')).toBeVisible()
+		expect(fetchMock).toHaveBeenLastCalledWith('/api/portfolio/inventory/retry', expect.objectContaining({
+			method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: { 'X-CSRF-Token': 'inventory-csrf' },
+		}))
+	})
+
+	it('treats retry 403 as session-defense recovery instead of a provider outage', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		document.cookie = 'findur_csrf=inventory-csrf; Path=/'
+		const unavailable = { state: 'unavailable', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [] }
+		const fetchMock = vi.fn()
+			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify(unavailable), { status: 200 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'forbidden' }), { status: 403 }))
+			.mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200 }))
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+		fireEvent.click(await screen.findByRole('button', { name: 'Retry masked inventory' }))
+		await waitFor(() => expect(window.location.pathname).toBe('/connect'))
+		expect(screen.queryByRole('button', { name: 'Retry masked inventory' })).not.toBeInTheDocument()
+	})
+
+	it('formats a rate-limit retry timestamp in the selected French locale', async () => {
+		window.localStorage.setItem('findur-locale', 'fr')
+		window.history.replaceState(null, '', '/portfolio')
+		const retryAt = '2026-09-20T12:01:00Z'
+		const inventory = { state: 'rate_limited', generation: 1, updatedAt: '2026-09-20T12:00:00Z', retryAt, connections: [] }
+		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
+			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })
+			: new Response(JSON.stringify(inventory), { status: 200 }))))
+		render(<App />)
+		const expected = new Date(retryAt).toLocaleString('fr-CA')
+		expect(await screen.findByText(expected)).toBeVisible()
+		expect(screen.getByText(/Moment sûr pour réessayer/)).toBeVisible()
+	})
+
+	it('routes an inventory session 401 to authentication recovery without offering retry', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		const fetchMock = vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/portfolio/inventory'
+			? new Response(JSON.stringify({ code: 'unauthenticated' }), { status: 401 })
+			: new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })))
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+
+		await waitFor(() => expect(window.location.pathname).toBe('/connect'))
+		expect(screen.queryByRole('button', { name: 'Retry masked inventory' })).not.toBeInTheDocument()
+		expect(fetchMock).toHaveBeenCalledWith('/api/portfolio/inventory', expect.objectContaining({ method: 'GET', cache: 'no-store', credentials: 'same-origin' }))
 	})
 
 	it('logs out centrally, clears protected storage, and retains only locale and theme', async () => {
@@ -239,6 +427,7 @@ describe('public site', () => {
 		document.cookie = 'findur_csrf=csrf-token; Path=/'
 		const fetchMock = vi.fn()
 			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			.mockResolvedValueOnce(emptyInventory())
 			.mockResolvedValueOnce(new Response(null, { status: 204 }))
 		vi.stubGlobal('fetch', fetchMock)
 		render(<App />)
@@ -255,6 +444,7 @@ describe('public site', () => {
 		window.history.replaceState(null, '', '/portfolio')
 		const fetchMock = vi.fn()
 			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			.mockResolvedValueOnce(emptyInventory())
 			.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'forbidden' }), { status: 403 }))
 		vi.stubGlobal('fetch', fetchMock)
 		render(<App />)
@@ -269,6 +459,7 @@ describe('public site', () => {
 		window.localStorage.setItem('protected-payload', 'secret')
 		const fetchMock = vi.fn()
 			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: false, authenticated: true }), { status: 200 }))
+			.mockResolvedValueOnce(emptyInventory())
 			.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'unauthenticated' }), { status: 401 }))
 		vi.stubGlobal('fetch', fetchMock)
 		render(<App />)

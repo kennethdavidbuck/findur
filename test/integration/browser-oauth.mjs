@@ -33,10 +33,23 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script: `return { path: location.pathname, search: location.search, heading: document.querySelector('h1')?.innerText }`, args: [] }),
       })
-      if (oauthEvidence.path === '/portfolio') break
+      if (oauthEvidence.path === '/portfolio' && oauthEvidence.heading === 'Your masked account inventory') break
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
-    assert.deepEqual(oauthEvidence, { path: '/portfolio', search: '', heading: 'Choose accounts before anything else.' })
+    assert.deepEqual(oauthEvidence, { path: '/portfolio', search: '', heading: 'Your masked account inventory' })
+    let inventoryEvidence
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      inventoryEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: `return {text:document.body.innerText,focused:document.activeElement===document.querySelector('h1')}`, args: [] }),
+      })
+      if (inventoryEvidence.text.includes('Retirement (•••• 8443)')) break
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.equal(inventoryEvidence.focused, true, 'the masked inventory heading retains meaningful focus')
+    assert.match(inventoryEvidence.text, /Connection status[\s\S]*Retirement \(•••• 8443\)/, 'connection state precedes accounts')
+    assert.match(inventoryEvidence.text, /No account is included by default/, 'account inclusion remains a later choice')
+    for (const forbidden of ['Q6542138443', '15363.23', 'RAW-SYMBOL-DO-NOT-RENDER']) assert.doesNotMatch(inventoryEvidence.text, new RegExp(forbidden), `${forbidden} is not rendered`)
     const browserCookies = await webdriver(`/session/${sessionId}/cookie`)
     assert.ok(browserCookies.some((cookie) => cookie.name === 'findur_session' && cookie.httpOnly && cookie.secure), 'opaque secure session cookie is issued')
     assert.ok(browserCookies.some((cookie) => cookie.name === 'findur_csrf' && !cookie.httpOnly && cookie.secure), 'separate secure CSRF cookie is issued')

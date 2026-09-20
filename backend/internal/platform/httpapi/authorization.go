@@ -10,8 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 	"github.com/kennethdavidbuck/findur/backend/internal/generated"
+	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
 	requestvalidator "github.com/oapi-codegen/nethttp-middleware"
 )
 
@@ -33,6 +35,11 @@ type sessionLifecycle interface {
 	RevokeCurrent(context.Context, string) error
 }
 
+type inventoryLifecycle interface {
+	Get(context.Context, auth.Actor) (portfolio.Snapshot, error)
+	Retry(context.Context, auth.Actor) (portfolio.Snapshot, error)
+}
+
 type callbackCookies struct{ attempt, session string }
 type callbackCookieKey struct{}
 type httpRequestContextKey struct{}
@@ -43,23 +50,27 @@ func requestFromContext(ctx context.Context) *http.Request {
 }
 
 const (
-	authorizationRequestLimit = 4 << 10
-	attemptCookieName         = "findur_oauth_attempt"
-	sessionCookieName         = "findur_session"
-	csrfCookieName            = "findur_csrf"
-	authorizationPath         = "/api/auth/snaptrade/authorize"
-	authorizationStatusPath   = "/api/auth/status"
-	callbackSucceededCategory = "succeeded"
-	callbackRestartCategory   = "restart_required"
-	requestCanceledCategory   = "request_canceled"
-	deadlineExceededCategory  = "deadline_exceeded"
-	sessionCheckCategory      = "session_check_failed"
-	cacheControlHeader        = "Cache-Control"
-	noStoreDirective          = "no-store"
-	privateNoStoreDirective   = "private, no-store"
-	contentTypeHeader         = "Content-Type"
-	jsonMediaType             = "application/json"
-	formMediaType             = "application/x-www-form-urlencoded"
+	authorizationRequestLimit   = 4 << 10
+	attemptCookieName           = "findur_oauth_attempt"
+	sessionCookieName           = "findur_session"
+	csrfCookieName              = "findur_csrf"
+	csrfHeaderName              = "X-CSRF-Token"
+	authorizationPath           = "/api/auth/snaptrade/authorize"
+	authorizationStatusPath     = "/api/auth/status"
+	logoutPath                  = "/api/auth/logout"
+	portfolioInventoryPath      = "/api/portfolio/inventory"
+	portfolioInventoryRetryPath = "/api/portfolio/inventory/retry"
+	callbackSucceededCategory   = "succeeded"
+	callbackRestartCategory     = "restart_required"
+	requestCanceledCategory     = "request_canceled"
+	deadlineExceededCategory    = "deadline_exceeded"
+	sessionCheckCategory        = "session_check_failed"
+	cacheControlHeader          = "Cache-Control"
+	noStoreDirective            = "no-store"
+	privateNoStoreDirective     = "private, no-store"
+	contentTypeHeader           = "Content-Type"
+	jsonMediaType               = "application/json"
+	formMediaType               = "application/x-www-form-urlencoded"
 )
 
 type authorizationAPI struct {
@@ -68,17 +79,22 @@ type authorizationAPI struct {
 	completer              authorizationCompleter
 	status                 authorizationStatusProvider
 	sessions               sessionLifecycle
+	inventory              inventoryLifecycle
 	authorizationAvailable bool
 	publicOrigin           string
 }
 
-func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, authorizationAvailable bool, publicOrigin string) {
-	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
+func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, authorizationAvailable bool, publicOrigin string) {
+	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, inventory: inventory, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
 	if provider, ok := completer.(authorizationStatusProvider); ok {
 		api.status = provider
 	}
 	strict := generated.NewStrictHandlerWithOptions(api, nil, generated.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
+			if missingRequiredCSRF(r) {
+				writePrivateForbidden(w)
+				return
+			}
 			writeGeneratedError(w, http.StatusBadRequest, generated.InvalidRequest)
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
@@ -90,13 +106,22 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 		panic("generated OpenAPI specification is invalid")
 	}
 	validateRequests := requestvalidator.OapiRequestValidatorWithOptions(spec, &requestvalidator.Options{
-		ErrorHandlerWithOpts: func(_ context.Context, _ error, w http.ResponseWriter, _ *http.Request, _ requestvalidator.ErrorHandlerOpts) {
+		Options: openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc},
+		ErrorHandlerWithOpts: func(_ context.Context, _ error, w http.ResponseWriter, r *http.Request, _ requestvalidator.ErrorHandlerOpts) {
+			if missingRequiredCSRF(r) {
+				writePrivateForbidden(w)
+				return
+			}
 			writeGeneratedError(w, http.StatusBadRequest, generated.InvalidRequest)
 		},
 	})
 	generated.HandlerWithOptions(strict, generated.StdHTTPServerOptions{
 		BaseRouter: mux,
-		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
+		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
+			if missingRequiredCSRF(r) {
+				writePrivateForbidden(w)
+				return
+			}
 			writeGeneratedError(w, http.StatusBadRequest, generated.InvalidRequest)
 		},
 		Middlewares: []generated.MiddlewareFunc{
@@ -119,9 +144,14 @@ func noStoreMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func missingRequiredCSRF(r *http.Request) bool {
+	unsafeSessionPath := r.URL.Path == logoutPath || r.URL.Path == portfolioInventoryRetryPath
+	return r.Method == http.MethodPost && unsafeSessionPath && r.Header.Get(csrfHeaderName) == ""
+}
+
 func callbackContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == "/api/auth/logout" {
+		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == logoutPath || strings.HasPrefix(r.URL.Path, portfolioInventoryPath) {
 			cookies := callbackCookies{
 				attempt: cookieValue(r, attemptCookieName),
 				session: cookieValue(r, sessionCookieName),
@@ -132,6 +162,75 @@ func callbackContextMiddleware(next http.Handler) http.Handler {
 		r = r.WithContext(context.WithValue(r.Context(), httpRequestContextKey{}, r))
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (a *authorizationAPI) GetPortfolioInventory(ctx context.Context, _ generated.GetPortfolioInventoryRequestObject) (generated.GetPortfolioInventoryResponseObject, error) {
+	actor, err := a.inventoryActor(ctx)
+	if errors.Is(err, auth.ErrUnauthenticated) {
+		return generated.GetPortfolioInventory401JSONResponse{InventoryUnauthorizedJSONResponse: inventoryUnauthorized()}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := a.inventory.Get(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetPortfolioInventory200JSONResponse{Body: inventoryResponse(snapshot), Headers: generated.GetPortfolioInventory200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
+}
+
+func (a *authorizationAPI) RetryPortfolioInventory(ctx context.Context, request generated.RetryPortfolioInventoryRequestObject) (generated.RetryPortfolioInventoryResponseObject, error) {
+	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
+	if a.sessions == nil || a.inventory == nil || cookies.session == "" {
+		return generated.RetryPortfolioInventory401JSONResponse{InventoryUnauthorizedJSONResponse: inventoryUnauthorized()}, nil
+	}
+	httpRequest := requestFromContext(ctx)
+	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != "same-origin" {
+		return generated.RetryPortfolioInventory403JSONResponse{InventoryForbiddenJSONResponse: inventoryForbidden()}, nil
+	}
+	actor, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, request.Params.XCSRFToken)
+	if err != nil {
+		if errors.Is(err, auth.ErrUnauthenticated) {
+			return generated.RetryPortfolioInventory401JSONResponse{InventoryUnauthorizedJSONResponse: inventoryUnauthorized()}, nil
+		}
+		if errors.Is(err, auth.ErrForbidden) {
+			return generated.RetryPortfolioInventory403JSONResponse{InventoryForbiddenJSONResponse: inventoryForbidden()}, nil
+		}
+		return nil, err
+	}
+	snapshot, err := a.inventory.Retry(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	return generated.RetryPortfolioInventory200JSONResponse{Body: inventoryResponse(snapshot), Headers: generated.RetryPortfolioInventory200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
+}
+
+func (a *authorizationAPI) inventoryActor(ctx context.Context) (auth.Actor, error) {
+	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
+	if a.sessions == nil || a.inventory == nil || cookies.session == "" {
+		return auth.Actor{}, auth.ErrUnauthenticated
+	}
+	return a.sessions.Authenticate(ctx, cookies.session)
+}
+
+func inventoryUnauthorized() generated.InventoryUnauthorizedJSONResponse {
+	return generated.InventoryUnauthorizedJSONResponse{Body: generated.Error{Code: generated.Unauthenticated}, Headers: generated.InventoryUnauthorizedResponseHeaders{CacheControl: privateNoStoreDirective}}
+}
+
+func inventoryForbidden() generated.InventoryForbiddenJSONResponse {
+	return generated.InventoryForbiddenJSONResponse{Body: generated.Error{Code: generated.Forbidden}, Headers: generated.InventoryForbiddenResponseHeaders{CacheControl: privateNoStoreDirective}}
+}
+
+func inventoryResponse(snapshot portfolio.Snapshot) generated.PortfolioInventory {
+	connections := make([]generated.InventoryConnection, 0, len(snapshot.Connections))
+	for _, connection := range snapshot.Connections {
+		accounts := make([]generated.InventoryAccount, 0, len(connection.Accounts))
+		for _, account := range connection.Accounts {
+			accounts = append(accounts, generated.InventoryAccount{Id: account.ID, Category: generated.InventoryAccountCategory(account.Category), Type: account.Type, MaskedLabel: account.MaskedLabel, Available: account.Available, Eligible: account.Eligible, SyncState: generated.InventoryAccountSyncState(account.SyncState)})
+		}
+		connections = append(connections, generated.InventoryConnection{Id: connection.ID, BrokerageLabel: connection.BrokerageLabel, Status: generated.InventoryConnectionStatus(connection.Status), SyncMode: generated.InventoryConnectionSyncMode(connection.SyncMode), Available: connection.Available, Eligible: connection.Eligible, Accounts: accounts})
+	}
+	return generated.PortfolioInventory{State: generated.InventoryState(snapshot.State), Generation: snapshot.Generation, RetryAt: snapshot.RetryAt, UpdatedAt: snapshot.UpdatedAt, Connections: connections}
 }
 
 func contentTypeMiddleware(next http.Handler) http.Handler {
@@ -200,7 +299,7 @@ func (a *authorizationAPI) LogoutCurrentSession(ctx context.Context, request gen
 	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != "same-origin" {
 		return logoutForbidden(), nil
 	}
-	if _, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, optionalString(request.Params.XCSRFToken)); err != nil {
+	if _, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, request.Params.XCSRFToken); err != nil {
 		switch {
 		case errors.Is(err, auth.ErrUnauthenticated):
 			return logoutUnauthorized(), nil
@@ -374,4 +473,11 @@ func writeGeneratedError(w http.ResponseWriter, status int, code generated.Error
 	w.Header().Set(contentTypeHeader, jsonMediaType)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(generated.Error{Code: code})
+}
+
+func writePrivateForbidden(w http.ResponseWriter) {
+	w.Header().Set(cacheControlHeader, privateNoStoreDirective)
+	w.Header().Set(contentTypeHeader, jsonMediaType)
+	w.WriteHeader(http.StatusForbidden)
+	_ = json.NewEncoder(w).Encode(generated.Error{Code: generated.Forbidden})
 }

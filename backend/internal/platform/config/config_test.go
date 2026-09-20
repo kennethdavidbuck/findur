@@ -104,6 +104,36 @@ func TestLoadValidatesSyntheticFixtureConfiguration(t *testing.T) {
 	}
 }
 
+func TestProviderBaseURLIsTypedOAuthConfigurationIndependentOfFixtures(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/findur")
+	t.Setenv("APP_ENV", "integration")
+	t.Setenv("FIXTURE_BASE_URL", "http://diagnostic-wiremock:8080")
+	t.Setenv("FIXTURE_PROVIDER_BEARER_TOKEN", "synthetic-token")
+	t.Setenv("SNAPTRADE_API_BASE_URL", "http://provider-wiremock:9090")
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.FixtureBaseURL.String() != "http://diagnostic-wiremock:8080" || got.Authorization.ProviderBaseURL.String() != "http://provider-wiremock:9090" {
+		t.Fatalf("fixture=%v provider=%v", got.FixtureBaseURL, got.Authorization.ProviderBaseURL)
+	}
+}
+
+func TestProviderBaseURLRejectsUnsafeProductionValues(t *testing.T) {
+	for _, value := range []string{"http://api.snaptrade.example", "https://user:secret@api.snaptrade.example", "https://api.snaptrade.example/path"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://localhost/findur")
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("SNAPTRADE_API_BASE_URL", value)
+			t.Setenv("PUBLIC_ORIGIN", "https://findur.example")
+			t.Setenv("SESSION_HASH_KEY", base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)))
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load accepted provider base %q", value)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsPartialOrUnsafeFixtureConfiguration(t *testing.T) {
 	for _, test := range []struct{ baseURL, token string }{
 		{baseURL: "http://wiremock:8080"},
@@ -226,6 +256,21 @@ func TestSessionLifecycleLoadsWhenAuthorizationInitiationIsClosed(t *testing.T) 
 	}
 	if got.Authorization.Enabled || got.Session.PublicOrigin != "https://findur.example" || len(got.Session.HashKey) != 32 {
 		t.Fatalf("authorization=%+v session=%+v", got.Authorization, got.Session)
+	}
+}
+
+func TestInventoryTokenKeyRemainsAvailableWhenInitiationGateIsClosed(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/findur")
+	t.Setenv("AUTH_INITIATION_ENABLED", "false")
+	t.Setenv("PUBLIC_ORIGIN", "https://findur.example")
+	t.Setenv("SESSION_HASH_KEY", base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)))
+	t.Setenv("OAUTH_TOKEN_KEY_V1", base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{3}, 32)))
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Authorization.Enabled || got.Authorization.CurrentTokenKey != 1 || len(got.Authorization.TokenKeys[1]) != 32 || got.Authorization.ProviderBaseURL.String() != "https://api.snaptrade.com" {
+		t.Fatalf("authorization=%+v", got.Authorization)
 	}
 }
 

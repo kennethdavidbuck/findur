@@ -1,8 +1,50 @@
 openapi: 3.1.0
 info:
   title: Findur API
-  version: 0.4.0
+  version: 0.5.0
 paths:
+  /api/portfolio/inventory:
+    get:
+      operationId: getPortfolioInventory
+      summary: Return or bootstrap the authenticated owner's masked inventory
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Persisted categorical inventory state
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioInventory' }
+        '401': { $ref: '#/components/responses/InventoryUnauthorized' }
+        '503': { $ref: '#/components/responses/SafeError' }
+  /api/portfolio/inventory/retry:
+    post:
+      operationId: retryPortfolioInventory
+      summary: Explicitly retry the authenticated owner's inventory bootstrap
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          required: true
+          schema: { type: string, minLength: 1 }
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Persisted categorical inventory state after the bounded retry
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioInventory' }
+        '401': { $ref: '#/components/responses/InventoryUnauthorized' }
+        '403': { $ref: '#/components/responses/InventoryForbidden' }
+        '503': { $ref: '#/components/responses/SafeError' }
   /api/auth/logout:
     post:
       operationId: logoutCurrentSession
@@ -10,7 +52,10 @@ paths:
       parameters:
         - in: header
           name: X-CSRF-Token
+          required: true
           schema: { type: string, minLength: 1 }
+      security:
+        - SessionCookie: []
       responses:
         '204':
           description: Current session revoked and browser cookies expired
@@ -107,7 +152,53 @@ paths:
         '400':
           $ref: '#/components/responses/SafeError'
 components:
+  securitySchemes:
+    SessionCookie:
+      type: apiKey
+      in: cookie
+      name: findur_session
   schemas:
+    InventoryState:
+      type: string
+      enum: [pending, ready, empty, disabled, unauthorized, rate_limited, unavailable, malformed]
+    InventoryAccount:
+      type: object
+      additionalProperties: false
+      required: [id, category, type, maskedLabel, available, eligible, syncState]
+      properties:
+        id: { type: string }
+        category: { type: string, enum: [investment, deposit, credit, unknown] }
+        type: { type: string }
+        maskedLabel: { type: string }
+        available: { type: boolean }
+        eligible: { type: boolean }
+        syncState: { type: string, enum: [complete, pending, unavailable, unknown] }
+    InventoryConnection:
+      type: object
+      additionalProperties: false
+      required: [id, brokerageLabel, status, syncMode, available, eligible, accounts]
+      properties:
+        id: { type: string }
+        brokerageLabel: { type: string }
+        status: { type: string, enum: [active, disabled, unavailable] }
+        syncMode: { type: string, enum: [realtime, delayed, unknown] }
+        available: { type: boolean }
+        eligible: { type: boolean }
+        accounts:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryAccount' }
+    PortfolioInventory:
+      type: object
+      additionalProperties: false
+      required: [state, generation, updatedAt, connections]
+      properties:
+        state: { $ref: '#/components/schemas/InventoryState' }
+        generation: { type: integer, format: int64, minimum: 1 }
+        retryAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        connections:
+          type: array
+          items: { $ref: '#/components/schemas/InventoryConnection' }
     AuthorizationStatus:
       type: object
       additionalProperties: false
@@ -130,6 +221,24 @@ components:
           type: string
           enum: [invalid_request, authorization_unavailable, initialization_failed, restart_required, unauthenticated, forbidden]
   responses:
+    InventoryUnauthorized:
+      description: The presented session is not active
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InventoryForbidden:
+      description: A session request defense failed
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     LogoutUnauthorized:
       description: The presented session is not active
       headers:

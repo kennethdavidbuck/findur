@@ -50,20 +50,25 @@ func NewHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diag
 	if len(initiators) > 0 {
 		initiator = initiators[0]
 	}
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, nil, nil, initiator != nil, "")
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, nil, nil, nil, initiator != nil, "")
 }
 
 // NewHandlerWithCallback creates the API handler with optional authorization dependencies.
 func NewHandlerWithCallback(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, nil, initiator != nil, "", integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, nil, nil, initiator != nil, "", integrationFixtures...)
 }
 
 // NewHandlerWithSessions composes OAuth and the independent session lifecycle.
 func NewHandlerWithSessions(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
-func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
+// NewHandlerWithInventory composes OAuth, sessions, and masked portfolio inventory.
+func NewHandlerWithInventory(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, authorizationAvailable, publicOrigin, integrationFixtures...)
+}
+
+func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeStatus(w, http.StatusOK, "ok", buildSHA)
@@ -86,7 +91,7 @@ func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diag
 	if len(integrationFixtures) > 0 && integrationFixtures[0] != nil {
 		mux.Handle("/api/__fixture/oidc/", integrationFixtures[0])
 	}
-	registerAuthorizationAPI(mux, logger, initiator, completer, sessions, authorizationAvailable, publicOrigin)
+	registerAuthorizationAPI(mux, logger, initiator, completer, sessions, inventory, authorizationAvailable, publicOrigin)
 
 	return requestMetadata(logger, admission(readiness, buildSHA, mux))
 }
@@ -129,8 +134,12 @@ func routeCategory(path string) string {
 		return "authorization_begin"
 	case authorizationStatusPath:
 		return "authorization_status"
-	case "/api/auth/logout":
+	case logoutPath:
 		return "session_logout"
+	case portfolioInventoryPath:
+		return "portfolio_inventory"
+	case portfolioInventoryRetryPath:
+		return "portfolio_inventory_retry"
 	case auth.SnapTradeCallbackPath:
 		return "authorization_callback"
 	default:

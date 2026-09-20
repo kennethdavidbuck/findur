@@ -148,6 +148,15 @@ func storeAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value a
 		VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,provider) DO UPDATE SET access_token_encrypted=EXCLUDED.access_token_encrypted,
 		refresh_token_encrypted=EXCLUDED.refresh_token_encrypted,envelope_version=EXCLUDED.envelope_version,token_expires_at=EXCLUDED.token_expires_at,updated_at=now()`,
 		owner, value.Provider, value.AccessToken, nullableBytes(value.RefreshToken), value.EnvelopeVersion, nullableTime(value.TokenExpiresAt))
+	if err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `UPDATE portfolio_inventory_state
+		SET current_generation=current_generation+1,current_status='pending',head_generation=NULL,retry_at=NULL,
+		claim_expires_at=$2,updated_at=$2 WHERE user_id=$1`, owner, value.CompletedAt); err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `DELETE FROM portfolio_inventory_versions WHERE user_id=$1`, owner)
 	return err
 }
 

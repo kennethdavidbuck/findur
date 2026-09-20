@@ -1,0 +1,18 @@
+upstream:
+  revision: 9a7c008c1b0c7ea9f7944938556d04f66b381082
+  sha256: 6c6058c06284884dcf6f2710aa0c46c51701df0eeade1adb058de292e95b95f4
+operations:
+  - path: /authorizations
+    method: get
+    removeParameters:
+      - { in: query, name: userId }
+      - { in: query, name: userSecret }
+  - path: /authorizations/{authorizationId}/accounts
+    method: get
+    removeParameters:
+      - { in: query, name: userId }
+      - { in: query, name: userSecret }
+oauthBearer:
+  name: OAuthBearer
+  type: http
+  scheme: bearer
