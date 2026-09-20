@@ -19,6 +19,7 @@ type Client struct {
 	http    doer
 }
 
+// NewClient creates the narrow bearer-only diagnostic provider adapter.
 func NewClient(baseURL *url.URL, bearer string, httpClient doer) *Client {
 	return &Client{baseURL: baseURL, bearer: bearer, http: httpClient}
 }

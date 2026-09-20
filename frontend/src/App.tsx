@@ -3,22 +3,24 @@ import { PublicLayout } from './components/PublicLayout'
 import { I18nProvider, useI18n } from './i18n'
 import { AboutPage } from './pages/AboutPage'
 import { ConsentPage } from './pages/ConsentPage'
+import { AuthorizationResultPage } from './pages/AuthorizationResultPage'
 import { LandingPage } from './pages/LandingPage'
 import { StatusPage } from './pages/StatusPage'
 import { ThemeProvider } from './theme'
 
-type PublicRoute = '/' | '/about' | '/connect' | '/__status'
+type PublicRoute = '/' | '/about' | '/connect' | '/connect/result' | '/__status'
 
 function routeFromPath(pathname: string): PublicRoute {
   if (pathname === '/__status' || pathname === '/__status/') return '/__status'
   if (pathname === '/connect' || pathname === '/connect/') return '/connect'
+  if (pathname === '/connect/result' || pathname === '/connect/result/') return '/connect/result'
   return pathname === '/about' || pathname === '/about/' ? '/about' : '/'
 }
 
 function normalizePublicPath() {
   const route = routeFromPath(window.location.pathname)
   const canonicalPath = route
-  if (window.location.pathname !== canonicalPath) {
+  if (window.location.pathname !== canonicalPath || (route === '/connect/result' && window.location.search !== '')) {
     window.history.replaceState(null, '', canonicalPath)
   }
   return route
@@ -41,7 +43,7 @@ function PublicApp() {
       document.title = messages.status.metaTitle
       return
     }
-    const metadata = route === '/about' ? messages.meta.about : route === '/connect' ? messages.meta.connect : messages.meta.home
+	const metadata = route === '/about' ? messages.meta.about : route === '/connect' || route === '/connect/result' ? messages.meta.connect : messages.meta.home
     document.title = metadata.title
     const description = document.querySelector<HTMLMetaElement>('meta[name="description"]')
     description?.setAttribute('content', metadata.description)
@@ -65,11 +67,13 @@ function PublicApp() {
 
   return (
     route === '/__status' ? <StatusPage /> :
-    <PublicLayout route={route} onNavigate={navigatePublic}>
+    <PublicLayout route={route === '/connect/result' ? '/connect' : route} onNavigate={navigatePublic}>
       {route === '/about' ? (
         <AboutPage headingRef={headingRef} onNavigate={navigatePublic} />
       ) : route === '/connect' ? (
         <ConsentPage headingRef={headingRef} onNavigate={navigatePublic} />
+      ) : route === '/connect/result' ? (
+		<AuthorizationResultPage headingRef={headingRef} onNavigate={navigatePublic} />
       ) : (
         <LandingPage headingRef={headingRef} onNavigate={navigatePublic} />
       )}

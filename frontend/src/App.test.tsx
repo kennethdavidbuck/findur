@@ -172,8 +172,8 @@ describe('public site', () => {
     )
   })
 
-  it('renders complete staged consent without an implicit backend request', async () => {
-    const fetchMock = vi.fn()
+  it('enables staged consent only after the server reports authorization available', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
 
@@ -187,13 +187,39 @@ describe('public site', () => {
     expect(screen.getByText(/Findur never sees or stores/)).toBeVisible()
     expect(screen.getByText(/cannot trade and does not provide financial advice/)).toBeVisible()
     expect(screen.getByText(/deleting your data from app-controlled active storage/)).toBeVisible()
-    expect(screen.getByRole('button', { name: 'Continue to SnapTrade' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Continue to SnapTrade' })).toHaveAccessibleDescription(/Authorization is not available yet/)
-    expect(fetchMock).not.toHaveBeenCalled()
+	await waitFor(() => expect(screen.getByRole('button', { name: 'Continue to SnapTrade' })).toBeEnabled())
+	expect(fetchMock).toHaveBeenCalledWith('/api/auth/status', expect.objectContaining({ cache: 'no-store', credentials: 'same-origin' }))
   })
+
+	it('rejects a forged success URL and trusts only server session status', async () => {
+		const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+		vi.stubGlobal('fetch', fetchMock)
+		window.history.replaceState(null, '', '/connect/result?status=success')
+		const { unmount } = render(<App />)
+		expect(screen.getByRole('heading', { level: 1, name: 'Checking your secure session…' })).toBeVisible()
+		expect(window.location.pathname).toBe('/connect/result')
+		expect(window.location.search).toBe('')
+		expect(await screen.findByRole('heading', { level: 1, name: 'Please restart the secure connection.' })).toHaveFocus()
+		unmount()
+		window.history.replaceState(null, '', '/connect/result')
+		render(<App />)
+		expect(await screen.findByRole('heading', { level: 1, name: 'Your private session is ready.' })).toHaveFocus()
+	})
+
+	it('keeps consent closed with localized guidance when the server gate is closed', async () => {
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: false, authenticated: false }), { status: 200 })))
+		window.history.replaceState(null, '', '/connect')
+		render(<App />)
+		const action = screen.getByRole('button', { name: 'Continue to SnapTrade' })
+		expect(action).toBeDisabled()
+		expect(await screen.findByText(/Authorization is not available yet/)).toBeVisible()
+		expect(action).toHaveAccessibleDescription(/Authorization is not available yet/)
+	})
 
   it('preserves consent route and focus while locale and theme change', async () => {
     window.history.replaceState(null, '', '/connect')
+	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200 })))
     render(<App />)
     fireEvent.click(screen.getAllByRole('radio', { name: 'FR' })[0])
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Connectez-vous sans partager votre mot de passe de courtage.')
@@ -206,13 +232,14 @@ describe('public site', () => {
     expect(window.location.pathname).toBe('/connect')
   })
 
-  it('returns from consent without making an authorization request', () => {
+  it('returns from consent without posting an authorization request', async () => {
     window.history.replaceState(null, '', '/connect')
-    const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock)
+	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200 })); vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     fireEvent.click(screen.getByRole('link', { name: 'Return home' }))
     expect(window.location.pathname).toBe('/')
-    expect(fetchMock).not.toHaveBeenCalled()
+	await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+	expect(fetchMock).toHaveBeenCalledWith('/api/auth/status', expect.any(Object))
   })
 
   it('normalizes an unknown public path to the landing route', () => {

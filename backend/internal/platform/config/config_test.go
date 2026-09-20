@@ -120,16 +120,15 @@ func TestLoadRejectsPartialOrUnsafeFixtureConfiguration(t *testing.T) {
 	}
 }
 
-func TestAuthorizationGateIsIndependentAndClosedInProduction(t *testing.T) {
-	t.Setenv("DATABASE_URL", "postgres://localhost/findur")
+func TestAuthorizationGateMayBeExplicitlyOpenedInProduction(t *testing.T) {
+	setValidAuthorizationEnvironment(t)
 	t.Setenv("APP_ENV", "production")
-	t.Setenv("AUTH_INITIATION_ENABLED", "true")
 	got, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Authorization.Enabled {
-		t.Fatal("production authorization gate opened before callback story")
+	if !got.Authorization.Enabled {
+		t.Fatal("explicit production authorization gate remained closed")
 	}
 }
 
@@ -146,6 +145,7 @@ func TestEnabledAuthorizationRequiresSafeExplicitConfiguration(t *testing.T) {
 			t.Setenv("SNAPTRADE_OIDC_ISSUER", "http://wiremock:8080")
 			t.Setenv("OAUTH_HASH_KEY", key)
 			t.Setenv("OAUTH_ENCRYPTION_KEY", encryptionKey)
+			setCompletionKeys(t)
 			got, err := Load()
 			if err != nil {
 				t.Fatal(err)
@@ -162,6 +162,14 @@ func TestEnabledAuthorizationRejectsUnexpectedCallbackPath(t *testing.T) {
 	t.Setenv("SNAPTRADE_OAUTH_CALLBACK_URL", "https://findur.example/oauth/callback")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() accepted a callback path that disagrees with the handler cookie")
+	}
+}
+
+func TestEnabledAuthorizationRequiresConfidentialClientSecret(t *testing.T) {
+	setValidAuthorizationEnvironment(t)
+	t.Setenv("SNAPTRADE_OAUTH_CLIENT_SECRET", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() accepted enabled authorization without a client secret")
 	}
 }
 
@@ -201,6 +209,14 @@ func setValidAuthorizationEnvironment(t *testing.T) {
 	t.Setenv("SNAPTRADE_OIDC_ISSUER", "https://issuer.example")
 	t.Setenv("OAUTH_HASH_KEY", key)
 	t.Setenv("OAUTH_ENCRYPTION_KEY", encryptionKey)
+	setCompletionKeys(t)
+}
+
+func setCompletionKeys(t *testing.T) {
+	t.Helper()
+	t.Setenv("SNAPTRADE_OAUTH_CLIENT_SECRET", "synthetic-client-secret")
+	t.Setenv("SESSION_HASH_KEY", base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
+	t.Setenv("OAUTH_TOKEN_KEY_V1", base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{3}, 32)))
 }
 
 func TestEnabledAuthorizationRejectsNonLoopbackHTTPCallback(t *testing.T) {
@@ -213,6 +229,7 @@ func TestEnabledAuthorizationRejectsNonLoopbackHTTPCallback(t *testing.T) {
 	t.Setenv("SNAPTRADE_OIDC_ISSUER", "https://issuer.example")
 	t.Setenv("OAUTH_HASH_KEY", key)
 	t.Setenv("OAUTH_ENCRYPTION_KEY", encryptionKey)
+	setCompletionKeys(t)
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() accepted non-loopback HTTP callback")
 	}
@@ -227,6 +244,7 @@ func TestEnabledAuthorizationRejectsReusedCryptoKey(t *testing.T) {
 	t.Setenv("SNAPTRADE_OIDC_ISSUER", "https://issuer.example")
 	t.Setenv("OAUTH_HASH_KEY", key)
 	t.Setenv("OAUTH_ENCRYPTION_KEY", key)
+	setCompletionKeys(t)
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() accepted one key for hashing and encryption")
 	}

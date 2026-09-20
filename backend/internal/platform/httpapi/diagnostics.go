@@ -18,6 +18,7 @@ type Diagnostics struct {
 	provider fixtureProvider
 }
 
+// NewDiagnostics creates integration-only diagnostic handlers.
 func NewDiagnostics(target *url.URL, provider fixtureProvider) *Diagnostics {
 	return newDiagnostics(target, provider, http.DefaultTransport)
 }
@@ -42,7 +43,7 @@ func (d *Diagnostics) register(mux *http.ServeMux) {
 			writeStatus(w, http.StatusBadGateway, "unavailable", "fixture")
 			return
 		}
-		defer response.Body.Close()
+		defer func() { _ = response.Body.Close() }()
 		for _, header := range []string{"Content-Type", "Cache-Control", "Retry-After"} {
 			if value := response.Header.Get(header); value != "" {
 				w.Header().Set(header, value)

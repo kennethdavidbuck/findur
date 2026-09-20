@@ -1,0 +1,9 @@
+ALTER TABLE oauth_attempts
+    DROP COLUMN completed_at,
+    DROP COLUMN user_id,
+    DROP COLUMN terminal_route,
+    DROP COLUMN terminal_outcome;
+DROP TABLE sessions;
+DROP TABLE provider_authorizations;
+DROP TABLE external_identities;
+DROP TABLE users;

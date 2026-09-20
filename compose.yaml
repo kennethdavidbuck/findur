@@ -3,6 +3,8 @@ name: findur
 services:
   postgres:
     image: postgres:18.6-alpine
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: findur
       POSTGRES_USER: findur
@@ -39,12 +41,16 @@ services:
       DATABASE_URL: postgresql://findur:synthetic-local-only@postgres:5432/findur?sslmode=disable
       FIXTURE_BASE_URL: http://wiremock:8080
       FIXTURE_PROVIDER_BEARER_TOKEN: synthetic-access-token
-      AUTH_INITIATION_ENABLED: "true"
-      SNAPTRADE_OAUTH_CLIENT_ID: synthetic-oauth-client
-      SNAPTRADE_OAUTH_CALLBACK_URL: https://findur.example/api/auth/snaptrade/callback
-      SNAPTRADE_OIDC_ISSUER: http://wiremock:8080
-      OAUTH_HASH_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-      OAUTH_ENCRYPTION_KEY: AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE
+      AUTH_INITIATION_ENABLED: "${AUTH_INITIATION_ENABLED:-true}"
+      SNAPTRADE_OAUTH_CLIENT_ID: "${SNAPTRADE_OAUTH_CLIENT_ID:-synthetic-oauth-client}"
+      SNAPTRADE_OAUTH_CLIENT_SECRET: "${SNAPTRADE_OAUTH_CLIENT_SECRET:-synthetic-oauth-client-secret}"
+      # Browser-visible loopback callback; nginx forwards /api to the backend.
+      SNAPTRADE_OAUTH_CALLBACK_URL: "${SNAPTRADE_OAUTH_CALLBACK_URL:-http://127.0.0.1:8080/api/auth/snaptrade/callback}"
+      SNAPTRADE_OIDC_ISSUER: "${SNAPTRADE_OIDC_ISSUER:-http://wiremock:8080}"
+      OAUTH_HASH_KEY: "${OAUTH_HASH_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA}"
+      OAUTH_ENCRYPTION_KEY: "${OAUTH_ENCRYPTION_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE}"
+      SESSION_HASH_KEY: "${SESSION_HASH_KEY:-AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI}"
+      OAUTH_TOKEN_KEY_V1: "${OAUTH_TOKEN_KEY_V1:-AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -129,7 +135,7 @@ services:
     command: ["node", "integration.mjs"]
     environment:
       BASE_URL: http://frontend:8080
-      BROWSER_URL: http://browser:4444
+      BROWSER_URL: http://frontend:4444
       EXPECTED_SHA: ${BUILD_SHA:-0123456789abcdef0123456789abcdef01234567}
     volumes:
       - ./test/integration:/work:ro
@@ -142,6 +148,9 @@ services:
   browser:
     image: selenium/standalone-chromium:4.29.0-20250222
     profiles: ["test"]
+    # Sharing the frontend network namespace makes the configured loopback
+    # callback reachable by the real browser exactly as it is on a local host.
+    network_mode: "service:frontend"
     shm_size: 1gb
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:4444/wd/hub/status | grep -q '\"ready\": true'"]

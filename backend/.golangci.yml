@@ -1,0 +1,22 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - goconst
+    - gocritic
+    - misspell
+    - revive
+  settings:
+    goconst:
+      ignore-tests: true
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

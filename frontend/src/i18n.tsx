@@ -129,9 +129,16 @@ const copy = {
         'Disconnecting SnapTrade means leaving Findur and deleting your data from app-controlled active storage.',
       ],
       action: 'Continue to SnapTrade',
+      checking: 'Checking secure authorization availability…',
       unavailable: 'Authorization is not available yet. Callback completion will be enabled in the next release step.',
       back: 'Return home',
       eligibility: 'For eligible adult SnapTrade test users only · evaluation demonstration · no public signup',
+    },
+    authorizationResult: {
+      eyebrow: 'Secure connection',
+	  resolving: { title: 'Checking your secure session…', body: 'Confirming the browser session with Findur.', action: '', href: '/connect' as const },
+	  success: { title: 'Your private session is ready.', body: 'SnapTrade authorization completed. Account inclusion remains a separate choice.', action: 'Review the connection boundary', href: '/connect' as const },
+      restart: { title: 'Please restart the secure connection.', body: 'The authorization could not be completed safely. No partial session was kept.', action: 'Review and try again', href: '/connect' as const },
     },
     status: {
       metaTitle: 'Build status — Findur',
@@ -279,9 +286,16 @@ const copy = {
         'Déconnecter SnapTrade signifie quitter Findur et supprimer vos données du stockage actif contrôlé par l’application.',
       ],
       action: 'Continuer vers SnapTrade',
+      checking: 'Vérification de la disponibilité de l’autorisation sécurisée…',
       unavailable: 'L’autorisation n’est pas encore disponible. Le retour d’autorisation sera activé à la prochaine étape de livraison.',
       back: 'Retour à l’accueil',
       eligibility: 'Réservé aux adultes admissibles au test SnapTrade · démonstration d’évaluation · aucune inscription publique',
+    },
+    authorizationResult: {
+      eyebrow: 'Connexion sécurisée',
+	  resolving: { title: 'Vérification de votre session sécurisée…', body: 'Confirmation de la session du navigateur auprès de Findur.', action: '', href: '/connect' as const },
+	  success: { title: 'Votre session privée est prête.', body: 'L’autorisation SnapTrade est terminée. L’inclusion des comptes demeure un choix distinct.', action: 'Revoir les limites de la connexion', href: '/connect' as const },
+      restart: { title: 'Veuillez recommencer la connexion sécurisée.', body: 'L’autorisation n’a pas pu être terminée de façon sûre. Aucune session partielle n’a été conservée.', action: 'Revoir et réessayer', href: '/connect' as const },
     },
     status: {
       metaTitle: 'État de la version — Findur',

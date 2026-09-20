@@ -12,9 +12,9 @@
     "jsonBody": {
       "issuer": "http://wiremock:8080",
       "authorization_endpoint": "http://wiremock:8080/oauth/authorize",
-      "token_endpoint": "http://wiremock:8080/oauth/token",
-      "revocation_endpoint": "http://wiremock:8080/oauth/revoke",
-      "jwks_uri": "http://wiremock:8080/oauth/jwks",
+      "token_endpoint": "http://backend:10000/api/__fixture/oidc/token",
+      "revocation_endpoint": "http://backend:10000/api/__fixture/oidc/revoke",
+      "jwks_uri": "http://backend:10000/api/__fixture/oidc/jwks",
       "response_types_supported": ["code"],
       "subject_types_supported": ["public"],
       "id_token_signing_alg_values_supported": ["RS256"]

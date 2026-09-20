@@ -14,6 +14,13 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const (
+	testClientID              = "client"
+	testCallbackURL           = "https://findur.example" + SnapTradeCallbackPath
+	testAuthorizationEndpoint = "https://provider.example/authorize"
+	claimedRoute              = "claimed"
+)
+
 type memoryRepository struct {
 	mu       sync.Mutex
 	attempts map[string]Attempt
@@ -39,10 +46,10 @@ func (r *memoryRepository) Claim(_ context.Context, state, binding []byte, now t
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	a, ok := r.attempts[key(state)]
-	if !ok || !a.ExpiresAt.After(now) || a.ReturnRoute == "claimed" || key(a.BrowserBindingHash) != key(binding) {
+	if !ok || !a.ExpiresAt.After(now) || a.ReturnRoute == claimedRoute || key(a.BrowserBindingHash) != key(binding) {
 		return ErrNotClaimable
 	}
-	a.ReturnRoute = "claimed"
+	a.ReturnRoute = claimedRoute
 	r.attempts[key(state)] = a
 	return nil
 }
@@ -51,7 +58,7 @@ func (r *memoryRepository) Cleanup(_ context.Context, now time.Time) (int64, err
 	defer r.mu.Unlock()
 	var count int64
 	for k, a := range r.attempts {
-		if !a.ExpiresAt.After(now) || a.ReturnRoute == "claimed" {
+		if !a.ExpiresAt.After(now) || a.ReturnRoute == claimedRoute {
 			delete(r.attempts, k)
 			count++
 		}
@@ -114,7 +121,19 @@ func (d *staticDiscovery) Discover(context.Context) (Discovery, error) {
 
 func serviceForTest(t *testing.T, repository AttemptRepository, discovery DiscoveryProvider, now *time.Time, enabled bool) *Service {
 	t.Helper()
-	svc, err := NewService(Config{Enabled: enabled, ClientID: "client", CallbackURL: "https://findur.example/api/auth/snaptrade/callback", AllowedReturns: []string{"/connect", "/portfolio"}, DefaultReturn: "/connect", HashKey: make([]byte, 32), EncryptionKey: bytes.Repeat([]byte{1}, 32), Random: rand.Reader, Clock: func() time.Time { return *now }, OperationTimeout: time.Second}, repository, discovery)
+	config := Config{
+		Enabled:          enabled,
+		ClientID:         testClientID,
+		CallbackURL:      testCallbackURL,
+		AllowedReturns:   []string{DefaultReturnRoute, PortfolioReturnRoute},
+		DefaultReturn:    DefaultReturnRoute,
+		HashKey:          make([]byte, 32),
+		EncryptionKey:    bytes.Repeat([]byte{1}, 32),
+		Random:           rand.Reader,
+		Clock:            func() time.Time { return *now },
+		OperationTimeout: time.Second,
+	}
+	svc, err := NewService(config, repository, discovery)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +143,7 @@ func serviceForTest(t *testing.T, repository AttemptRepository, discovery Discov
 func TestBeginCreatesSecureRequestAndSanitizesReturn(t *testing.T) {
 	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
 	repo := newMemoryRepository()
-	discovery := &staticDiscovery{result: Discovery{AuthorizationEndpoint: "https://provider.example/authorize"}}
+	discovery := &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}
 	svc := serviceForTest(t, repo, discovery, &now, true)
 	result, err := svc.Begin(context.Background(), "https://evil.example/steal")
 	if err != nil {
@@ -170,7 +189,7 @@ func TestBeginUsesSafeDefaultForEveryUnapprovedReturn(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			now := time.Now()
 			repo := newMemoryRepository()
-			svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: "https://provider.example/authorize"}}, &now, true)
+			svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}, &now, true)
 			if _, err := svc.Begin(context.Background(), candidate); err != nil {
 				t.Fatal(err)
 			}
@@ -188,7 +207,7 @@ func TestBeginPersistsEveryAllowlistedReturnUnchanged(t *testing.T) {
 		t.Run(route, func(t *testing.T) {
 			now := time.Now()
 			repo := newMemoryRepository()
-			svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: "https://provider.example/authorize"}}, &now, true)
+			svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}, &now, true)
 			if _, err := svc.Begin(context.Background(), route); err != nil {
 				t.Fatal(err)
 			}
@@ -201,21 +220,31 @@ func TestBeginPersistsEveryAllowlistedReturnUnchanged(t *testing.T) {
 	}
 }
 
-func TestVerifierGenerationFailureIsCategorized(t *testing.T) {
-	now := time.Now()
-	repo := newMemoryRepository()
-	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: "https://provider.example/authorize"}}, &now, true)
-	svc.config.Random = &failAfterReader{remaining: randomBytes * 2}
-	_, err := svc.Begin(context.Background(), "/connect")
-	if !errors.Is(err, ErrInitialization) || InitializationStageOf(err) != StageGeneration || len(repo.attempts) != 0 {
-		t.Fatalf("err=%v stage=%q attempts=%d", err, InitializationStageOf(err), len(repo.attempts))
+func TestCorrelationGenerationFailuresAreCategorized(t *testing.T) {
+	for name, successfulReads := range map[string]int{
+		"state":      0,
+		"nonce":      1,
+		"verifier":   2,
+		"binding":    3,
+		"encryption": 4,
+	} {
+		t.Run(name, func(t *testing.T) {
+			now := time.Now()
+			repo := newMemoryRepository()
+			svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}, &now, true)
+			svc.config.Random = &failAfterReader{remaining: randomBytes * successfulReads}
+			_, err := svc.Begin(context.Background(), DefaultReturnRoute)
+			if !errors.Is(err, ErrInitialization) || InitializationStageOf(err) != StageGeneration || len(repo.attempts) != 0 {
+				t.Fatalf("err=%v stage=%q attempts=%d", err, InitializationStageOf(err), len(repo.attempts))
+			}
+		})
 	}
 }
 
 func TestCleanupFailureStopsBeforeCreate(t *testing.T) {
 	now := time.Now()
 	repo := &errorRepository{memoryRepository: newMemoryRepository(), cleanupErr: errors.New("cleanup unavailable")}
-	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: "https://provider.example/authorize"}}, &now, true)
+	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}, &now, true)
 	_, err := svc.Begin(context.Background(), "/connect")
 	if !errors.Is(err, ErrInitialization) || InitializationStageOf(err) != StageStorage || len(repo.attempts) != 0 {
 		t.Fatalf("err=%v stage=%q attempts=%d", err, InitializationStageOf(err), len(repo.attempts))
@@ -263,7 +292,7 @@ func TestInvalidDiscoveredEndpointLeavesNoAttempt(t *testing.T) {
 func TestPersistenceFailureIsCategorizedAndLeavesNoAttempt(t *testing.T) {
 	now := time.Now()
 	repo := &errorRepository{memoryRepository: newMemoryRepository(), createErr: errors.New("database unavailable")}
-	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: "https://provider.example/authorize"}}, &now, true)
+	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}, &now, true)
 	_, err := svc.Begin(context.Background(), "/connect")
 	if !errors.Is(err, ErrInitialization) || InitializationStageOf(err) != StageStorage || len(repo.attempts) != 0 {
 		t.Fatalf("err=%v stage=%q attempts=%d", err, InitializationStageOf(err), len(repo.attempts))
@@ -295,7 +324,7 @@ func TestBeginHonorsOperationDeadline(t *testing.T) {
 func TestAttemptCanBeClaimedOnlyOnceConcurrently(t *testing.T) {
 	now := time.Now()
 	repo := newMemoryRepository()
-	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: "https://provider.example/authorize"}}, &now, true)
+	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}, &now, true)
 	result, err := svc.Begin(context.Background(), "/portfolio")
 	if err != nil {
 		t.Fatal(err)
@@ -320,7 +349,7 @@ func TestAttemptCanBeClaimedOnlyOnceConcurrently(t *testing.T) {
 func TestExpiredAttemptCannotBeClaimedAndIsCleanedUp(t *testing.T) {
 	now := time.Now()
 	repo := newMemoryRepository()
-	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: "https://provider.example/authorize"}}, &now, true)
+	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}, &now, true)
 	result, _ := svc.Begin(context.Background(), "/connect")
 	location, _ := url.Parse(result.AuthorizationURL)
 	now = now.Add(AttemptLifetime)
@@ -336,7 +365,7 @@ func TestExpiredAttemptCannotBeClaimedAndIsCleanedUp(t *testing.T) {
 func TestClaimRejectsWrongStateAndBinding(t *testing.T) {
 	now := time.Now()
 	repo := newMemoryRepository()
-	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: "https://provider.example/authorize"}}, &now, true)
+	svc := serviceForTest(t, repo, &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}, &now, true)
 	result, err := svc.Begin(context.Background(), "/connect")
 	if err != nil {
 		t.Fatal(err)
