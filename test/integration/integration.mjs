@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { verifyBrowserOAuth } from './browser-oauth.mjs'
 import { verifyBrowserStatus } from './browser-status.mjs'
 
 const base = process.env.BASE_URL
@@ -116,5 +117,6 @@ assert.equal(
 )
 
 await verifyBrowserStatus({ browserUrl: browser, publicOrigin: base, expectedSha })
+await verifyBrowserOAuth({ browserUrl: browser, oauthOrigin: 'http://127.0.0.1:8080' })
 
 console.log('integration contracts passed')
