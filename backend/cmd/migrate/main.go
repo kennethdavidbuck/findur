@@ -1,3 +1,4 @@
+// Package main runs Findur database migrations as a standalone process.
 package main
 
 import (

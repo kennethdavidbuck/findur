@@ -16,14 +16,24 @@ import (
 	"slices"
 	"time"
 
+	coreoidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
 )
 
+// Authorization protocol, route, and lifetime constants shared by its adapters.
 const (
-	AttemptLifetime = 10 * time.Minute
-	randomBytes     = 32
+	AttemptLifetime          = 10 * time.Minute
+	SnapTradeProvider        = "snaptrade"
+	SnapTradeCallbackPath    = "/api/auth/snaptrade/callback"
+	AuthorizationResultRoute = "/connect/result"
+	DefaultReturnRoute       = "/connect"
+	PortfolioReturnRoute     = "/portfolio"
+	ScopeOpenID              = "openid"
+	ScopeRead                = "read"
+	randomBytes              = 32
 )
 
+// Stable authorization errors exposed to adapters without sensitive detail.
 var (
 	ErrUnavailable    = errors.New("authorization initiation unavailable")
 	ErrInitialization = errors.New("authorization initialization failed")
@@ -33,6 +43,7 @@ var (
 // InitializationStage is a bounded, non-sensitive failure location suitable for logs.
 type InitializationStage string
 
+// Initialization failure stages safe for categorical logging.
 const (
 	StageDiscovery  InitializationStage = "oidc_discovery"
 	StageGeneration InitializationStage = "attempt_generation"
@@ -96,6 +107,10 @@ type BeginResult struct {
 	ExpiresAt        time.Time
 }
 
+type attemptSecrets struct {
+	state, nonce, verifier, binding string
+}
+
 // Config is validated authorization initiation policy.
 type Config struct {
 	Enabled          bool
@@ -157,41 +172,60 @@ func (s *Service) Begin(ctx context.Context, requestedReturn string) (BeginResul
 	if err != nil {
 		return BeginResult{}, initializationFailure(StageDiscovery, err)
 	}
-	state, err := s.secret()
+	secrets, err := s.attemptSecrets()
 	if err != nil {
 		return BeginResult{}, initializationFailure(StageGeneration, err)
+	}
+	authorizationURL, err := s.authorizationURL(metadata.AuthorizationEndpoint, secrets)
+	if err != nil {
+		return BeginResult{}, initializationFailure(StageDiscovery, err)
+	}
+	return s.persistAttempt(ctx, requestedReturn, authorizationURL, secrets)
+}
+
+func (s *Service) attemptSecrets() (attemptSecrets, error) {
+	state, err := s.secret()
+	if err != nil {
+		return attemptSecrets{}, err
 	}
 	nonce, err := s.secret()
 	if err != nil {
-		return BeginResult{}, initializationFailure(StageGeneration, err)
+		return attemptSecrets{}, err
 	}
 	verifier, err := s.secret()
 	if err != nil {
-		return BeginResult{}, initializationFailure(StageGeneration, err)
+		return attemptSecrets{}, err
 	}
 	binding, err := s.secret()
 	if err != nil {
-		return BeginResult{}, initializationFailure(StageGeneration, err)
+		return attemptSecrets{}, err
 	}
+	return attemptSecrets{state: state, nonce: nonce, verifier: verifier, binding: binding}, nil
+}
+
+func (s *Service) authorizationURL(endpoint string, secrets attemptSecrets) (string, error) {
 	oauthConfig := oauth2.Config{
 		ClientID: s.config.ClientID, RedirectURL: s.config.CallbackURL,
-		Endpoint: oauth2.Endpoint{AuthURL: metadata.AuthorizationEndpoint}, Scopes: []string{"openid", "read"},
+		Endpoint: oauth2.Endpoint{AuthURL: endpoint}, Scopes: []string{ScopeOpenID, ScopeRead},
 	}
-	authorizationURL := oauthConfig.AuthCodeURL(state, oauth2.S256ChallengeOption(verifier), oauth2.SetAuthURLParam("nonce", nonce))
+	authorizationURL := oauthConfig.AuthCodeURL(secrets.state, oauth2.S256ChallengeOption(secrets.verifier), coreoidc.Nonce(secrets.nonce))
 	parsedAuthorizationURL, err := url.Parse(authorizationURL)
 	if err != nil || parsedAuthorizationURL.Host == "" {
-		return BeginResult{}, initializationFailure(StageDiscovery, errors.New("invalid authorization endpoint"))
+		return "", errors.New("invalid authorization endpoint")
 	}
+	return authorizationURL, nil
+}
 
-	stateHash := s.hash(state)
+func (s *Service) persistAttempt(ctx context.Context, requestedReturn, authorizationURL string, secrets attemptSecrets) (BeginResult, error) {
+	stateHash := s.hash(secrets.state)
 	now := s.config.Clock().UTC()
 	expires := now.Add(AttemptLifetime)
-	encryptedVerifier, err := s.encryptVerifier(stateHash, verifier)
+	encryptedVerifier, err := s.encryptVerifier(stateHash, secrets.verifier)
 	if err != nil {
 		return BeginResult{}, initializationFailure(StageGeneration, err)
 	}
 	attempt := Attempt{
-		StateHash: stateHash, NonceHash: s.hash(nonce), BrowserBindingHash: s.hash(binding),
+		StateHash: stateHash, NonceHash: s.hash(secrets.nonce), BrowserBindingHash: s.hash(secrets.binding),
 		EncryptedVerifier: encryptedVerifier, ReturnRoute: s.safeReturn(requestedReturn), ExpiresAt: expires,
 	}
 	if _, err := s.repository.Cleanup(ctx, now); err != nil {
@@ -201,7 +235,7 @@ func (s *Service) Begin(ctx context.Context, requestedReturn string) (BeginResul
 		return BeginResult{}, initializationFailure(StageStorage, err)
 	}
 
-	return BeginResult{AuthorizationURL: authorizationURL, BrowserBinding: binding, ExpiresAt: expires}, nil
+	return BeginResult{AuthorizationURL: authorizationURL, BrowserBinding: secrets.binding, ExpiresAt: expires}, nil
 }
 
 // Claim atomically makes a matching, unexpired attempt single-use.
@@ -220,6 +254,7 @@ func (s *Service) Claim(ctx context.Context, state, binding string) error {
 	return nil
 }
 
+// Cleanup removes expired or terminal authorization attempts.
 func (s *Service) Cleanup(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.config.OperationTimeout)
 	defer cancel()

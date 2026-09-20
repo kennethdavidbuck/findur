@@ -13,6 +13,15 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	testState          = "state"
+	testNonce          = "nonce"
+	testBinding        = "binding"
+	testCode           = "code"
+	testSubject        = "subject"
+	testLoopbackOrigin = "http://127.0.0.1:8080"
+)
+
 type callbackRepoStub struct {
 	claim          CallbackClaim
 	claimErr       error
@@ -67,11 +76,28 @@ func callbackFixture(t *testing.T) (*CallbackService, *callbackRepoStub, *oidcSt
 	block, _ := aes.NewCipher(verifierKey)
 	aead, _ := cipher.NewGCM(block)
 	nonce := bytes.Repeat([]byte{9}, aead.NonceSize())
-	stateHash := keyedHash(attemptKey, "state")
+	stateHash := keyedHash(attemptKey, testState)
 	envelope := aead.Seal(nonce, nonce, []byte("verifier"), stateHash)
-	repo := &callbackRepoStub{claim: CallbackClaim{StateHash: stateHash, NonceHash: keyedHash(attemptKey, "nonce"), EncryptedVerifier: envelope, ReturnRoute: "/portfolio"}}
-	client := &oidcStub{identity: Identity{Subject: "subject", Nonce: "nonce"}}
-	service, err := NewCallbackService(CallbackConfig{Provider: "snaptrade", CallbackURL: "http://127.0.0.1:8080/api/auth/snaptrade/callback", AttemptHashKey: attemptKey, SessionHashKey: sessionKey, VerifierKey: verifierKey, TokenKeys: map[int][]byte{1: tokenKey}, CurrentTokenKey: 1, Random: bytes.NewReader(bytes.Repeat([]byte{7}, 256)), Clock: func() time.Time { return time.Unix(1000, 0) }, OperationTimeout: time.Second}, repo, client)
+	repo := &callbackRepoStub{claim: CallbackClaim{
+		StateHash:         stateHash,
+		NonceHash:         keyedHash(attemptKey, testNonce),
+		EncryptedVerifier: envelope,
+		ReturnRoute:       PortfolioReturnRoute,
+	}}
+	client := &oidcStub{identity: Identity{Subject: testSubject, Nonce: testNonce}}
+	config := CallbackConfig{
+		Provider:         SnapTradeProvider,
+		CallbackURL:      testLoopbackOrigin + SnapTradeCallbackPath,
+		AttemptHashKey:   attemptKey,
+		SessionHashKey:   sessionKey,
+		VerifierKey:      verifierKey,
+		TokenKeys:        map[int][]byte{1: tokenKey},
+		CurrentTokenKey:  1,
+		Random:           bytes.NewReader(bytes.Repeat([]byte{7}, 256)),
+		Clock:            func() time.Time { return time.Unix(1000, 0) },
+		OperationTimeout: time.Second,
+	}
+	service, err := NewCallbackService(config, repo, client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +106,7 @@ func callbackFixture(t *testing.T) (*CallbackService, *callbackRepoStub, *oidcSt
 
 func TestCallbackSuccessCreatesOpaqueEncryptedSessionMaterial(t *testing.T) {
 	service, repo, client := callbackFixture(t)
-	result, err := service.Complete(context.Background(), CallbackInput{State: "state", Binding: "binding", Code: "code"})
+	result, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode})
 	if err != nil || !result.Success || result.Session == "" || result.CSRF == "" {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
@@ -105,11 +131,11 @@ func TestCallbackInputFailuresNeverExchange(t *testing.T) {
 		claimErr               error
 		wantClaims, wantFailed int
 	}{
-		"missing state":      {input: CallbackInput{Binding: "binding", Code: "code"}},
-		"missing code":       {input: CallbackInput{State: "state", Binding: "binding"}, wantClaims: 1, wantFailed: 1},
-		"mismatched binding": {input: CallbackInput{State: "state", Binding: "wrong", Code: "code"}, claimErr: ErrNotClaimable, wantClaims: 1},
-		"expired attempt":    {input: CallbackInput{State: "state", Binding: "binding", Code: "code"}, claimErr: ErrNotClaimable, wantClaims: 1},
-		"provider denial":    {input: CallbackInput{State: "state", Binding: "binding", ProviderError: "access_denied"}, wantClaims: 1, wantFailed: 1},
+		"missing state":      {input: CallbackInput{Binding: testBinding, Code: testCode}},
+		"missing code":       {input: CallbackInput{State: testState, Binding: testBinding}, wantClaims: 1, wantFailed: 1},
+		"mismatched binding": {input: CallbackInput{State: testState, Binding: "wrong", Code: testCode}, claimErr: ErrNotClaimable, wantClaims: 1},
+		"expired attempt":    {input: CallbackInput{State: testState, Binding: testBinding, Code: testCode}, claimErr: ErrNotClaimable, wantClaims: 1},
+		"provider denial":    {input: CallbackInput{State: testState, Binding: testBinding, ProviderError: "access_denied"}, wantClaims: 1, wantFailed: 1},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -128,7 +154,7 @@ func TestIssuedTokenValidationFailuresCreateNoStateAndCompensateOnce(t *testing.
 		t.Run(name, func(t *testing.T) {
 			service, repo, client := callbackFixture(t)
 			client.verifyErr = errors.New(name)
-			result, err := service.Complete(context.Background(), CallbackInput{State: "state", Binding: "binding", Code: "code"})
+			result, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode})
 			if !errors.Is(err, ErrRestartRequired) || result.Success || client.exchanges != 1 || client.revokes != 1 || repo.failed != 1 || repo.final.UserID != uuid.Nil {
 				t.Fatalf("result=%+v err=%v client=%+v final=%+v", result, err, client, repo.final)
 			}
@@ -137,7 +163,7 @@ func TestIssuedTokenValidationFailuresCreateNoStateAndCompensateOnce(t *testing.
 	t.Run("invalid nonce", func(t *testing.T) {
 		service, repo, client := callbackFixture(t)
 		client.identity.Nonce = "wrong"
-		_, err := service.Complete(context.Background(), CallbackInput{State: "state", Binding: "binding", Code: "code"})
+		_, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode})
 		if !errors.Is(err, ErrRestartRequired) || client.revokes != 1 || repo.failed != 1 || repo.final.UserID != uuid.Nil {
 			t.Fatalf("err=%v client=%+v final=%+v", err, client, repo.final)
 		}
@@ -147,7 +173,7 @@ func TestIssuedTokenValidationFailuresCreateNoStateAndCompensateOnce(t *testing.
 func TestCallbackFinalizationRollbackCompensatesOnce(t *testing.T) {
 	service, repo, client := callbackFixture(t)
 	repo.finalErr = errors.New("rollback")
-	result, err := service.Complete(context.Background(), CallbackInput{State: "state", Binding: "binding", Code: "code"})
+	result, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode})
 	if !errors.Is(err, ErrRestartRequired) || result.Success || repo.failed != 1 || client.revokes != 1 {
 		t.Fatalf("result=%+v err=%v failed=%d revokes=%d", result, err, repo.failed, client.revokes)
 	}
@@ -164,7 +190,7 @@ func TestCallbackFailuresAreTerminalAndCompensatedOnce(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			service, repo, client := callbackFixture(t)
 			test.mutate(repo, client)
-			input := CallbackInput{State: "state", Binding: "binding", Code: "code"}
+			input := CallbackInput{State: testState, Binding: testBinding, Code: testCode}
 			if name == "provider denial" {
 				input.Code, input.ProviderError = "", "access_denied"
 			}
@@ -181,7 +207,7 @@ func TestCallbackReplayNeverExchangesAgain(t *testing.T) {
 	repo.claim.TerminalOutcome = "succeeded"
 	repo.claim.TerminalRoute = "/connect/result"
 	repo.active = true
-	result, err := service.Complete(context.Background(), CallbackInput{State: "state", Binding: "binding", Code: "code", ExistingSession: "session"})
+	result, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode, ExistingSession: "session"})
 	if err != nil || result.Route != "/connect/result" || client.exchanges != 0 {
 		t.Fatalf("result=%+v err=%v exchanges=%d", result, err, client.exchanges)
 	}
@@ -190,7 +216,7 @@ func TestCallbackReplayNeverExchangesAgain(t *testing.T) {
 func TestCallbackReplayWithoutActiveSessionRequiresRestart(t *testing.T) {
 	service, repo, client := callbackFixture(t)
 	repo.claim.TerminalOutcome, repo.claim.TerminalRoute = "succeeded", "/connect/result"
-	result, err := service.Complete(context.Background(), CallbackInput{State: "state", Binding: "binding", Code: "code"})
+	result, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode})
 	if !errors.Is(err, ErrRestartRequired) || result.Route != "/connect/result" || client.exchanges != 0 || repo.final.UserID != uuid.Nil {
 		t.Fatalf("result=%+v err=%v exchanges=%d", result, err, client.exchanges)
 	}
@@ -211,7 +237,7 @@ func TestAuthorizationStatusUsesOnlyHashedOpaqueSession(t *testing.T) {
 
 func TestCallbackCreatesNewIdentityWhenNoneRemains(t *testing.T) {
 	service, repo, _ := callbackFixture(t)
-	if _, err := service.Complete(context.Background(), CallbackInput{State: "state", Binding: "binding", Code: "code"}); err != nil {
+	if _, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode}); err != nil {
 		t.Fatal(err)
 	}
 	if repo.final.UserID == uuid.Nil || repo.final.Subject != "subject" {
@@ -222,7 +248,7 @@ func TestCallbackCreatesNewIdentityWhenNoneRemains(t *testing.T) {
 func TestCallbackResumesExistingActiveIdentity(t *testing.T) {
 	service, repo, _ := callbackFixture(t)
 	repo.user, repo.found = uuid.New(), true
-	if _, err := service.Complete(context.Background(), CallbackInput{State: "state", Binding: "binding", Code: "code"}); err != nil {
+	if _, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode}); err != nil {
 		t.Fatal(err)
 	}
 	if repo.final.UserID != repo.user {

@@ -11,10 +11,34 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 )
 
+// Process timeouts bound HTTP, provider, readiness, and shutdown work.
 const (
 	defaultPort = "10000"
+
+	envAppEnvironment    = "APP_ENV"
+	envAuthorizationGate = "AUTH_INITIATION_ENABLED"
+	envOAuthClientID     = "SNAPTRADE_OAUTH_CLIENT_ID"
+	envOAuthClientSecret = "SNAPTRADE_OAUTH_CLIENT_SECRET"
+	envOAuthCallbackURL  = "SNAPTRADE_OAUTH_CALLBACK_URL"
+	envOIDCIssuer        = "SNAPTRADE_OIDC_ISSUER"
+	envOAuthHashKey      = "OAUTH_HASH_KEY"
+	envOAuthVerifierKey  = "OAUTH_ENCRYPTION_KEY"
+	envSessionHashKey    = "SESSION_HASH_KEY"
+	envOAuthTokenKeyV1   = "OAUTH_TOKEN_KEY_V1"
+	envDatabaseURL       = "DATABASE_URL"
+	envMigrationsURL     = "MIGRATIONS_URL"
+	envFixtureBaseURL    = "FIXTURE_BASE_URL"
+	envFixtureToken      = "FIXTURE_PROVIDER_BEARER_TOKEN"
+	envPort              = "PORT"
+
+	environmentProduction  = "production"
+	environmentIntegration = "integration"
+	schemeHTTP             = "http"
+	schemeHTTPS            = "https"
 
 	ReadHeaderTimeout    = 5 * time.Second
 	ReadTimeout          = 10 * time.Second
@@ -69,9 +93,9 @@ func LoadHealthcheck() (HealthcheckConfig, error) {
 
 // Load reads and validates configuration from environment variables.
 func Load() (Config, error) {
-	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	databaseURL := strings.TrimSpace(os.Getenv(envDatabaseURL))
 	if databaseURL == "" {
-		return Config{}, errors.New("DATABASE_URL is required")
+		return Config{}, errors.New(envDatabaseURL + " is required")
 	}
 
 	port, err := loadPort()
@@ -79,7 +103,7 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	migrationURL := strings.TrimSpace(os.Getenv("MIGRATIONS_URL"))
+	migrationURL := strings.TrimSpace(os.Getenv(envMigrationsURL))
 	if migrationURL == "" {
 		migrationURL = "file://db/migrations"
 	}
@@ -88,8 +112,8 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
-	appEnvironment := strings.ToLower(strings.TrimSpace(os.Getenv("APP_ENV")))
-	production := appEnvironment == "production"
+	appEnvironment := strings.ToLower(strings.TrimSpace(os.Getenv(envAppEnvironment)))
+	production := appEnvironment == environmentProduction
 	authorization, err := loadAuthorizationConfig(appEnvironment)
 	if err != nil {
 		return Config{}, err
@@ -100,7 +124,7 @@ func Load() (Config, error) {
 		DatabaseURL:          databaseURL,
 		MigrationURL:         migrationURL,
 		Production:           production,
-		Integration:          appEnvironment == "integration",
+		Integration:          appEnvironment == environmentIntegration,
 		FixtureBaseURL:       fixtureBaseURL,
 		FixtureProviderToken: fixtureToken,
 		Authorization:        authorization,
@@ -108,64 +132,79 @@ func Load() (Config, error) {
 }
 
 func loadAuthorizationConfig(appEnvironment string) (AuthorizationConfig, error) {
-	enabled, err := strconv.ParseBool(defaultString(strings.TrimSpace(os.Getenv("AUTH_INITIATION_ENABLED")), "false"))
+	enabled, err := strconv.ParseBool(defaultString(strings.TrimSpace(os.Getenv(envAuthorizationGate)), "false"))
 	if err != nil {
-		return AuthorizationConfig{}, errors.New("AUTH_INITIATION_ENABLED must be true or false")
+		return AuthorizationConfig{}, errors.New(envAuthorizationGate + " must be true or false")
 	}
-	result := AuthorizationConfig{Enabled: enabled, AllowedReturns: []string{"/connect", "/portfolio"}}
+	result := AuthorizationConfig{Enabled: enabled, AllowedReturns: []string{auth.DefaultReturnRoute, auth.PortfolioReturnRoute}}
 	if !enabled {
 		return result, nil
 	}
-	result.ClientID = strings.TrimSpace(os.Getenv("SNAPTRADE_OAUTH_CLIENT_ID"))
-	result.ClientSecret = strings.TrimSpace(os.Getenv("SNAPTRADE_OAUTH_CLIENT_SECRET"))
-	result.CallbackURL = strings.TrimSpace(os.Getenv("SNAPTRADE_OAUTH_CALLBACK_URL"))
-	result.Issuer = strings.TrimSpace(os.Getenv("SNAPTRADE_OIDC_ISSUER"))
-	if result.ClientID == "" || result.ClientSecret == "" || result.CallbackURL == "" || result.Issuer == "" {
-		return AuthorizationConfig{}, errors.New("enabled authorization requires complete OAuth configuration")
+	if err := loadOAuthSettings(&result, appEnvironment); err != nil {
+		return AuthorizationConfig{}, err
 	}
-	issuer, err := validateHTTPURL(result.Issuer, appEnvironment == "integration")
+	if err := loadAuthorizationKeys(&result); err != nil {
+		return AuthorizationConfig{}, err
+	}
+	return result, nil
+}
+
+func loadOAuthSettings(result *AuthorizationConfig, appEnvironment string) error {
+	result.ClientID = strings.TrimSpace(os.Getenv(envOAuthClientID))
+	result.ClientSecret = strings.TrimSpace(os.Getenv(envOAuthClientSecret))
+	result.CallbackURL = strings.TrimSpace(os.Getenv(envOAuthCallbackURL))
+	result.Issuer = strings.TrimSpace(os.Getenv(envOIDCIssuer))
+	if result.ClientID == "" || result.ClientSecret == "" || result.CallbackURL == "" || result.Issuer == "" {
+		return errors.New("enabled authorization requires complete OAuth configuration")
+	}
+	issuer, err := validateHTTPURL(result.Issuer, appEnvironment == environmentIntegration)
 	if err != nil || issuer.Path != "" {
-		return AuthorizationConfig{}, errors.New("invalid OIDC issuer URL")
+		return errors.New("invalid OIDC issuer URL")
 	}
 	callback, err := validateHTTPURL(result.CallbackURL, false)
 	if err != nil {
-		return AuthorizationConfig{}, errors.New("invalid OAuth callback URL")
+		return errors.New("invalid OAuth callback URL")
 	}
-	if callback.Scheme == "http" && !isLoopback(callback.Hostname()) {
-		return AuthorizationConfig{}, errors.New("HTTP OAuth callback must use a loopback host")
+	if callback.Scheme == schemeHTTP && !isLoopback(callback.Hostname()) {
+		return errors.New("HTTP OAuth callback must use a loopback host")
 	}
-	if callback.Path != "/api/auth/snaptrade/callback" {
-		return AuthorizationConfig{}, errors.New("OAuth callback URL must use the configured callback path")
+	if callback.Path != auth.SnapTradeCallbackPath {
+		return errors.New("OAuth callback URL must use the configured callback path")
 	}
-	result.HashKey, err = decodeKey("OAUTH_HASH_KEY")
+	return nil
+}
+
+func loadAuthorizationKeys(result *AuthorizationConfig) error {
+	var err error
+	result.HashKey, err = decodeKey(envOAuthHashKey)
 	if err != nil {
-		return AuthorizationConfig{}, err
+		return err
 	}
-	result.EncryptionKey, err = decodeKey("OAUTH_ENCRYPTION_KEY")
+	result.EncryptionKey, err = decodeKey(envOAuthVerifierKey)
 	if err != nil {
-		return AuthorizationConfig{}, err
+		return err
 	}
 	if subtle.ConstantTimeCompare(result.HashKey, result.EncryptionKey) == 1 {
-		return AuthorizationConfig{}, errors.New("OAuth hashing and encryption keys must be independent")
+		return errors.New("OAuth hashing and encryption keys must be independent")
 	}
-	result.SessionHashKey, err = decodeKey("SESSION_HASH_KEY")
+	result.SessionHashKey, err = decodeKey(envSessionHashKey)
 	if err != nil {
-		return AuthorizationConfig{}, err
+		return err
 	}
-	tokenKey, err := decodeKey("OAUTH_TOKEN_KEY_V1")
+	tokenKey, err := decodeKey(envOAuthTokenKeyV1)
 	if err != nil {
-		return AuthorizationConfig{}, err
+		return err
 	}
 	for _, other := range [][]byte{result.HashKey, result.EncryptionKey, result.SessionHashKey} {
 		if subtle.ConstantTimeCompare(tokenKey, other) == 1 {
-			return AuthorizationConfig{}, errors.New("OAuth token encryption key must be independent")
+			return errors.New("OAuth token encryption key must be independent")
 		}
 	}
 	if subtle.ConstantTimeCompare(result.SessionHashKey, result.HashKey) == 1 || subtle.ConstantTimeCompare(result.SessionHashKey, result.EncryptionKey) == 1 {
-		return AuthorizationConfig{}, errors.New("session hashing key must be independent")
+		return errors.New("session hashing key must be independent")
 	}
 	result.TokenKeys, result.CurrentTokenKey = map[int][]byte{1: tokenKey}, 1
-	return result, nil
+	return nil
 }
 
 func defaultString(value, fallback string) string {
@@ -188,7 +227,7 @@ func validateHTTPURL(raw string, allowNonLoopbackHTTP bool) (*url.URL, error) {
 	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("invalid URL")
 	}
-	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && (allowNonLoopbackHTTP || isLoopback(parsed.Hostname()))) {
+	if parsed.Scheme != schemeHTTPS && (parsed.Scheme != schemeHTTP || (!allowNonLoopbackHTTP && !isLoopback(parsed.Hostname()))) {
 		return nil, errors.New("URL must use HTTPS")
 	}
 	return parsed, nil
@@ -199,8 +238,8 @@ func isLoopback(host string) bool {
 }
 
 func loadFixtureConfig() (*url.URL, string, error) {
-	rawURL := strings.TrimSpace(os.Getenv("FIXTURE_BASE_URL"))
-	token := strings.TrimSpace(os.Getenv("FIXTURE_PROVIDER_BEARER_TOKEN"))
+	rawURL := strings.TrimSpace(os.Getenv(envFixtureBaseURL))
+	token := strings.TrimSpace(os.Getenv(envFixtureToken))
 	if rawURL == "" && token == "" {
 		return nil, "", nil
 	}
@@ -208,7 +247,7 @@ func loadFixtureConfig() (*url.URL, string, error) {
 		return nil, "", errors.New("fixture base URL and provider bearer token must be configured together")
 	}
 	parsed, err := url.Parse(rawURL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
+	if err != nil || (parsed.Scheme != schemeHTTP && parsed.Scheme != schemeHTTPS) || parsed.Host == "" || parsed.User != nil {
 		return nil, "", errors.New("FIXTURE_BASE_URL must be an HTTP origin without credentials")
 	}
 	if parsed.Path != "" && parsed.Path != "/" || parsed.RawQuery != "" || parsed.Fragment != "" {
@@ -218,7 +257,7 @@ func loadFixtureConfig() (*url.URL, string, error) {
 }
 
 func loadPort() (string, error) {
-	port := strings.TrimSpace(os.Getenv("PORT"))
+	port := strings.TrimSpace(os.Getenv(envPort))
 	if port == "" {
 		port = defaultPort
 	}

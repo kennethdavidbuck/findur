@@ -18,18 +18,22 @@ type Readiness struct {
 	timeout   time.Duration
 }
 
+// NewReadiness creates a bounded readiness gate for the database dependency.
 func NewReadiness(database Dependency, timeout time.Duration) *Readiness {
 	return &Readiness{database: database, timeout: timeout}
 }
 
+// SetReady changes whether the process admits readiness checks.
 func (r *Readiness) SetReady(ready bool) {
 	r.accepting.Store(ready)
 }
 
+// IsReady reports whether the process currently admits readiness checks.
 func (r *Readiness) IsReady() bool {
 	return r.accepting.Load()
 }
 
+// Check verifies admission and the database dependency within the configured timeout.
 func (r *Readiness) Check(ctx context.Context) error {
 	if !r.IsReady() {
 		return errNotAccepting

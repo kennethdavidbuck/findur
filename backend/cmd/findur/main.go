@@ -1,3 +1,4 @@
+// Package main composes and runs the Findur API process.
 package main
 
 import (
@@ -27,14 +28,31 @@ import (
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/provider"
 )
 
+const (
+	healthcheckCommand           = "healthcheck"
+	invalidConfigurationCategory = "invalid_configuration"
+	databaseUnavailableCategory  = "database_unavailable"
+	migrationFailureCategory     = "migration_failure"
+	httpServerFailureCategory    = "http_server_failure"
+	shutdownTimeoutCategory      = "shutdown_timeout"
+	internalFailureCategory      = "internal_failure"
+	standardLibraryCategory      = "standard_library"
+)
+
 func main() {
-	if len(os.Args) == 2 && os.Args[1] == "healthcheck" {
+	if err := execute(); err != nil {
+		os.Exit(1)
+	}
+}
+
+func execute() error {
+	if len(os.Args) == 2 && os.Args[1] == healthcheckCommand {
 		healthcheckConfig, err := config.LoadHealthcheck()
 		client := &http.Client{Timeout: 2 * time.Second}
 		if err != nil || localHealthcheck(healthcheckConfig, client) != nil {
-			os.Exit(1)
+			return errors.New("healthcheck failed")
 		}
-		return
+		return nil
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
@@ -42,8 +60,9 @@ func main() {
 
 	if err := run(rootCtx, logger); err != nil {
 		logger.Error("findur stopped", "category", failureCategory(err))
-		os.Exit(1)
+		return err
 	}
+	return nil
 }
 
 type healthcheckClient interface {
@@ -59,7 +78,7 @@ func localHealthcheck(cfg config.HealthcheckConfig, client healthcheckClient) er
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	_, _ = io.Copy(io.Discard, response.Body)
 	if response.StatusCode != http.StatusOK {
 		return errors.New("health endpoint unavailable")
@@ -102,41 +121,12 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		providerClient := provider.NewClient(cfg.FixtureBaseURL, cfg.FixtureProviderToken, providerHTTPClient)
 		diagnostics = httpapi.NewDiagnostics(cfg.FixtureBaseURL, providerClient)
 	}
-	var authorization *auth.Service
-	var callback *auth.CallbackService
-	var syntheticOIDC http.Handler
-	if cfg.Authorization.Enabled {
-		discoveryClient := oidc.NewDiscoveryClient(cfg.Authorization.Issuer, &http.Client{Timeout: config.ProviderTimeout})
-		repository := postgresadapter.NewOAuthAttemptRepository(pool)
-		authorization, err = auth.NewService(auth.Config{
-			Enabled: true, ClientID: cfg.Authorization.ClientID, CallbackURL: cfg.Authorization.CallbackURL,
-			AllowedReturns: cfg.Authorization.AllowedReturns, DefaultReturn: "/connect",
-			HashKey: cfg.Authorization.HashKey, EncryptionKey: cfg.Authorization.EncryptionKey,
-			Random: rand.Reader, Clock: time.Now, OperationTimeout: config.AuthorizationTimeout,
-		}, repository, discoveryClient)
-		if err != nil {
-			pool.Close()
-			return errInvalidConfiguration
-		}
-		callback, err = auth.NewCallbackService(auth.CallbackConfig{
-			Provider: "snaptrade", CallbackURL: cfg.Authorization.CallbackURL,
-			AttemptHashKey: cfg.Authorization.HashKey, SessionHashKey: cfg.Authorization.SessionHashKey,
-			VerifierKey: cfg.Authorization.EncryptionKey, TokenKeys: cfg.Authorization.TokenKeys, CurrentTokenKey: cfg.Authorization.CurrentTokenKey,
-			Random: rand.Reader, Clock: time.Now, OperationTimeout: config.AuthorizationTimeout,
-		}, repository, oidc.NewCallbackClient(discoveryClient, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL))
-		if err != nil {
-			pool.Close()
-			return errInvalidConfiguration
-		}
-		if cfg.Integration && cfg.FixtureBaseURL != nil {
-			syntheticOIDC, err = oidcfixture.New(cfg.Authorization.Issuer, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL)
-			if err != nil {
-				pool.Close()
-				return errInvalidConfiguration
-			}
-		}
+	authorization, err := buildAuthorization(cfg, pool)
+	if err != nil {
+		pool.Close()
+		return errInvalidConfiguration
 	}
-	server := newServer(cfg.Address, httpapi.NewHandlerWithCallback(logger, readiness, buildinfo.SHA, diagnostics, authorization, callback, syntheticOIDC), logger)
+	server := newServer(cfg.Address, httpapi.NewHandlerWithCallback(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, authorization.fixture), logger)
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("http server starting", "address", cfg.Address)
@@ -163,6 +153,62 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 	return nil
 }
 
+type authorizationComponents struct {
+	initiator *auth.Service
+	callback  *auth.CallbackService
+	fixture   http.Handler
+}
+
+func buildAuthorization(cfg config.Config, pool *pgxpool.Pool) (authorizationComponents, error) {
+	if !cfg.Authorization.Enabled {
+		return authorizationComponents{}, nil
+	}
+	discovery := oidc.NewDiscoveryClient(cfg.Authorization.Issuer, &http.Client{Timeout: config.ProviderTimeout})
+	repository := postgresadapter.NewOAuthAttemptRepository(pool)
+	initiator, err := auth.NewService(auth.Config{
+		Enabled:          true,
+		ClientID:         cfg.Authorization.ClientID,
+		CallbackURL:      cfg.Authorization.CallbackURL,
+		AllowedReturns:   cfg.Authorization.AllowedReturns,
+		DefaultReturn:    auth.DefaultReturnRoute,
+		HashKey:          cfg.Authorization.HashKey,
+		EncryptionKey:    cfg.Authorization.EncryptionKey,
+		Random:           rand.Reader,
+		Clock:            time.Now,
+		OperationTimeout: config.AuthorizationTimeout,
+	}, repository, discovery)
+	if err != nil {
+		return authorizationComponents{}, err
+	}
+	callback, err := auth.NewCallbackService(auth.CallbackConfig{
+		Provider:         auth.SnapTradeProvider,
+		CallbackURL:      cfg.Authorization.CallbackURL,
+		AttemptHashKey:   cfg.Authorization.HashKey,
+		SessionHashKey:   cfg.Authorization.SessionHashKey,
+		VerifierKey:      cfg.Authorization.EncryptionKey,
+		TokenKeys:        cfg.Authorization.TokenKeys,
+		CurrentTokenKey:  cfg.Authorization.CurrentTokenKey,
+		Random:           rand.Reader,
+		Clock:            time.Now,
+		OperationTimeout: config.AuthorizationTimeout,
+	}, repository, oidc.NewCallbackClient(discovery, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL))
+	if err != nil {
+		return authorizationComponents{}, err
+	}
+	fixture, err := buildOIDCFixture(cfg)
+	if err != nil {
+		return authorizationComponents{}, err
+	}
+	return authorizationComponents{initiator: initiator, callback: callback, fixture: fixture}, nil
+}
+
+func buildOIDCFixture(cfg config.Config) (http.Handler, error) {
+	if !cfg.Integration || cfg.FixtureBaseURL == nil {
+		return nil, nil
+	}
+	return oidcfixture.New(cfg.Authorization.Issuer, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL)
+}
+
 func newServer(address string, handler http.Handler, logger *slog.Logger) *http.Server {
 	return &http.Server{
 		Addr:              address,
@@ -180,7 +226,7 @@ type safeServerErrorWriter struct {
 }
 
 func (w safeServerErrorWriter) Write(message []byte) (int, error) {
-	w.logger.Error("http server error", "category", "standard_library")
+	w.logger.Error("http server error", "category", standardLibraryCategory)
 	return len(message), nil
 }
 
@@ -205,16 +251,16 @@ var (
 func failureCategory(err error) string {
 	switch {
 	case errors.Is(err, errInvalidConfiguration):
-		return "invalid_configuration"
+		return invalidConfigurationCategory
 	case errors.Is(err, errDatabase):
-		return "database_unavailable"
+		return databaseUnavailableCategory
 	case errors.Is(err, errMigration):
-		return "migration_failure"
+		return migrationFailureCategory
 	case errors.Is(err, errHTTPServer):
-		return "http_server_failure"
+		return httpServerFailureCategory
 	case errors.Is(err, errShutdown):
-		return "shutdown_timeout"
+		return shutdownTimeoutCategory
 	default:
-		return "internal_failure"
+		return internalFailureCategory
 	}
 }

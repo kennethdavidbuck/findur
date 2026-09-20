@@ -7,6 +7,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -29,6 +31,50 @@ func TestNewServerUsesBoundedTimeouts(t *testing.T) {
 	}
 	if server.IdleTimeout != config.IdleTimeout {
 		t.Fatalf("IdleTimeout = %s", server.IdleTimeout)
+	}
+}
+
+func TestBuildAuthorizationSkipsDisabledFeature(t *testing.T) {
+	components, err := buildAuthorization(config.Config{}, nil)
+	if err != nil || components.initiator != nil || components.callback != nil || components.fixture != nil {
+		t.Fatalf("components=%+v error=%v", components, err)
+	}
+}
+
+func TestBuildOIDCFixtureFollowsIntegrationGate(t *testing.T) {
+	fixtureURL, err := url.Parse("http://fixture.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{
+		Integration:    true,
+		FixtureBaseURL: fixtureURL,
+		Authorization: config.AuthorizationConfig{
+			Issuer:       "http://issuer.example",
+			ClientID:     "client-id",
+			ClientSecret: "client-secret",
+			CallbackURL:  "http://127.0.0.1:8080/api/auth/snaptrade/callback",
+		},
+	}
+	fixture, err := buildOIDCFixture(cfg)
+	if err != nil || fixture == nil {
+		t.Fatalf("fixture=%v error=%v", fixture, err)
+	}
+	cfg.Integration = false
+	fixture, err = buildOIDCFixture(cfg)
+	if err != nil || fixture != nil {
+		t.Fatalf("disabled fixture=%v error=%v", fixture, err)
+	}
+}
+
+func TestExecuteDispatchesHealthcheckCommand(t *testing.T) {
+	originalArgs := os.Args
+	os.Args = []string{"findur", healthcheckCommand}
+	t.Cleanup(func() { os.Args = originalArgs })
+	t.Setenv("PORT", "invalid")
+
+	if err := execute(); err == nil {
+		t.Fatal("execute() error = nil, want invalid healthcheck configuration")
 	}
 }
 

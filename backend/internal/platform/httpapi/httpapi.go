@@ -11,6 +11,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 )
 
 var errNotAccepting = errors.New("process is not accepting work")
@@ -51,6 +53,7 @@ func NewHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diag
 	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, nil)
 }
 
+// NewHandlerWithCallback creates the API handler with optional authorization dependencies.
 func NewHandlerWithCallback(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, integrationFixtures ...http.Handler) http.Handler {
 	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, integrationFixtures...)
 }
@@ -117,11 +120,11 @@ func routeCategory(path string) string {
 		return "healthz"
 	case "/api/readyz":
 		return "readyz"
-	case "/api/auth/snaptrade/authorize":
+	case authorizationPath:
 		return "authorization_begin"
-	case "/api/auth/status":
+	case authorizationStatusPath:
 		return "authorization_status"
-	case "/api/auth/snaptrade/callback":
+	case auth.SnapTradeCallbackPath:
 		return "authorization_callback"
 	default:
 		if strings.HasPrefix(path, "/api/__fixture/") {

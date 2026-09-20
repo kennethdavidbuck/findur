@@ -30,6 +30,11 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Verify formatting
         run: test -z "$(gofmt -l .)"
+      - name: GolangCI-Lint
+        uses: golangci/golangci-lint-action@d583c34f0599d37dbac4a198b9c83201be380893 # v9.3.0
+        with:
+          version: v2.13.0
+          working-directory: backend
       - name: Verify generated API is current
         run: go generate ./... && git diff --exit-code -- api internal/generated
       - name: Vet
@@ -100,10 +105,13 @@ jobs:
             done
           }
           assert_schema() {
+            latest_migration=$(find backend/db/migrations -type f -name '*.up.sql' -printf '%f\n' | sort -V | tail -n 1)
+            latest_version=${latest_migration%%_*}
+            latest_version=$((10#$latest_version))
             schema_state=$(docker compose exec -T postgres \
               psql -U findur -d findur -Atc \
               "SELECT version::text || ':' || dirty::text FROM schema_migrations")
-            test "$schema_state" = '2:false'
+            test "$schema_state" = "$latest_version:false"
           }
 
           assert_schema

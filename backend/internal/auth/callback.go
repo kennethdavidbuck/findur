@@ -16,16 +16,22 @@ import (
 	"github.com/google/uuid"
 )
 
+// Session lifetimes and callback persistence values.
 const (
 	SessionIdleLifetime     = 30 * time.Minute
 	SessionAbsoluteLifetime = 12 * time.Hour
+	tokenKindAccess         = "access"
+	tokenKindRefresh        = "refresh"
+	attemptSucceeded        = "succeeded"
 )
 
+// Stable callback errors exposed without provider detail.
 var (
 	ErrRestartRequired = errors.New("authorization must be restarted")
 	ErrTerminalization = errors.New("authorization recovery failed")
 )
 
+// CallbackClaim contains the persisted state required to consume or replay a callback.
 type CallbackClaim struct {
 	StateHash         []byte
 	NonceHash         []byte
@@ -36,6 +42,7 @@ type CallbackClaim struct {
 	UserID            uuid.UUID
 }
 
+// CallbackRepository persists callback state, identities, authorizations, and sessions.
 type CallbackRepository interface {
 	ClaimCallback(context.Context, []byte, []byte, time.Time) (CallbackClaim, error)
 	FindActiveUser(context.Context, string, string) (uuid.UUID, bool, error)
@@ -44,19 +51,23 @@ type CallbackRepository interface {
 	SessionActive(context.Context, []byte, time.Time) (bool, error)
 }
 
+// TokenSet is the sensitive token material returned by a successful code exchange.
 type TokenSet struct {
 	IDToken, AccessToken, RefreshToken string
 	Expiry                             time.Time
 }
 
+// Identity contains the verified OIDC claims used by Findur.
 type Identity struct{ Subject, Nonce string }
 
+// OIDCClient provides the standards-sensitive provider operations used by callbacks.
 type OIDCClient interface {
 	Exchange(context.Context, string, string, string) (TokenSet, error)
 	Verify(context.Context, string) (Identity, error)
 	Revoke(context.Context, string) error
 }
 
+// Finalization contains encrypted authorization and hashed session material for atomic persistence.
 type Finalization struct {
 	StateHash, SessionHash, CSRFHash []byte
 	Provider, Subject                string
@@ -70,20 +81,24 @@ type Finalization struct {
 	ReturnRoute                      string
 }
 
+// CallbackInput is normalized callback and browser-correlation input.
 type CallbackInput struct {
 	State, Binding, Code, ProviderError, ExistingSession string
 }
 
+// CallbackResult contains only browser-safe callback output.
 type CallbackResult struct {
 	Route, Session, CSRF string
 	Success              bool
 }
 
+// AuthorizationStatus is the categorical browser-visible authorization state.
 type AuthorizationStatus struct {
 	AuthorizationAvailable bool
 	Authenticated          bool
 }
 
+// CallbackConfig contains validated callback policy and cryptographic keys.
 type CallbackConfig struct {
 	Provider, CallbackURL string
 	AttemptHashKey        []byte
@@ -96,6 +111,7 @@ type CallbackConfig struct {
 	OperationTimeout      time.Duration
 }
 
+// CallbackService completes OAuth grants and establishes isolated sessions.
 type CallbackService struct {
 	config CallbackConfig
 	repo   CallbackRepository
@@ -104,6 +120,7 @@ type CallbackService struct {
 	tokens map[int]cipher.AEAD
 }
 
+// NewCallbackService validates callback dependencies and cryptographic policy.
 func NewCallbackService(cfg CallbackConfig, repo CallbackRepository, client OIDCClient) (*CallbackService, error) {
 	if repo == nil || client == nil || cfg.Provider == "" || cfg.CallbackURL == "" || cfg.Random == nil || cfg.Clock == nil || cfg.OperationTimeout <= 0 || len(cfg.AttemptHashKey) < 32 || len(cfg.SessionHashKey) < 32 || len(cfg.VerifierKey) != 32 {
 		return nil, errors.New("incomplete callback service configuration")
@@ -142,80 +159,100 @@ func newAEAD(key []byte) (cipher.AEAD, error) {
 	return cipher.NewGCM(block)
 }
 
+// Complete consumes one callback and returns a categorical browser result.
 func (s *CallbackService) Complete(ctx context.Context, in CallbackInput) (CallbackResult, error) {
 	if in.State == "" || in.Binding == "" {
-		return CallbackResult{Route: "/connect/result"}, ErrRestartRequired
+		return restartResult(), ErrRestartRequired
 	}
 	now := s.config.Clock().UTC()
 	claim, err := s.repo.ClaimCallback(ctx, s.attemptHash(in.State), s.attemptHash(in.Binding), now)
 	if err != nil {
-		return CallbackResult{Route: "/connect/result"}, ErrRestartRequired
+		return restartResult(), ErrRestartRequired
 	}
 	if claim.TerminalOutcome != "" {
-		if claim.TerminalOutcome == "succeeded" && in.ExistingSession != "" {
-			active, checkErr := s.repo.SessionActive(ctx, s.sessionHash(in.ExistingSession), now)
-			if checkErr == nil && active {
-				return CallbackResult{Route: claim.TerminalRoute, Success: true}, nil
-			}
-		}
-		return CallbackResult{Route: "/connect/result"}, ErrRestartRequired
+		return s.replay(ctx, claim, in.ExistingSession, now)
 	}
 	if in.ProviderError != "" || in.Code == "" {
 		return s.fail(ctx, claim.StateHash, now, "")
 	}
+	tokens, identity, err := s.exchangeAndVerify(ctx, claim, in.Code)
+	defer clearStrings(&tokens)
+	if err != nil {
+		return s.fail(ctx, claim.StateHash, now, tokens.AccessToken)
+	}
+	result, err := s.establishSession(ctx, claim, identity, tokens)
+	if err != nil {
+		return s.fail(ctx, claim.StateHash, s.config.Clock().UTC(), tokens.AccessToken)
+	}
+	return result, nil
+}
+
+func (s *CallbackService) replay(ctx context.Context, claim CallbackClaim, session string, now time.Time) (CallbackResult, error) {
+	if claim.TerminalOutcome == attemptSucceeded && session != "" {
+		active, err := s.repo.SessionActive(ctx, s.sessionHash(session), now)
+		if err == nil && active {
+			return CallbackResult{Route: claim.TerminalRoute, Success: true}, nil
+		}
+	}
+	return restartResult(), ErrRestartRequired
+}
+
+func (s *CallbackService) exchangeAndVerify(ctx context.Context, claim CallbackClaim, code string) (TokenSet, Identity, error) {
 	verifier, err := s.decryptVerifier(claim.StateHash, claim.EncryptedVerifier)
 	if err != nil {
-		return s.fail(ctx, claim.StateHash, now, "")
+		return TokenSet{}, Identity{}, err
 	}
 	opCtx, cancel := context.WithTimeout(ctx, s.config.OperationTimeout)
 	defer cancel()
-	tokenSet, err := s.oidc.Exchange(opCtx, in.Code, s.config.CallbackURL, verifier)
-	defer clearStrings(&tokenSet)
+	tokens, err := s.oidc.Exchange(opCtx, code, s.config.CallbackURL, verifier)
 	if err != nil {
-		return s.fail(ctx, claim.StateHash, now, tokenSet.AccessToken)
+		return tokens, Identity{}, err
 	}
-	if tokenSet.IDToken == "" || tokenSet.AccessToken == "" {
-		return s.fail(ctx, claim.StateHash, now, tokenSet.AccessToken)
+	if tokens.IDToken == "" || tokens.AccessToken == "" {
+		return tokens, Identity{}, errors.New("incomplete token response")
 	}
-	identity, err := s.oidc.Verify(opCtx, tokenSet.IDToken)
-	cancel()
+	identity, err := s.oidc.Verify(opCtx, tokens.IDToken)
 	if err != nil || identity.Subject == "" || subtle.ConstantTimeCompare(claim.NonceHash, s.attemptHash(identity.Nonce)) != 1 {
-		return s.fail(ctx, claim.StateHash, now, tokenSet.AccessToken)
+		return tokens, Identity{}, errors.New("invalid identity token")
 	}
+	return tokens, identity, nil
+}
+
+func (s *CallbackService) establishSession(ctx context.Context, claim CallbackClaim, identity Identity, tokens TokenSet) (CallbackResult, error) {
 	userID, found, err := s.repo.FindActiveUser(ctx, s.config.Provider, identity.Subject)
 	if err != nil {
-		return s.fail(ctx, claim.StateHash, now, tokenSet.AccessToken)
+		return CallbackResult{}, err
 	}
 	if !found {
 		userID = uuid.New()
 	}
 	session, err := s.secret()
 	if err != nil {
-		return s.failIssued(ctx, claim.StateHash, now, tokenSet.AccessToken)
+		return CallbackResult{}, err
 	}
 	csrf, err := s.secret()
 	if err != nil {
-		return s.failIssued(ctx, claim.StateHash, now, tokenSet.AccessToken)
+		return CallbackResult{}, err
 	}
-	access, err := s.encryptToken(userID, "access", tokenSet.AccessToken)
+	access, err := s.encryptToken(userID, tokenKindAccess, tokens.AccessToken)
 	if err != nil {
-		return s.failIssued(ctx, claim.StateHash, now, tokenSet.AccessToken)
+		return CallbackResult{}, err
 	}
 	var refresh []byte
-	if tokenSet.RefreshToken != "" {
-		refresh, err = s.encryptToken(userID, "refresh", tokenSet.RefreshToken)
+	if tokens.RefreshToken != "" {
+		refresh, err = s.encryptToken(userID, tokenKindRefresh, tokens.RefreshToken)
 		if err != nil {
-			return s.failIssued(ctx, claim.StateHash, now, tokenSet.AccessToken)
+			return CallbackResult{}, err
 		}
 	}
 	finalNow := s.config.Clock().UTC()
 	final := Finalization{StateHash: claim.StateHash, Provider: s.config.Provider, Subject: identity.Subject, UserID: userID,
-		AccessToken: access, RefreshToken: refresh, EnvelopeVersion: s.config.CurrentTokenKey, TokenExpiresAt: tokenSet.Expiry,
+		AccessToken: access, RefreshToken: refresh, EnvelopeVersion: s.config.CurrentTokenKey, TokenExpiresAt: tokens.Expiry,
 		SessionHash: s.sessionHash(session), CSRFHash: s.sessionHash(csrf), SessionIdleExpiresAt: finalNow.Add(SessionIdleLifetime), SessionAbsoluteExpiresAt: finalNow.Add(SessionAbsoluteLifetime), CompletedAt: finalNow, ReturnRoute: claim.ReturnRoute}
 	if err := s.repo.FinalizeCallback(ctx, final); err != nil {
-		return s.fail(ctx, claim.StateHash, finalNow, tokenSet.AccessToken)
+		return CallbackResult{}, err
 	}
-	return CallbackResult{Route: "/connect/result", Session: session, CSRF: csrf, Success: true}, nil
+	return CallbackResult{Route: AuthorizationResultRoute, Session: session, CSRF: csrf, Success: true}, nil
 }
 
 // Status returns only categorical browser state. It never resolves or exposes an owner.
@@ -232,10 +269,6 @@ func (s *CallbackService) Status(ctx context.Context, session string) (Authoriza
 	return result, nil
 }
 
-func (s *CallbackService) failIssued(ctx context.Context, stateHash []byte, now time.Time, token string) (CallbackResult, error) {
-	return s.fail(ctx, stateHash, now, token)
-}
-
 func (s *CallbackService) fail(ctx context.Context, stateHash []byte, now time.Time, token string) (CallbackResult, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.config.OperationTimeout)
 	defer cancel()
@@ -244,10 +277,12 @@ func (s *CallbackService) fail(ctx context.Context, stateHash []byte, now time.T
 		_ = s.oidc.Revoke(cleanupCtx, token)
 	}
 	if failErr != nil {
-		return CallbackResult{Route: "/connect/result"}, ErrTerminalization
+		return restartResult(), ErrTerminalization
 	}
-	return CallbackResult{Route: "/connect/result"}, ErrRestartRequired
+	return restartResult(), ErrRestartRequired
 }
+
+func restartResult() CallbackResult { return CallbackResult{Route: AuthorizationResultRoute} }
 
 func (s *CallbackService) attemptHash(value string) []byte {
 	return keyedHash(s.config.AttemptHashKey, value)
