@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuthorizationStatus } from './auth-status'
 import { AuthenticatedLayout, type ProtectedRoute } from './components/AuthenticatedLayout'
 import { PublicLayout } from './components/PublicLayout'
@@ -6,7 +6,9 @@ import { I18nProvider, useI18n } from './i18n'
 import { AboutPage } from './pages/AboutPage'
 import { ConsentPage } from './pages/ConsentPage'
 import { LandingPage } from './pages/LandingPage'
+import { PortfolioPage } from './pages/PortfolioPage'
 import { StatusPage } from './pages/StatusPage'
+import { resetInitialInventoryRequest } from './inventory'
 import { endCurrentSession } from './session'
 import { ThemeProvider } from './theme'
 
@@ -67,6 +69,8 @@ function ProtectedApp({ requestedRoute, onNavigate }: { requestedRoute: Protecte
   const [loggingOut, setLoggingOut] = useState(false)
   const [logoutFailed, setLogoutFailed] = useState(false)
   const route: ProtectedRoute = requestedRoute === '/connect/result' ? '/portfolio' : requestedRoute
+  const reconnect = useCallback(() => onNavigate('/connect'), [onNavigate])
+  const recoverSession = useCallback(() => onNavigate('/connect', true), [onNavigate])
 
   useEffect(() => {
     if (authorization.resolving) return
@@ -92,6 +96,7 @@ function ProtectedApp({ requestedRoute, onNavigate }: { requestedRoute: Protecte
     setLogoutFailed(false)
     try {
       await endCurrentSession()
+      resetInitialInventoryRequest()
       onNavigate('/', true)
     } catch {
       setLoggingOut(false)
@@ -101,11 +106,11 @@ function ProtectedApp({ requestedRoute, onNavigate }: { requestedRoute: Protecte
 
   return (
     <AuthenticatedLayout route={route} loggingOut={loggingOut} logoutFailed={logoutFailed} onNavigate={onNavigate} onLogout={() => { void logout() }}>
-      <section className="private-placeholder">
+      {route === '/portfolio' ? <PortfolioPage headingRef={headingRef} onReconnect={reconnect} onSessionExpired={recoverSession} /> : <section className="private-placeholder">
         <p className="eyebrow">{messages.authenticated.privateEyebrow}</p>
         <h1 ref={headingRef} tabIndex={-1}>{messages.authenticated[`${route.slice(1)}Title` as 'discoveryTitle' | 'portfolioTitle' | 'profileTitle']}</h1>
         <p className="large-copy">{messages.authenticated[`${route.slice(1)}Body` as 'discoveryBody' | 'portfolioBody' | 'profileBody']}</p>
-      </section>
+      </section>}
     </AuthenticatedLayout>
   )
 }

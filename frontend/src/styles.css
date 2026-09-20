@@ -520,6 +520,19 @@ p { line-height: 1.65; }
 .authenticated-content { padding: clamp(2rem, 7vw, 6rem) max(1rem, var(--safe-right)) clamp(3rem, 8vw, 7rem) max(1rem, var(--safe-left)); }
 .private-placeholder { width: min(100%, var(--reading-max)); margin-inline: auto; }
 .private-placeholder h1 { max-width: 16ch; }
+.portfolio-inventory { width: min(100%, 58rem); margin-inline: auto; }
+.portfolio-inventory h1 { max-width: 16ch; }
+.inventory-status { padding: 1.25rem; margin-block: 2rem; border-left: 4px solid var(--secondary); background: var(--surface); }
+.inventory-status h2 { margin-bottom: 0.5rem; font-size: 1.35rem; }
+.inventory-status p:last-child { margin-bottom: 0; }
+.inventory-connections { display: grid; gap: 1rem; margin-block: 2rem; }
+.inventory-connection { padding: clamp(1.25rem, 4vw, 2rem); border: 1px solid var(--border-strong); background: var(--surface); }
+.inventory-connection h4 { margin-block: 1.5rem 0.75rem; }
+.inventory-connection ul { display: grid; gap: 0.75rem; padding: 0; margin: 0; list-style: none; }
+.inventory-connection li { display: grid; gap: 0.25rem; padding: 1rem; background: var(--surface-subtle); }
+.inventory-connection li span { color: var(--text-muted); }
+.portfolio-inventory .action:disabled { cursor: wait; opacity: 0.7; }
+.inventory-boundary { max-width: var(--reading-max); margin-top: 2rem; color: var(--text-muted); font-weight: 650; }
 
 .authenticated-nav { background: var(--surface); }
 .authenticated-nav a {
@@ -609,7 +622,7 @@ p { line-height: 1.65; }
 @media (min-width: 48rem) {
   :root { --page-margin: 1.5rem; }
   .authenticated-shell { padding-bottom: 0; padding-left: 13rem; }
-  .authenticated-header { margin-left: -13rem; }
+  .authenticated-header { position: sticky; z-index: 30; top: 0; margin-left: -13rem; }
   .authenticated-nav--adaptive {
     position: fixed;
     top: 5rem;

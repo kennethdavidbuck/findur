@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/runtime"
@@ -53,6 +54,132 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for InventoryAccountCategory.
+const (
+	InventoryAccountCategoryCredit     InventoryAccountCategory = "credit"
+	InventoryAccountCategoryDeposit    InventoryAccountCategory = "deposit"
+	InventoryAccountCategoryInvestment InventoryAccountCategory = "investment"
+	InventoryAccountCategoryUnknown    InventoryAccountCategory = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the InventoryAccountCategory enum.
+func (e InventoryAccountCategory) Valid() bool {
+	switch e {
+	case InventoryAccountCategoryCredit:
+		return true
+	case InventoryAccountCategoryDeposit:
+		return true
+	case InventoryAccountCategoryInvestment:
+		return true
+	case InventoryAccountCategoryUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryAccountSyncState.
+const (
+	InventoryAccountSyncStateComplete    InventoryAccountSyncState = "complete"
+	InventoryAccountSyncStatePending     InventoryAccountSyncState = "pending"
+	InventoryAccountSyncStateUnavailable InventoryAccountSyncState = "unavailable"
+	InventoryAccountSyncStateUnknown     InventoryAccountSyncState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the InventoryAccountSyncState enum.
+func (e InventoryAccountSyncState) Valid() bool {
+	switch e {
+	case InventoryAccountSyncStateComplete:
+		return true
+	case InventoryAccountSyncStatePending:
+		return true
+	case InventoryAccountSyncStateUnavailable:
+		return true
+	case InventoryAccountSyncStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryConnectionStatus.
+const (
+	InventoryConnectionStatusActive      InventoryConnectionStatus = "active"
+	InventoryConnectionStatusDisabled    InventoryConnectionStatus = "disabled"
+	InventoryConnectionStatusUnavailable InventoryConnectionStatus = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the InventoryConnectionStatus enum.
+func (e InventoryConnectionStatus) Valid() bool {
+	switch e {
+	case InventoryConnectionStatusActive:
+		return true
+	case InventoryConnectionStatusDisabled:
+		return true
+	case InventoryConnectionStatusUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryConnectionSyncMode.
+const (
+	InventoryConnectionSyncModeDelayed  InventoryConnectionSyncMode = "delayed"
+	InventoryConnectionSyncModeRealtime InventoryConnectionSyncMode = "realtime"
+	InventoryConnectionSyncModeUnknown  InventoryConnectionSyncMode = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the InventoryConnectionSyncMode enum.
+func (e InventoryConnectionSyncMode) Valid() bool {
+	switch e {
+	case InventoryConnectionSyncModeDelayed:
+		return true
+	case InventoryConnectionSyncModeRealtime:
+		return true
+	case InventoryConnectionSyncModeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryState.
+const (
+	InventoryStateDisabled     InventoryState = "disabled"
+	InventoryStateEmpty        InventoryState = "empty"
+	InventoryStateMalformed    InventoryState = "malformed"
+	InventoryStatePending      InventoryState = "pending"
+	InventoryStateRateLimited  InventoryState = "rate_limited"
+	InventoryStateReady        InventoryState = "ready"
+	InventoryStateUnauthorized InventoryState = "unauthorized"
+	InventoryStateUnavailable  InventoryState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the InventoryState enum.
+func (e InventoryState) Valid() bool {
+	switch e {
+	case InventoryStateDisabled:
+		return true
+	case InventoryStateEmpty:
+		return true
+	case InventoryStateMalformed:
+		return true
+	case InventoryStatePending:
+		return true
+	case InventoryStateRateLimited:
+		return true
+	case InventoryStateReady:
+		return true
+	case InventoryStateUnauthorized:
+		return true
+	case InventoryStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // AuthorizationStatus defines model for AuthorizationStatus.
 type AuthorizationStatus struct {
 	Authenticated          bool `json:"authenticated"`
@@ -72,6 +199,58 @@ type Error struct {
 // ErrorCode defines model for Error.Code.
 type ErrorCode string
 
+// InventoryAccount defines model for InventoryAccount.
+type InventoryAccount struct {
+	Available   bool                      `json:"available"`
+	Category    InventoryAccountCategory  `json:"category"`
+	Eligible    bool                      `json:"eligible"`
+	Id          string                    `json:"id"`
+	MaskedLabel string                    `json:"maskedLabel"`
+	SyncState   InventoryAccountSyncState `json:"syncState"`
+	Type        string                    `json:"type"`
+}
+
+// InventoryAccountCategory defines model for InventoryAccount.Category.
+type InventoryAccountCategory string
+
+// InventoryAccountSyncState defines model for InventoryAccount.SyncState.
+type InventoryAccountSyncState string
+
+// InventoryConnection defines model for InventoryConnection.
+type InventoryConnection struct {
+	Accounts       []InventoryAccount          `json:"accounts"`
+	Available      bool                        `json:"available"`
+	BrokerageLabel string                      `json:"brokerageLabel"`
+	Eligible       bool                        `json:"eligible"`
+	Id             string                      `json:"id"`
+	Status         InventoryConnectionStatus   `json:"status"`
+	SyncMode       InventoryConnectionSyncMode `json:"syncMode"`
+}
+
+// InventoryConnectionStatus defines model for InventoryConnection.Status.
+type InventoryConnectionStatus string
+
+// InventoryConnectionSyncMode defines model for InventoryConnection.SyncMode.
+type InventoryConnectionSyncMode string
+
+// InventoryState defines model for InventoryState.
+type InventoryState string
+
+// PortfolioInventory defines model for PortfolioInventory.
+type PortfolioInventory struct {
+	Connections []InventoryConnection `json:"connections"`
+	Generation  int64                 `json:"generation"`
+	RetryAt     *time.Time            `json:"retryAt,omitempty"`
+	State       InventoryState        `json:"state"`
+	UpdatedAt   time.Time             `json:"updatedAt"`
+}
+
+// InventoryForbidden defines model for InventoryForbidden.
+type InventoryForbidden = Error
+
+// InventoryUnauthorized defines model for InventoryUnauthorized.
+type InventoryUnauthorized = Error
+
 // LogoutForbidden defines model for LogoutForbidden.
 type LogoutForbidden = Error
 
@@ -83,7 +262,7 @@ type SafeError = Error
 
 // LogoutCurrentSessionParams defines parameters for LogoutCurrentSession.
 type LogoutCurrentSessionParams struct {
-	XCSRFToken *string `json:"X-CSRF-Token,omitempty"`
+	XCSRFToken string `json:"X-CSRF-Token"`
 }
 
 // CompleteSnapTradeAuthorizationParams defines parameters for CompleteSnapTradeAuthorization.
@@ -99,6 +278,11 @@ type CompleteSnapTradeAuthorizationParams struct {
 
 	// ErrorDescription Provider detail accepted for protocol compatibility and intentionally ignored.
 	ErrorDescription *string `form:"error_description,omitempty" json:"error_description,omitempty"`
+}
+
+// RetryPortfolioInventoryParams defines parameters for RetryPortfolioInventory.
+type RetryPortfolioInventoryParams struct {
+	XCSRFToken string `json:"X-CSRF-Token"`
 }
 
 // BeginSnapTradeAuthorizationJSONRequestBody defines body for BeginSnapTradeAuthorization for application/json ContentType.
@@ -121,6 +305,12 @@ type ServerInterface interface {
 	// GetAuthorizationStatus Report categorical authorization availability and session state
 	// (GET /api/auth/status)
 	GetAuthorizationStatus(w http.ResponseWriter, r *http.Request)
+	// GetPortfolioInventory Return or bootstrap the authenticated owner's masked inventory
+	// (GET /api/portfolio/inventory)
+	GetPortfolioInventory(w http.ResponseWriter, r *http.Request)
+	// RetryPortfolioInventory Explicitly retry the authenticated owner's inventory bootstrap
+	// (POST /api/portfolio/inventory/retry)
+	RetryPortfolioInventory(w http.ResponseWriter, r *http.Request, params RetryPortfolioInventoryParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -143,7 +333,7 @@ func (siw *ServerInterfaceWrapper) LogoutCurrentSession(w http.ResponseWriter, r
 
 	headers := r.Header
 
-	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	// ------------- Required header parameter "X-CSRF-Token" -------------
 	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
 		var XCSRFToken string
 		n := len(valueList)
@@ -152,14 +342,18 @@ func (siw *ServerInterfaceWrapper) LogoutCurrentSession(w http.ResponseWriter, r
 			return
 		}
 
-		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
 		if err != nil {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
 			return
 		}
 
-		params.XCSRFToken = &XCSRFToken
+		params.XCSRFToken = XCSRFToken
 
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -264,6 +458,65 @@ func (siw *ServerInterfaceWrapper) GetAuthorizationStatus(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAuthorizationStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPortfolioInventory operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioInventory(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioInventory(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetryPortfolioInventory operation middleware
+func (siw *ServerInterfaceWrapper) RetryPortfolioInventory(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RetryPortfolioInventoryParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetryPortfolioInventory(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -393,12 +646,32 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/inventory", wrapper.GetPortfolioInventory)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/portfolio/inventory/retry", wrapper.RetryPortfolioInventory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.LogoutCurrentSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/status", wrapper.GetAuthorizationStatus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/snaptrade/authorize", wrapper.BeginSnapTradeAuthorization)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/snaptrade/callback", wrapper.CompleteSnapTradeAuthorization)
 
 	return m
+}
+
+type InventoryForbiddenResponseHeaders struct {
+	CacheControl string
+}
+type InventoryForbiddenJSONResponse struct {
+	Body Error
+
+	Headers InventoryForbiddenResponseHeaders
+}
+
+type InventoryUnauthorizedResponseHeaders struct {
+	CacheControl string
+}
+type InventoryUnauthorizedJSONResponse struct {
+	Body Error
+
+	Headers InventoryUnauthorizedResponseHeaders
 }
 
 type LogoutForbiddenResponseHeaders struct {
@@ -636,6 +909,144 @@ func (response GetAuthorizationStatus200JSONResponse) VisitGetAuthorizationStatu
 	return err
 }
 
+type GetPortfolioInventoryRequestObject struct {
+}
+
+type GetPortfolioInventoryResponseObject interface {
+	VisitGetPortfolioInventoryResponse(w http.ResponseWriter) error
+}
+
+type GetPortfolioInventory200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetPortfolioInventory200JSONResponse struct {
+	Body    PortfolioInventory
+	Headers GetPortfolioInventory200ResponseHeaders
+}
+
+func (response GetPortfolioInventory200JSONResponse) VisitGetPortfolioInventoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioInventory401JSONResponse struct {
+	InventoryUnauthorizedJSONResponse
+}
+
+func (response GetPortfolioInventory401JSONResponse) VisitGetPortfolioInventoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioInventory503JSONResponse struct{ SafeErrorJSONResponse }
+
+func (response GetPortfolioInventory503JSONResponse) VisitGetPortfolioInventoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryPortfolioInventoryRequestObject struct {
+	Params RetryPortfolioInventoryParams
+}
+
+type RetryPortfolioInventoryResponseObject interface {
+	VisitRetryPortfolioInventoryResponse(w http.ResponseWriter) error
+}
+
+type RetryPortfolioInventory200ResponseHeaders struct {
+	CacheControl string
+}
+
+type RetryPortfolioInventory200JSONResponse struct {
+	Body    PortfolioInventory
+	Headers RetryPortfolioInventory200ResponseHeaders
+}
+
+func (response RetryPortfolioInventory200JSONResponse) VisitRetryPortfolioInventoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryPortfolioInventory401JSONResponse struct {
+	InventoryUnauthorizedJSONResponse
+}
+
+func (response RetryPortfolioInventory401JSONResponse) VisitRetryPortfolioInventoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryPortfolioInventory403JSONResponse struct{ InventoryForbiddenJSONResponse }
+
+func (response RetryPortfolioInventory403JSONResponse) VisitRetryPortfolioInventoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetryPortfolioInventory503JSONResponse struct{ SafeErrorJSONResponse }
+
+func (response RetryPortfolioInventory503JSONResponse) VisitRetryPortfolioInventoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// LogoutCurrentSession Revoke the authenticated browser session
@@ -650,6 +1061,12 @@ type StrictServerInterface interface {
 	// GetAuthorizationStatus Report categorical authorization availability and session state
 	// (GET /api/auth/status)
 	GetAuthorizationStatus(ctx context.Context, request GetAuthorizationStatusRequestObject) (GetAuthorizationStatusResponseObject, error)
+	// GetPortfolioInventory Return or bootstrap the authenticated owner's masked inventory
+	// (GET /api/portfolio/inventory)
+	GetPortfolioInventory(ctx context.Context, request GetPortfolioInventoryRequestObject) (GetPortfolioInventoryResponseObject, error)
+	// RetryPortfolioInventory Explicitly retry the authenticated owner's inventory bootstrap
+	// (POST /api/portfolio/inventory/retry)
+	RetryPortfolioInventory(ctx context.Context, request RetryPortfolioInventoryRequestObject) (RetryPortfolioInventoryResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -816,30 +1233,89 @@ func (sh *strictHandler) GetAuthorizationStatus(w http.ResponseWriter, r *http.R
 	}
 }
 
+// GetPortfolioInventory operation middleware
+func (sh *strictHandler) GetPortfolioInventory(w http.ResponseWriter, r *http.Request) {
+	var request GetPortfolioInventoryRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPortfolioInventory(ctx, request.(GetPortfolioInventoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPortfolioInventory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPortfolioInventoryResponseObject); ok {
+		if err := validResponse.VisitGetPortfolioInventoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RetryPortfolioInventory operation middleware
+func (sh *strictHandler) RetryPortfolioInventory(w http.ResponseWriter, r *http.Request, params RetryPortfolioInventoryParams) {
+	var request RetryPortfolioInventoryRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RetryPortfolioInventory(ctx, request.(RetryPortfolioInventoryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RetryPortfolioInventory")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RetryPortfolioInventoryResponseObject); ok {
+		if err := validResponse.VisitRetryPortfolioInventoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

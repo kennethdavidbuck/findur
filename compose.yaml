@@ -47,6 +47,7 @@ services:
       # Browser-visible loopback callback; nginx forwards /api to the backend.
       SNAPTRADE_OAUTH_CALLBACK_URL: "${SNAPTRADE_OAUTH_CALLBACK_URL:-http://127.0.0.1:8080/api/auth/snaptrade/callback}"
       SNAPTRADE_OIDC_ISSUER: "${SNAPTRADE_OIDC_ISSUER:-http://wiremock:8080}"
+      SNAPTRADE_API_BASE_URL: "${SNAPTRADE_API_BASE_URL:-http://wiremock:8080}"
       OAUTH_HASH_KEY: "${OAUTH_HASH_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA}"
       OAUTH_ENCRYPTION_KEY: "${OAUTH_ENCRYPTION_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE}"
       SESSION_HASH_KEY: "${SESSION_HASH_KEY:-AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI}"
@@ -138,6 +139,7 @@ services:
       BASE_URL: http://frontend:8080
       BROWSER_URL: http://frontend:4444
       EXPECTED_SHA: ${BUILD_SHA:-0123456789abcdef0123456789abcdef01234567}
+      WIREMOCK_URL: http://wiremock:8080
     volumes:
       - ./test/integration:/work:ro
     depends_on:

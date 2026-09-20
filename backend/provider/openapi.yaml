@@ -1,0 +1,635 @@
+{
+  "components": {
+    "schemas": {
+      "401FailedRequestResponse": {
+        "description": "Example for failed request response",
+        "properties": {
+          "default_code": {
+            "example": 1076
+          },
+          "default_detail": {
+            "example": "Unable to verify signature sent"
+          }
+        },
+        "type": "object"
+      },
+      "404FailedRequestResponse": {
+        "description": "Example for failed request response",
+        "properties": {
+          "default_code": {
+            "example": 1011
+          },
+          "default_detail": {
+            "example": "The requested resource does not exist."
+          }
+        },
+        "type": "object"
+      },
+      "Account": {
+        "description": "A single account at a brokerage.",
+        "properties": {
+          "account_category": {
+            "description": "The category of the account, normalized across institutions.\nReturns `null` if the category could not be determined. Use this field to filter out non-investment accounts if your integration only supports trading / holdings flows. See [Filtering Accounts by Category](https://docs.snaptrade.com/docs/filtering-accounts-by-category) for more information.\n- `INVESTMENT`: A brokerage / investment account (equities, options, crypto, etc.).\n- `DEPOSIT`: A bank deposit account (checking, savings).\n- `LOC`: A line of credit account.\n",
+            "enum": [
+              "INVESTMENT",
+              "DEPOSIT",
+              "LOC"
+            ],
+            "example": "INVESTMENT",
+            "nullable": true,
+            "type": "string"
+          },
+          "balance": {
+            "$ref": "#/components/schemas/AccountBalance"
+          },
+          "brokerage_authorization": {
+            "$ref": "#/components/schemas/BrokerageAuthID"
+          },
+          "cash_restrictions": {
+            "deprecated": true,
+            "description": "This field is deprecated.",
+            "example": [],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "created_date": {
+            "description": "Timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format indicating when the account was created in SnapTrade. This is _not_ the account opening date at the brokerage.",
+            "example": "2024-07-23T22:50:22.76139Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "funding_date": {
+            "description": "Timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format indicating when the account was funded. Only populated for brokerages that expose this data (Tastytrade, eToro, moomoo, Public, and Unlok); `null` for all other brokerages.",
+            "example": "2024-07-25T12:00:00Z",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AccountID"
+              }
+            ],
+            "description": "Unique identifier for the connected brokerage account. This is the UUID used to reference the account in SnapTrade. This ID should not change for as long as the connection stays active. If the connection is deleted and re-added, a new account ID will be generated."
+          },
+          "institution_account_id": {
+            "description": "A stable and unique account identifier provided by the institution. Will be set to null if not provided. When present, can be used to check if a user has connected the same brokerage account across multiple connections.",
+            "example": "54953432",
+            "nullable": true,
+            "type": "string"
+          },
+          "institution_name": {
+            "description": "The name of the brokerage that holds the account.",
+            "example": "Robinhood",
+            "type": "string"
+          },
+          "is_paper": {
+            "description": "Indicates whether the account is a paper (simulated) trading account.",
+            "example": false,
+            "type": "boolean"
+          },
+          "meta": {
+            "deprecated": true,
+            "description": "Additional information about the account, such as account type, status, etc. This information is specific to the brokerage and there's no standard format for this data. This field is deprecated and subject to removal in a future version.",
+            "example": {
+              "institution_name": "Robinhood",
+              "status": "ACTIVE",
+              "type": "Margin"
+            },
+            "type": "object"
+          },
+          "name": {
+            "description": "A display name for the account. Either assigned by the user or by the brokerage itself. For certain brokerages, SnapTrade appends the brokerage name to the account name for clarity.",
+            "example": "Robinhood Individual",
+            "nullable": true,
+            "type": "string"
+          },
+          "number": {
+            "description": "The account number assigned by the brokerage. For some brokerages, this field may be masked for security reasons.",
+            "example": "Q6542138443",
+            "type": "string"
+          },
+          "opening_date": {
+            "description": "Timestamp in [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) format indicating when the account was opened at the brokerage. Only populated for brokerages that expose this data (Tastytrade, eToro, moomoo, Public, and Unlok); `null` for all other brokerages.",
+            "example": "2024-07-20T09:30:00Z",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "portfolio_group": {
+            "$ref": "#/components/schemas/PortfolioGroupID"
+          },
+          "raw_type": {
+            "description": "The account type as provided by the brokerage",
+            "example": "Margin",
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "description": "The current status of the account. Can be either \"open\", \"closed\", \"archived\" or null if the status is unknown or not provided by the brokerage.",
+            "enum": [
+              "open",
+              "closed",
+              "archived",
+              "unavailable"
+            ],
+            "example": "open",
+            "nullable": true,
+            "type": "string"
+          },
+          "sync_status": {
+            "$ref": "#/components/schemas/AccountSyncStatus"
+          }
+        },
+        "required": [
+          "id",
+          "brokerage_authorization",
+          "name",
+          "number",
+          "institution_name",
+          "created_date",
+          "sync_status",
+          "balance",
+          "is_paper"
+        ],
+        "type": "object"
+      },
+      "AccountBalance": {
+        "description": "Contains balance related information for the account.",
+        "properties": {
+          "total": {
+            "description": "Total market value of this account (includes cash, equity, fixed income, etc). This value is directly obtained from the brokerage and should reflect the most accurate value of the account.",
+            "nullable": true,
+            "properties": {
+              "amount": {
+                "description": "Total value denominated in the currency of the `currency` field.",
+                "example": 15363.23,
+                "type": "number"
+              },
+              "currency": {
+                "description": "The ISO-4217 currency code for the amount.",
+                "example": "USD",
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "AccountID": {
+        "description": "Unique identifier for the connected brokerage account. This is the UUID used to reference the account in SnapTrade.",
+        "example": "917c8734-8470-4a3e-a18f-57c3f2ee6631",
+        "format": "uuid",
+        "type": "string"
+      },
+      "AccountSyncStatus": {
+        "description": "Contains status update for the account sync process between SnapTrade and the brokerage.",
+        "properties": {
+          "holdings": {
+            "$ref": "#/components/schemas/HoldingsStatus"
+          },
+          "transactions": {
+            "$ref": "#/components/schemas/TransactionsStatus"
+          }
+        }
+      },
+      "Brokerage": {
+        "description": "Describes a brokerage that SnapTrade supports.",
+        "properties": {
+          "allows_fractional_units": {
+            "deprecated": true,
+            "description": "This field is deprecated. Please contact us if you have a valid use case for it.",
+            "example": true,
+            "nullable": true,
+            "type": "boolean"
+          },
+          "allows_trading": {
+            "description": "Whether the brokerage allows trading through SnapTrade.",
+            "example": true,
+            "nullable": true,
+            "type": "boolean"
+          },
+          "aws_s3_logo_url": {
+            "description": "URL to the brokerage's logo.",
+            "example": "https://passiv-brokerage-logos.s3.ca-central-1.amazonaws.com/robinhood-logo.png",
+            "format": "url",
+            "type": "string"
+          },
+          "aws_s3_square_logo_url": {
+            "description": "URL to the brokerage's logo in square format.",
+            "example": "https://passiv-brokerage-logos.s3.ca-central-1.amazonaws.com/robinhood-logo-square.png",
+            "format": "url",
+            "nullable": true,
+            "type": "string"
+          },
+          "brokerage_type": {
+            "$ref": "#/components/schemas/BrokerageType"
+          },
+          "description": {
+            "description": "A brief description of the brokerage.",
+            "example": "Robinhood is an American multinational financial services corporation based in Menlo Park, California.",
+            "type": "string"
+          },
+          "display_name": {
+            "description": "A display-friendly name of the brokerage.",
+            "example": "Robinhood",
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Whether the brokerage is enabled in SnapTrade. A disabled brokerage will not be available for new connections.",
+            "example": true,
+            "type": "boolean"
+          },
+          "exchanges": {
+            "deprecated": true,
+            "description": "This field is deprecated. Please contact us if you have a valid use case for it.",
+            "example": [
+              "2bcd7cc3-e922-4976-bce1-9858296801c3",
+              "4bcd8cc3-c122-4974-dc21-1858296801f4"
+            ],
+            "items": {},
+            "type": "array"
+          },
+          "has_reporting": {
+            "deprecated": true,
+            "description": "This field is deprecated. Please contact us if you have a valid use case for it.",
+            "example": true,
+            "nullable": true,
+            "type": "boolean"
+          },
+          "id": {
+            "description": "Unique identifier for the brokerage firm. This is the UUID used to reference the brokerage in SnapTrade.",
+            "example": "ebf91a5b-0920-4266-9e36-f6cfe8c40946",
+            "format": "uuid",
+            "type": "string"
+          },
+          "is_degraded": {
+            "description": "Whether the brokerage is currently degraded. A degraded brokerage may have reduced functionality or be experiencing technical issues.",
+            "example": true,
+            "type": "boolean"
+          },
+          "is_real_time_connection": {
+            "deprecated": true,
+            "description": "This field is deprecated. Please contact us if you have a valid use case for it.",
+            "example": true,
+            "type": "boolean"
+          },
+          "maintenance_mode": {
+            "description": "Whether the brokerage is currently in maintenance mode. A brokerage in maintenance mode will not be available for new connections.",
+            "example": true,
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Full name of the brokerage.",
+            "example": "Robinhood",
+            "type": "string"
+          },
+          "open_url": {
+            "deprecated": true,
+            "description": "This field is deprecated.",
+            "format": "url",
+            "nullable": true,
+            "type": "string"
+          },
+          "slug": {
+            "description": "A short, unique identifier for the brokerage. It is usually the name of the brokerage in capital letters and will never change.",
+            "example": "ROBINHOOD",
+            "type": "string"
+          },
+          "url": {
+            "description": "URL to the brokerage's website. Returns null if the brokerage has no website on record.",
+            "example": "https://robinhood.com",
+            "format": "url",
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "BrokerageAuthID": {
+        "description": "Unique identifier for the connection (brokerage_authorization_id). This is the UUID used to reference the connection in SnapTrade.",
+        "example": "87b24961-b51e-4db8-9226-f198f6518a89",
+        "format": "uuid",
+        "type": "string"
+      },
+      "BrokerageAuthorization": {
+        "description": "A single connection with a brokerage. Note that `Connection` and `Brokerage Authorization` are interchangeable, but the term `Connection` is preferred and used in the doc for consistency.\n\nA connection is usually tied to a single login at a brokerage. A single connection can contain multiple brokerage accounts.\n\nSnapTrade performs de-duping on connections for a given user. If the user has an existing connection with the brokerage, when connecting the brokerage with the same credentials, SnapTrade will return the existing connection instead of creating a new one.\n",
+        "properties": {
+          "brokerage": {
+            "$ref": "#/components/schemas/Brokerage"
+          },
+          "created_date": {
+            "description": "Timestamp of when the connection was established in SnapTrade.",
+            "example": "2024-08-20T21:56:19.123935Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "data_freshness_mode": {
+            "additionalProperties": false,
+            "description": "Indicates the data freshness provided by the institution and by SnapTrade for this connection. The two values are independent; the connection's data is effectively delayed if either value is `delayed`.\n\nThe \"Data freshness\" column on the [SnapTrade Institution Support](https://support.snaptrade.com/brokerages) page (Positions \u0026 recent orders tab) identifies institutions whose connections are considered delayed on a Real-time plan because either `institution` or `snaptrade` is `delayed`.\n",
+            "example": {
+              "institution": "realtime",
+              "snaptrade": "delayed"
+            },
+            "properties": {
+              "institution": {
+                "description": "Indicates the freshness of the data provided by the institution. `realtime` means the institution provides current data; `delayed` means the institution itself does not allow intra-day data updates.\n",
+                "enum": [
+                  "realtime",
+                  "delayed"
+                ],
+                "type": "string"
+              },
+              "snaptrade": {
+                "description": "Indicates how SnapTrade retrieves data for this connection. `realtime` means SnapTrade retrieves current data from the institution during API calls. `delayed` means SnapTrade serves cached data, either because the customer's plan uses Daily data or because retrieving live data from the institution is too latency-intensive.\n\nWhen this value is `delayed`, you can request updated data using the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).\n",
+                "enum": [
+                  "realtime",
+                  "delayed"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "institution",
+              "snaptrade"
+            ],
+            "type": "object"
+          },
+          "disabled": {
+            "description": "Whether the connection is disabled. A disabled connection can no longer access the latest data from the brokerage, but will continue to return the last cached state. A connection can become disabled for many reasons and differs by brokerage. Here are some common scenarios:\n\n- The user has changed their username or password at the brokerage.\n- The user has explicitly removed the access grant at the brokerage.\n- The session has expired at the brokerage and now requires explicit user re-authentication.\n\nPlease see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.\n",
+            "example": false,
+            "type": "boolean"
+          },
+          "disabled_date": {
+            "description": "Timestamp of when the connection was disabled in SnapTrade.",
+            "example": "2022-01-21T15:11:19.217-05:00",
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/BrokerageAuthID"
+          },
+          "is_eligible_for_payout": {
+            "description": "Whether the connection is eligible for a payout. This is an experimental field that is NOT generally available for all partners. Do not use in production without speaking to the SnapTrade team.",
+            "example": true,
+            "type": "boolean"
+          },
+          "meta": {
+            "deprecated": true,
+            "description": "Additional data about the connection. This information is specific to the brokerage and there's no standard format for this data. This field is deprecated and subject to removal in a future version.",
+            "example": {
+              "identifier": 123456
+            },
+            "type": "object"
+          },
+          "name": {
+            "description": "A short, human-readable name for the connection.",
+            "example": "Connection-1",
+            "type": "string"
+          },
+          "type": {
+            "description": "Whether the connection is read-only or trade-enabled. A read-only connection can only be used to fetch data, while a trade-enabled connection can be used to place trades. Valid values are `read` and `trade`.",
+            "example": "trade",
+            "type": "string"
+          },
+          "updated_date": {
+            "deprecated": true,
+            "description": "Timestamp of when the connection was last updated in SnapTrade. This field is deprecated. Please let us know if you have a valid use case for this field.",
+            "example": "2024-08-20T21:56:20.057224Z",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "BrokerageType": {
+        "description": "Type of brokerage. Currently supports traditional brokerages and crypto exchanges.",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "example": "Traditional Brokerage",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "HoldingsStatus": {
+        "description": "Status of account holdings sync. SnapTrade syncs holdings from the brokerage under the following conditions:\n1. Initial connection - SnapTrade syncs all holdings (positions, balances, recent orders, and transactions) immediately after the connection is established.\n2. Daily sync - Once a day SnapTrade refreshes all holdings from the brokerage.\n3. Manual sync - You can trigger a refresh of holdings with the [manual refresh](/reference/Connections/Connections_refreshBrokerageAuthorization) endpoint.\n",
+        "properties": {
+          "holdings_unavailable": {
+            "description": "Indicates that the brokerage does not expose this account's holdings to SnapTrade, so the\nempty positions and balances reported for it do not mean the account is empty. This is set\nfor accounts served by a separate brokerage system that we cannot read, such as Vanguard\nemployer-sponsored retirement plans. When this is `true`, prefer the account's total value\nover the sum of its positions and cash, and note that `initial_sync_completed` and\n`last_successful_sync` may still reflect an earlier sync.\n",
+            "example": true,
+            "type": "boolean"
+          },
+          "initial_sync_completed": {
+            "description": "Indicates if the initial sync of holdings has been completed. For accounts with a large number of positions/orders/transactions, the initial sync may take a while to complete.",
+            "example": true,
+            "type": "boolean"
+          },
+          "last_successful_sync": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HoldingsSyncStatusDate"
+              }
+            ],
+            "description": "The last time holdings were successfully synced by SnapTrade.",
+            "nullable": true
+          }
+        }
+      },
+      "HoldingsSyncStatusDate": {
+        "description": "Date in ISO 8601 format or null (YYYY-MM-DD HH:MM:SS.mmmmmmTZ)",
+        "example": "2024-06-28 18:42:46.561408+00:00",
+        "format": "date-time",
+        "nullable": true,
+        "type": "string"
+      },
+      "Id": {
+        "example": "2bcd7cc3-e922-4976-bce1-9858296801c3",
+        "format": "uuid",
+        "type": "string"
+      },
+      "PortfolioGroupID": {
+        "deprecated": true,
+        "description": "Portfolio Group ID. Portfolio Groups have been deprecated. Please contact support if you have a use case for it.",
+        "example": "2bcd7cc3-e922-4976-bce1-9858296801c3",
+        "format": "uuid",
+        "nullable": true,
+        "type": "string"
+      },
+      "SyncStatusDate": {
+        "description": "Date in YYYY-MM-DD format or null",
+        "example": "2022-01-24",
+        "format": "date",
+        "nullable": true,
+        "type": "string"
+      },
+      "TransactionsStatus": {
+        "description": "Status of account transaction sync. SnapTrade syncs transactions from the brokerage under the following conditions:\n1. Initial connection - SnapTrade syncs all transactions from the brokerage account as far back as the brokerage allows. Check [our integrations doc](https://support.snaptrade.com/brokerages-table?v=6fab8012ade6441fa0c6d9af9c55ce3a) for details on how far back we sync for each brokerage.\n2. Daily sync - Once a day SnapTrade syncs new transactions from the brokerage.\n3. Manual sync - You can trigger an incremental sync of transactions with the [transactions sync](/reference/Experimental%20endpoints/Connections_syncBrokerageAuthorizationTransactions) endpoint.\n",
+        "properties": {
+          "first_transaction_date": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SyncStatusDate"
+              }
+            ],
+            "description": "The date of the first transaction in the account known to SnapTrade. It's possible that the account has transactions before this date, but they are not known to SnapTrade.",
+            "nullable": true
+          },
+          "initial_sync_completed": {
+            "description": "Indicates if the initial sync of transactions has been completed. For accounts with a large number of transactions, the initial sync may take a while to complete.",
+            "example": true,
+            "type": "boolean"
+          },
+          "last_successful_sync": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SyncStatusDate"
+              }
+            ],
+            "description": "All transactions up to this date have been successfully synced. Please note that this is not the date of the last transaction, nor the last time SnapTrade attempted to sync transactions.",
+            "nullable": true
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "OAuthBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "email": "api@snaptrade.com"
+    },
+    "description": "Connect brokerage accounts to your app for live positions and trading.\n\n## Rate limiting\n\nTwo limits apply to requests signed with your `clientId`. The stricter one\nwins, and exceeding either returns `429 Too Many Requests`.\n\n- **Customer-level** — 250 requests/minute by default, scoped to your\n  `clientId` and applied across all endpoints. Reported in\n  `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`.\n- **Account-level** — 10 requests/minute per account, scoped to\n  (`clientId`, `accountId`). All covered operations for one account draw on\n  the same bucket — reading balances and reading positions share it — and\n  enforcement does not depend on the HTTP method, so updating an account\n  consumes the same bucket as reading it. Only enforced for Personal users,\n  and only for integrations it has been rolled out to — it is not yet in\n  force for every Personal integration. It also does not apply on every\n  operation that documents a 429 below. Where it applies it is reported in\n  `X-RateLimit-Account-Limit`, `X-RateLimit-Account-Remaining` and\n  `X-RateLimit-Account-Reset`. Do not read the absence of those headers as\n  proof the limit is off — some configurations omit the rate limit headers\n  while still enforcing the limit, so header absence tells you nothing\n  about your allowance.\n\nOn a 429, `X-RateLimit-Remaining: 0` means you hit the customer-level limit\nand `X-RateLimit-Account-Remaining: 0` means the account-level one. Wait for\nthe corresponding `*-Reset` value (seconds) before retrying, or fall back to\nexponential backoff with jitter.\n\nNot every 429 is explained by those headers. A separate\nper-authenticated-user limit, reported in no `X-RateLimit-*` header, covers\nOAuth-authenticated requests and signed requests in configurations where the\ncustomer-level limit is not in effect — on the operations that use the\ndefault throttles. A few operations override those and are governed by the\ncustomer-level limit alone. The two do not stack: a signed request\ngoverned by the customer-level limit above is not additionally subject to the\nper-user one. If a 429 arrives with no header at zero — or with no\n`X-RateLimit-*` headers at all — honour `Retry-After` and back off. Treat the\nremaining counts as a hint, not a guarantee that the next request will\nsucceed.\n\nBecause the customer-level limit applies everywhere, any signed request can\nreturn 429.\n\n**OAuth-authenticated requests are an exception.** They are not subject to\nthe customer-level limit and do not receive `X-RateLimit-Limit`,\n`X-RateLimit-Remaining` or `X-RateLimit-Reset` — do not wait on those headers\nor design around a customer-level allowance on this path. The account-level\nlimit still applies to them on the account-data endpoints above, reported in\nthe `X-RateLimit-Account-*` headers. On operations using the default\nthrottles the per-user limit above applies to them as well, so an OAuth\nrequest can be rejected while the account headers still show capacity; on\nthe few operations that override those throttles, OAuth callers have no\nper-user ceiling at all. Drive retries from `Retry-After` and exponential\nbackoff with jitter rather than from the headers.\n\nSee https://docs.snaptrade.com/docs/ratelimiting.\n",
+    "termsOfService": "N/A",
+    "title": "SnapTrade",
+    "version": "1.0.0",
+    "x-konfig-ignore": {
+      "potential-incorrect-type": true
+    },
+    "x-readme": {
+      "explorer-enabled": false
+    },
+    "x-upstream-revision": "9a7c008c1b0c7ea9f7944938556d04f66b381082",
+    "x-upstream-sha256": "6c6058c06284884dcf6f2710aa0c46c51701df0eeade1adb058de292e95b95f4"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/authorizations": {
+      "get": {
+        "description": "Returns a list of all connections for the specified user. Note that `Connection` and `Brokerage Authorization` are interchangeable, but the term `Connection` is preferred and used in the doc for consistency.\n\nA connection is usually tied to a single login at a brokerage. A single connection can contain multiple brokerage accounts.\n\nSnapTrade performs de-duping on connections for a given user. If the user has an existing connection with the brokerage, when connecting the brokerage with the same credentials, SnapTrade will return the existing connection instead of creating a new one.\n",
+        "operationId": "Connections_listBrokerageAuthorizations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "A list of all connections for the specified user.",
+                  "items": {
+                    "$ref": "#/components/schemas/BrokerageAuthorization"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "description": "Unexpected error."
+          }
+        },
+        "security": [
+          {
+            "OAuthBearer": []
+          }
+        ],
+        "summary": "List all connections",
+        "tags": [
+          "Connections"
+        ]
+      }
+    },
+    "/authorizations/{authorizationId}/accounts": {
+      "get": {
+        "description": "Returns all brokerage accounts that belong to the specified connection for the authenticated user.\n\nOn Pay as you Go / Real-time, this endpoint refreshes each account's opening date, funding date, and total value live from the brokerage on each call.\n\nOn Pay as you Go / Daily, this endpoint returns Daily data. Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage. To force a refresh, use the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).\n\nCheck your API key on the [Customer Dashboard billing page](https://dashboard.snaptrade.com/settings/billing) to see whether your plan includes real-time data.\n",
+        "operationId": "Connections_listBrokerageAuthorizationAccounts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "authorizationId",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/BrokerageAuthID"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "List of brokerage accounts under the specified connection.",
+                  "items": {
+                    "$ref": "#/components/schemas/Account"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/401FailedRequestResponse"
+                }
+              }
+            },
+            "description": "Unauthorized, invalid credentials for this resource"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/404FailedRequestResponse"
+                }
+              }
+            },
+            "description": "The requested resource does not exist."
+          }
+        },
+        "security": [
+          {
+            "OAuthBearer": []
+          }
+        ],
+        "summary": "List accounts for a connection",
+        "tags": [
+          "Connections"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "OAuthBearer": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "SnapTrade Production API",
+      "url": "https://api.snaptrade.com"
+    }
+  ]
+}

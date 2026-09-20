@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
+	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
 )
 
 type beginFunc func(context.Context, string) (auth.BeginResult, error)
@@ -27,6 +28,22 @@ type sessionLifecycleStub struct {
 	revokeErr      error
 	revoked        []string
 	authorizeCalls int
+}
+
+type inventoryLifecycleStub struct {
+	snapshot   portfolio.Snapshot
+	getCalls   int
+	retryCalls int
+}
+
+func (s *inventoryLifecycleStub) Get(context.Context, auth.Actor) (portfolio.Snapshot, error) {
+	s.getCalls++
+	return s.snapshot, nil
+}
+
+func (s *inventoryLifecycleStub) Retry(context.Context, auth.Actor) (portfolio.Snapshot, error) {
+	s.retryCalls++
+	return s.snapshot, nil
 }
 
 func (s *sessionLifecycleStub) Authenticate(context.Context, string) (auth.Actor, error) {
@@ -80,6 +97,75 @@ func sessionHandler(sessions sessionLifecycle, publicOrigin string) http.Handler
 	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
 	readiness.SetReady(true)
 	return NewHandlerWithSessions(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, nil, sessions, false, publicOrigin)
+}
+
+func inventoryHandler(sessions sessionLifecycle, inventory inventoryLifecycle, publicOrigin string) http.Handler {
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	return NewHandlerWithInventory(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, nil, sessions, inventory, false, publicOrigin)
+}
+
+func TestInventoryGETIsOwnerDerivedMinimizedAndPrivateNoStore(t *testing.T) {
+	inventory := &inventoryLifecycleStub{snapshot: portfolio.Snapshot{
+		State: portfolio.StateReady, Generation: 2, UpdatedAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC),
+		Connections: []portfolio.Connection{{ID: "connection", BrokerageLabel: "Synthetic Broker", Status: "active", SyncMode: "delayed", Available: true, Accounts: []portfolio.Account{{ID: "account", Category: "investment", Type: "Margin", MaskedLabel: "Retirement (•••• 8443)", Available: true, Eligible: true, SyncState: "complete"}}}},
+	}}
+	request := httptest.NewRequest(http.MethodGet, "/api/portfolio/inventory", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	inventoryHandler(&sessionLifecycleStub{}, inventory, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != privateNoStoreDirective || inventory.getCalls != 1 {
+		t.Fatalf("status=%d headers=%v calls=%d body=%q", response.Code, response.Header(), inventory.getCalls, response.Body.String())
+	}
+	for _, forbidden := range []string{"balance", "position", "activity", "access-token", "userId"} {
+		if strings.Contains(response.Body.String(), forbidden) {
+			t.Fatalf("response exposed %q: %s", forbidden, response.Body.String())
+		}
+	}
+	if !strings.Contains(response.Body.String(), `"maskedLabel":"Retirement (•••• 8443)"`) {
+		t.Fatalf("body=%q", response.Body.String())
+	}
+}
+
+func TestInventoryGETRequiresAnActiveSession(t *testing.T) {
+	inventory := &inventoryLifecycleStub{}
+	response := httptest.NewRecorder()
+	inventoryHandler(&sessionLifecycleStub{}, inventory, "https://findur.example").ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/portfolio/inventory", nil))
+	if response.Code != http.StatusUnauthorized || response.Header().Get("Cache-Control") != privateNoStoreDirective || inventory.getCalls != 0 {
+		t.Fatalf("status=%d headers=%v calls=%d", response.Code, response.Header(), inventory.getCalls)
+	}
+}
+
+func TestInventoryRetryRequiresSameOriginSessionBoundCSRF(t *testing.T) {
+	for _, test := range []struct {
+		name, origin, fetchSite string
+		want                    int
+	}{
+		{name: "same origin", origin: "https://findur.example", fetchSite: "same-origin", want: http.StatusOK},
+		{name: "cross origin", origin: "https://evil.example", fetchSite: "same-origin", want: http.StatusForbidden},
+		{name: "cross site", origin: "https://findur.example", fetchSite: "cross-site", want: http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			inventory := &inventoryLifecycleStub{snapshot: portfolio.Snapshot{State: portfolio.StateEmpty, Generation: 2, UpdatedAt: time.Now()}}
+			lifecycle := &sessionLifecycleStub{}
+			request := httptest.NewRequest(http.MethodPost, "/api/portfolio/inventory/retry", nil)
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "opaque-session"})
+			request.Header.Set("X-CSRF-Token", "csrf")
+			request.Header.Set("Origin", test.origin)
+			request.Header.Set("Sec-Fetch-Site", test.fetchSite)
+			response := httptest.NewRecorder()
+			inventoryHandler(lifecycle, inventory, "https://findur.example").ServeHTTP(response, request)
+			if response.Code != test.want || response.Header().Get("Cache-Control") != privateNoStoreDirective {
+				t.Fatalf("status=%d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
+			}
+			if test.want == http.StatusOK && (inventory.retryCalls != 1 || lifecycle.authorizeCalls != 1) {
+				t.Fatalf("retry=%d authorization=%d", inventory.retryCalls, lifecycle.authorizeCalls)
+			}
+			if test.want != http.StatusOK && inventory.retryCalls != 0 {
+				t.Fatalf("unsafe retry calls=%d", inventory.retryCalls)
+			}
+		})
+	}
 }
 
 func TestLogoutRequiresSessionBoundCSRFOriginAndFetchMetadata(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/buildinfo"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/config"
 )
@@ -38,6 +39,23 @@ func TestBuildAuthorizationSkipsDisabledFeature(t *testing.T) {
 	components, err := buildAuthorization(config.Config{}, nil)
 	if err != nil || components.initiator != nil || components.callback != nil || components.fixture != nil {
 		t.Fatalf("components=%+v error=%v", components, err)
+	}
+}
+
+func TestBuildInventoryRemainsAvailableWhenAuthorizationInitiationIsClosed(t *testing.T) {
+	providerURL, err := url.Parse("https://api.snaptrade.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{
+		Session: config.SessionConfig{HashKey: bytes.Repeat([]byte{2}, 32)},
+		Authorization: config.AuthorizationConfig{
+			Enabled: false, ProviderBaseURL: providerURL, TokenKeys: map[int][]byte{1: bytes.Repeat([]byte{3}, 32)}, CurrentTokenKey: 1,
+		},
+	}
+	inventory, err := buildInventory(cfg, &pgxpool.Pool{})
+	if err != nil || inventory == nil {
+		t.Fatalf("inventory=%v err=%v", inventory, err)
 	}
 }
 

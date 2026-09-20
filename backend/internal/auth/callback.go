@@ -9,7 +9,6 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 	"time"
 
@@ -114,7 +113,7 @@ type CallbackService struct {
 	repo   CallbackRepository
 	oidc   OIDCClient
 	verify cipher.AEAD
-	tokens map[int]cipher.AEAD
+	tokens *TokenCipher
 }
 
 // NewCallbackService validates callback dependencies and cryptographic policy.
@@ -129,7 +128,7 @@ func NewCallbackService(cfg CallbackConfig, repo CallbackRepository, client OIDC
 	if err != nil {
 		return nil, err
 	}
-	tokens := make(map[int]cipher.AEAD, len(cfg.TokenKeys))
+	tokenAEADs := make(map[int]cipher.AEAD, len(cfg.TokenKeys))
 	for version, key := range cfg.TokenKeys {
 		if version < 1 || len(key) != 32 {
 			return nil, errors.New("invalid token key ring")
@@ -137,15 +136,19 @@ func NewCallbackService(cfg CallbackConfig, repo CallbackRepository, client OIDC
 		if subtle.ConstantTimeCompare(key, cfg.AttemptHashKey) == 1 || subtle.ConstantTimeCompare(key, cfg.SessionHashKey) == 1 || subtle.ConstantTimeCompare(key, cfg.VerifierKey) == 1 {
 			return nil, errors.New("token encryption keys must be independent")
 		}
-		tokens[version], err = newAEAD(key)
+		tokenAEADs[version], err = newAEAD(key)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if tokens[cfg.CurrentTokenKey] == nil {
+	if tokenAEADs[cfg.CurrentTokenKey] == nil {
 		return nil, errors.New("current token key is unavailable")
 	}
-	return &CallbackService{config: cfg, repo: repo, oidc: client, verify: verify, tokens: tokens}, nil
+	tokenCipher, err := NewTokenCipher(cfg.Provider, cfg.TokenKeys, cfg.CurrentTokenKey, cfg.Random)
+	if err != nil {
+		return nil, err
+	}
+	return &CallbackService{config: cfg, repo: repo, oidc: client, verify: verify, tokens: tokenCipher}, nil
 }
 
 func newAEAD(key []byte) (cipher.AEAD, error) {
@@ -231,13 +234,13 @@ func (s *CallbackService) establishSession(ctx context.Context, claim CallbackCl
 	if err != nil {
 		return CallbackResult{}, err
 	}
-	access, err := s.encryptToken(userID, tokenKindAccess, tokens.AccessToken)
+	access, err := s.tokens.EncryptAccess(userID, tokens.AccessToken)
 	if err != nil {
 		return CallbackResult{}, err
 	}
 	var refresh []byte
 	if tokens.RefreshToken != "" {
-		refresh, err = s.encryptToken(userID, tokenKindRefresh, tokens.RefreshToken)
+		refresh, err = s.tokens.EncryptRefresh(userID, tokens.RefreshToken)
 		if err != nil {
 			return CallbackResult{}, err
 		}
@@ -310,16 +313,6 @@ func (s *CallbackService) decryptVerifier(stateHash, envelope []byte) (string, e
 		return "", err
 	}
 	return string(plain), nil
-}
-
-func (s *CallbackService) encryptToken(owner uuid.UUID, kind, token string) ([]byte, error) {
-	aead := s.tokens[s.config.CurrentTokenKey]
-	nonce := make([]byte, aead.NonceSize())
-	if _, err := io.ReadFull(s.config.Random, nonce); err != nil {
-		return nil, err
-	}
-	aad := []byte(fmt.Sprintf("%s|%s|%s|%d", owner.String(), s.config.Provider, kind, s.config.CurrentTokenKey))
-	return aead.Seal(nonce, nonce, []byte(token), aad), nil
 }
 
 func clearStrings(tokens *TokenSet) {

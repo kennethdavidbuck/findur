@@ -1,0 +1,46 @@
+{
+  "mappings": [
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/authorizations",
+        "headers": {
+          "Authorization": { "equalTo": "Bearer synthetic-access-token" },
+          "clientId": { "absent": true },
+          "consumerKey": { "absent": true },
+          "userId": { "absent": true },
+          "userSecret": { "absent": true },
+          "timestamp": { "absent": true },
+          "Signature": { "absent": true },
+          "SnapTrade-Client-Id": { "absent": true },
+          "SnapTrade-Consumer-Key": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "bodyFileName": "inventory/success-connections.json"
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/authorizations/87b24961-b51e-4db8-9226-f198f6518a89/accounts",
+        "headers": {
+          "Authorization": { "equalTo": "Bearer synthetic-access-token" },
+          "clientId": { "absent": true },
+          "consumerKey": { "absent": true },
+          "userId": { "absent": true },
+          "userSecret": { "absent": true },
+          "timestamp": { "absent": true },
+          "Signature": { "absent": true }
+        }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "bodyFileName": "inventory/success-accounts.json"
+      }
+    }
+  ]
+}

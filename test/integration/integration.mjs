@@ -6,6 +6,7 @@ import { verifyBrowserStatus } from './browser-status.mjs'
 const base = process.env.BASE_URL
 const expectedSha = process.env.EXPECTED_SHA
 const browser = process.env.BROWSER_URL
+const wiremock = process.env.WIREMOCK_URL
 const request = (path, init = {}) => fetch(`${base}${path}`, {
   ...init,
   signal: init.signal ?? AbortSignal.timeout(15_000),
@@ -119,6 +120,20 @@ assert.equal(
 
 await verifyBrowserStatus({ browserUrl: browser, publicOrigin: base, expectedSha })
 await verifyBrowserOAuth({ browserUrl: browser, oauthOrigin: 'http://127.0.0.1:8080' })
-await verifyBrowserSession({ browserUrl: browser, publicOrigin: 'http://127.0.0.1:8080' })
+await verifyBrowserSession({ browserUrl: browser, publicOrigin: 'http://127.0.0.1:8080', wiremockUrl: wiremock })
+
+const journal = await (await fetch(`${wiremock}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
+const inventoryEvents = journal.requests
+  .filter(({ request }) => request.url === '/authorizations' || request.url === '/authorizations/87b24961-b51e-4db8-9226-f198f6518a89/accounts')
+const inventoryRequests = inventoryEvents.map(({ request }) => request)
+assert.ok(inventoryRequests.filter(({ url }) => url === '/authorizations').length >= 7, 'success and every categorical fixture executed through WireMock')
+assert.ok(inventoryRequests.some(({ url }) => url.endsWith('/accounts')), 'successful bootstrap reaches the scoped account operation')
+for (let index = 0; index < inventoryRequests.length; index += 1) {
+  if (inventoryRequests[index].url.endsWith('/accounts')) assert.equal(inventoryRequests[index - 1]?.url, '/authorizations', 'connections are requested before accounts')
+}
+for (const providerRequest of inventoryRequests) {
+  assert.equal(providerRequest.headers.Authorization, 'Bearer synthetic-access-token')
+  for (const forbidden of ['clientId', 'consumerKey', 'userId', 'userSecret', 'timestamp', 'Signature']) assert.equal(providerRequest.headers[forbidden], undefined)
+}
 
 console.log('integration contracts passed')

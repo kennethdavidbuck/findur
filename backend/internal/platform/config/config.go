@@ -34,6 +34,7 @@ const (
 	envMigrationsURL     = "MIGRATIONS_URL"
 	envFixtureBaseURL    = "FIXTURE_BASE_URL"
 	envFixtureToken      = "FIXTURE_PROVIDER_BEARER_TOKEN"
+	envProviderBaseURL   = "SNAPTRADE_API_BASE_URL"
 	envPort              = "PORT"
 
 	environmentProduction  = "production"
@@ -82,6 +83,7 @@ type AuthorizationConfig struct {
 	TokenKeys       map[int][]byte
 	CurrentTokenKey int
 	AllowedReturns  []string
+	ProviderBaseURL *url.URL
 }
 
 // HealthcheckConfig contains the validated local probe target used by container health checks.
@@ -143,13 +145,39 @@ func Load() (Config, error) {
 	}, nil
 }
 
+func loadProviderBaseURL(appEnvironment string) (*url.URL, error) {
+	raw := strings.TrimSpace(os.Getenv(envProviderBaseURL))
+	if raw == "" {
+		raw = "https://api.snaptrade.com"
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return nil, errors.New(envProviderBaseURL + " must be an HTTP origin")
+	}
+	allowHTTP := appEnvironment == environmentIntegration || isLoopback(parsed.Hostname())
+	if parsed.Scheme != schemeHTTPS && (parsed.Scheme != schemeHTTP || !allowHTTP) {
+		return nil, errors.New(envProviderBaseURL + " must use HTTPS")
+	}
+	parsed.Path = ""
+	return parsed, nil
+}
+
 func loadAuthorizationConfig(appEnvironment string) (AuthorizationConfig, error) {
 	enabled, err := strconv.ParseBool(defaultString(strings.TrimSpace(os.Getenv(envAuthorizationGate)), "false"))
 	if err != nil {
 		return AuthorizationConfig{}, errors.New(envAuthorizationGate + " must be true or false")
 	}
-	result := AuthorizationConfig{Enabled: enabled, AllowedReturns: []string{auth.DefaultReturnRoute, auth.PortfolioReturnRoute}}
+	providerBaseURL, err := loadProviderBaseURL(appEnvironment)
+	if err != nil {
+		return AuthorizationConfig{}, err
+	}
+	result := AuthorizationConfig{Enabled: enabled, AllowedReturns: []string{auth.DefaultReturnRoute, auth.PortfolioReturnRoute}, ProviderBaseURL: providerBaseURL}
 	if !enabled {
+		if strings.TrimSpace(os.Getenv(envOAuthTokenKeyV1)) != "" {
+			if err := loadTokenKey(&result); err != nil {
+				return AuthorizationConfig{}, err
+			}
+		}
 		return result, nil
 	}
 	if err := loadOAuthSettings(&result, appEnvironment); err != nil {
@@ -199,6 +227,10 @@ func loadAuthorizationKeys(result *AuthorizationConfig) error {
 	if subtle.ConstantTimeCompare(result.HashKey, result.EncryptionKey) == 1 {
 		return errors.New("OAuth hashing and encryption keys must be independent")
 	}
+	return loadTokenKey(result)
+}
+
+func loadTokenKey(result *AuthorizationConfig) error {
 	tokenKey, err := decodeKey(envOAuthTokenKeyV1)
 	if err != nil {
 		return err

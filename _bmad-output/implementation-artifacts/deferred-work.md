@@ -10,3 +10,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-0-2-begin-hosted-snaptrade-authorization-safely.md`
   summary: Define an OIDC discovery metadata cache freshness and refresh policy before initiation is opened in production.
   evidence: The Story 0.2 client intentionally caches validated discovery metadata until process restart, while the provider's endpoint-rotation expectations and an appropriate refresh SLA are not established by the current architecture or provider contract.
+- source_spec: `_bmad-output/implementation-artifacts/spec-0-5-prove-authenticated-snaptrade-access-with-masked-inventory.md`
+  summary: Define the correct per-connection repair action when a ready inventory contains both active and disabled SnapTrade connections.
+  evidence: The current UI identifies the disabled connection but offers recovery only for a top-level disabled state; the repository and pinned API contract do not establish whether hosted reauthorization repairs one disabled connection or whether SnapTrade requires a distinct connection-repair flow.

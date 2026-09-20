@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/portfolio/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return or bootstrap the authenticated owner's masked inventory */
+        get: operations["getPortfolioInventory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portfolio/inventory/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Explicitly retry the authenticated owner's inventory bootstrap */
+        post: operations["retryPortfolioInventory"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/logout": {
         parameters: {
             query?: never;
@@ -76,6 +110,40 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        InventoryState: "pending" | "ready" | "empty" | "disabled" | "unauthorized" | "rate_limited" | "unavailable" | "malformed";
+        InventoryAccount: {
+            id: string;
+            /** @enum {string} */
+            category: "investment" | "deposit" | "credit" | "unknown";
+            type: string;
+            maskedLabel: string;
+            available: boolean;
+            eligible: boolean;
+            /** @enum {string} */
+            syncState: "complete" | "pending" | "unavailable" | "unknown";
+        };
+        InventoryConnection: {
+            id: string;
+            brokerageLabel: string;
+            /** @enum {string} */
+            status: "active" | "disabled" | "unavailable";
+            /** @enum {string} */
+            syncMode: "realtime" | "delayed" | "unknown";
+            available: boolean;
+            eligible: boolean;
+            accounts: components["schemas"]["InventoryAccount"][];
+        };
+        PortfolioInventory: {
+            state: components["schemas"]["InventoryState"];
+            /** Format: int64 */
+            generation: number;
+            /** Format: date-time */
+            retryAt?: string;
+            /** Format: date-time */
+            updatedAt: string;
+            connections: components["schemas"]["InventoryConnection"][];
+        };
         AuthorizationStatus: {
             authorizationAvailable: boolean;
             authenticated: boolean;
@@ -89,6 +157,26 @@ export interface components {
         };
     };
     responses: {
+        /** @description The presented session is not active */
+        InventoryUnauthorized: {
+            headers: {
+                "Cache-Control": "private, no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description A session request defense failed */
+        InventoryForbidden: {
+            headers: {
+                "Cache-Control": "private, no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description The presented session is not active */
         LogoutUnauthorized: {
             headers: {
@@ -128,11 +216,60 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getPortfolioInventory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Persisted categorical inventory state */
+            200: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioInventory"];
+                };
+            };
+            401: components["responses"]["InventoryUnauthorized"];
+            503: components["responses"]["SafeError"];
+        };
+    };
+    retryPortfolioInventory: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Persisted categorical inventory state after the bounded retry */
+            200: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioInventory"];
+                };
+            };
+            401: components["responses"]["InventoryUnauthorized"];
+            403: components["responses"]["InventoryForbidden"];
+            503: components["responses"]["SafeError"];
+        };
+    };
     logoutCurrentSession: {
         parameters: {
             query?: never;
-            header?: {
-                "X-CSRF-Token"?: string;
+            header: {
+                "X-CSRF-Token": string;
             };
             path?: never;
             cookie?: never;
