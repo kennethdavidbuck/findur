@@ -34,7 +34,7 @@ export function PublicLink({ children, className, current, href, onNavigate, des
   )
 }
 
-function PreferenceControls({ compact = false }: { compact?: boolean }) {
+export function PreferenceControls({ compact = false }: { compact?: boolean }) {
   const { locale, messages, setLocale } = useI18n()
   const { preference, setPreference } = useTheme()
 

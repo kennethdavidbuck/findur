@@ -33,6 +33,8 @@ services:
         sync: false
       - key: SESSION_HASH_KEY
         sync: false
+      - key: PUBLIC_ORIGIN
+        value: https://findur-web-kdb.onrender.com
       - key: OAUTH_TOKEN_KEY_V1
         sync: false
 

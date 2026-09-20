@@ -28,6 +28,7 @@ const (
 	envOAuthHashKey      = "OAUTH_HASH_KEY"
 	envOAuthVerifierKey  = "OAUTH_ENCRYPTION_KEY"
 	envSessionHashKey    = "SESSION_HASH_KEY"
+	envPublicOrigin      = "PUBLIC_ORIGIN"
 	envOAuthTokenKeyV1   = "OAUTH_TOKEN_KEY_V1"
 	envDatabaseURL       = "DATABASE_URL"
 	envMigrationsURL     = "MIGRATIONS_URL"
@@ -60,6 +61,13 @@ type Config struct {
 	FixtureBaseURL       *url.URL
 	FixtureProviderToken string
 	Authorization        AuthorizationConfig
+	Session              SessionConfig
+}
+
+// SessionConfig is independent of the OAuth initiation feature gate.
+type SessionConfig struct {
+	HashKey      []byte
+	PublicOrigin string
 }
 
 // AuthorizationConfig is explicit product policy and validated OIDC configuration.
@@ -71,7 +79,6 @@ type AuthorizationConfig struct {
 	Issuer          string
 	HashKey         []byte
 	EncryptionKey   []byte
-	SessionHashKey  []byte
 	TokenKeys       map[int][]byte
 	CurrentTokenKey int
 	AllowedReturns  []string
@@ -118,6 +125,10 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	session, err := loadSessionConfig(appEnvironment, authorization)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		Address:              net.JoinHostPort("", port),
@@ -128,6 +139,7 @@ func Load() (Config, error) {
 		FixtureBaseURL:       fixtureBaseURL,
 		FixtureProviderToken: fixtureToken,
 		Authorization:        authorization,
+		Session:              session,
 	}, nil
 }
 
@@ -187,24 +199,51 @@ func loadAuthorizationKeys(result *AuthorizationConfig) error {
 	if subtle.ConstantTimeCompare(result.HashKey, result.EncryptionKey) == 1 {
 		return errors.New("OAuth hashing and encryption keys must be independent")
 	}
-	result.SessionHashKey, err = decodeKey(envSessionHashKey)
-	if err != nil {
-		return err
-	}
 	tokenKey, err := decodeKey(envOAuthTokenKeyV1)
 	if err != nil {
 		return err
 	}
-	for _, other := range [][]byte{result.HashKey, result.EncryptionKey, result.SessionHashKey} {
+	for _, other := range [][]byte{result.HashKey, result.EncryptionKey} {
 		if subtle.ConstantTimeCompare(tokenKey, other) == 1 {
 			return errors.New("OAuth token encryption key must be independent")
 		}
 	}
-	if subtle.ConstantTimeCompare(result.SessionHashKey, result.HashKey) == 1 || subtle.ConstantTimeCompare(result.SessionHashKey, result.EncryptionKey) == 1 {
-		return errors.New("session hashing key must be independent")
-	}
 	result.TokenKeys, result.CurrentTokenKey = map[int][]byte{1: tokenKey}, 1
 	return nil
+}
+
+func loadSessionConfig(appEnvironment string, authorization AuthorizationConfig) (SessionConfig, error) {
+	rawOrigin := strings.TrimSpace(os.Getenv(envPublicOrigin))
+	if rawOrigin == "" && authorization.CallbackURL != "" {
+		callback, _ := url.Parse(authorization.CallbackURL)
+		rawOrigin = callback.Scheme + "://" + callback.Host
+	}
+	rawKey := strings.TrimSpace(os.Getenv(envSessionHashKey))
+	if rawKey == "" && rawOrigin == "" && appEnvironment != environmentProduction {
+		return SessionConfig{}, nil
+	}
+	if rawKey == "" || rawOrigin == "" {
+		return SessionConfig{}, errors.New("session lifecycle requires " + envSessionHashKey + " and " + envPublicOrigin)
+	}
+	origin, err := validateHTTPURL(rawOrigin, appEnvironment == environmentIntegration)
+	if err != nil || origin.Path != "" {
+		return SessionConfig{}, errors.New("invalid PUBLIC_ORIGIN")
+	}
+	hashKey, err := decodeKey(envSessionHashKey)
+	if err != nil {
+		return SessionConfig{}, err
+	}
+	for _, other := range [][]byte{authorization.HashKey, authorization.EncryptionKey} {
+		if len(other) > 0 && subtle.ConstantTimeCompare(hashKey, other) == 1 {
+			return SessionConfig{}, errors.New("session hashing key must be independent")
+		}
+	}
+	for _, other := range authorization.TokenKeys {
+		if subtle.ConstantTimeCompare(hashKey, other) == 1 {
+			return SessionConfig{}, errors.New("session hashing key must be independent")
+		}
+	}
+	return SessionConfig{HashKey: hashKey, PublicOrigin: origin.Scheme + "://" + origin.Host}, nil
 }
 
 func defaultString(value, fallback string) string {

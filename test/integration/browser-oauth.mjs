@@ -33,10 +33,10 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script: `return { path: location.pathname, search: location.search, heading: document.querySelector('h1')?.innerText }`, args: [] }),
       })
-      if (oauthEvidence.path === '/connect/result') break
+      if (oauthEvidence.path === '/portfolio') break
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
-    assert.deepEqual(oauthEvidence, { path: '/connect/result', search: '', heading: 'Your private session is ready.' })
+    assert.deepEqual(oauthEvidence, { path: '/portfolio', search: '', heading: 'Choose accounts before anything else.' })
     const browserCookies = await webdriver(`/session/${sessionId}/cookie`)
     assert.ok(browserCookies.some((cookie) => cookie.name === 'findur_session' && cookie.httpOnly && cookie.secure), 'opaque secure session cookie is issued')
     assert.ok(browserCookies.some((cookie) => cookie.name === 'findur_csrf' && !cookie.httpOnly && cookie.secure), 'separate secure CSRF cookie is issued')

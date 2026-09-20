@@ -22,6 +22,39 @@ type statusCompleter struct {
 	receivedSession string
 }
 
+type sessionLifecycleStub struct {
+	authorizeErr   error
+	revokeErr      error
+	revoked        []string
+	authorizeCalls int
+}
+
+func (s *sessionLifecycleStub) Authenticate(context.Context, string) (auth.Actor, error) {
+	return auth.Actor{}, s.authorizeErr
+}
+func (s *sessionLifecycleStub) AuthorizeUnsafe(context.Context, string, string) (auth.Actor, error) {
+	s.authorizeCalls++
+	return auth.Actor{}, s.authorizeErr
+}
+
+func TestLogoutRejectsCrossOriginBeforeTouchingTheSession(t *testing.T) {
+	lifecycle := &sessionLifecycleStub{}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+	request.Header.Set("X-CSRF-Token", "csrf")
+	request.Header.Set("Origin", "https://evil.example")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	sessionHandler(lifecycle, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || lifecycle.authorizeCalls != 0 {
+		t.Fatalf("status=%d authenticate calls=%d", response.Code, lifecycle.authorizeCalls)
+	}
+}
+func (s *sessionLifecycleStub) RevokeCurrent(_ context.Context, session string) error {
+	s.revoked = append(s.revoked, session)
+	return s.revokeErr
+}
+
 func (s *statusCompleter) Complete(context.Context, auth.CallbackInput) (auth.CallbackResult, error) {
 	return auth.CallbackResult{}, nil
 }
@@ -41,6 +74,130 @@ func callbackHandler(completer authorizationCompleter) http.Handler {
 	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
 	readiness.SetReady(true)
 	return NewHandlerWithCallback(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, completer)
+}
+
+func sessionHandler(sessions sessionLifecycle, publicOrigin string) http.Handler {
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	return NewHandlerWithSessions(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, nil, sessions, false, publicOrigin)
+}
+
+func TestLogoutRequiresSessionBoundCSRFOriginAndFetchMetadata(t *testing.T) {
+	for name, configure := range map[string]func(*http.Request, *sessionLifecycleStub){
+		"missing session": func(request *http.Request, _ *sessionLifecycleStub) {
+			request.Header.Set("Origin", "https://findur.example")
+			request.Header.Set("Sec-Fetch-Site", "same-origin")
+		},
+		"invalid session": func(request *http.Request, lifecycle *sessionLifecycleStub) {
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "expired"})
+			request.Header.Set("Origin", "https://findur.example")
+			request.Header.Set("Sec-Fetch-Site", "same-origin")
+			lifecycle.authorizeErr = auth.ErrUnauthenticated
+		},
+		"invalid csrf": func(request *http.Request, lifecycle *sessionLifecycleStub) {
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+			request.Header.Set("Origin", "https://findur.example")
+			request.Header.Set("Sec-Fetch-Site", "same-origin")
+			lifecycle.authorizeErr = auth.ErrForbidden
+		},
+		"cross origin": func(request *http.Request, _ *sessionLifecycleStub) {
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+			request.Header.Set("Origin", "https://evil.example")
+			request.Header.Set("Sec-Fetch-Site", "same-origin")
+		},
+		"cross site metadata": func(request *http.Request, _ *sessionLifecycleStub) {
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+			request.Header.Set("Origin", "https://findur.example")
+			request.Header.Set("Sec-Fetch-Site", "cross-site")
+		},
+		"missing origin and referer": func(request *http.Request, _ *sessionLifecycleStub) {
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+			request.Header.Set("Sec-Fetch-Site", "same-origin")
+		},
+		"missing fetch metadata": func(request *http.Request, _ *sessionLifecycleStub) {
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+			request.Header.Set("Origin", "https://findur.example")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			lifecycle := &sessionLifecycleStub{}
+			request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+			request.Header.Set("X-CSRF-Token", "csrf")
+			configure(request, lifecycle)
+			response := httptest.NewRecorder()
+			sessionHandler(lifecycle, "https://findur.example").ServeHTTP(response, request)
+			want := http.StatusForbidden
+			if name == "missing session" || name == "invalid session" {
+				want = http.StatusUnauthorized
+			}
+			if response.Code != want || response.Header().Get("Cache-Control") != privateNoStoreDirective || len(lifecycle.revoked) != 0 {
+				t.Fatalf("status=%d headers=%v revoked=%v body=%q", response.Code, response.Header(), lifecycle.revoked, response.Body.String())
+			}
+			if want == http.StatusUnauthorized && len(response.Result().Cookies()) != 2 {
+				t.Fatalf("401 did not expire both cookies: %v", response.Result().Cookies())
+			}
+		})
+	}
+}
+
+func TestLogoutDuplicateCSRFHeaderUsesSafeCategoricalBindingError(t *testing.T) {
+	lifecycle := &sessionLifecycleStub{}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+	request.Header.Add("X-CSRF-Token", "first")
+	request.Header.Add("X-CSRF-Token", "second")
+	request.Header.Set("Origin", "https://findur.example")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	sessionHandler(lifecycle, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusBadRequest || response.Header().Get("Cache-Control") != noStoreDirective || !strings.Contains(response.Body.String(), `"code":"invalid_request"`) || lifecycle.authorizeCalls != 0 {
+		t.Fatalf("status=%d headers=%v calls=%d body=%q", response.Code, response.Header(), lifecycle.authorizeCalls, response.Body.String())
+	}
+}
+
+func TestLogoutPropagatesSessionStorageFailures(t *testing.T) {
+	lifecycle := &sessionLifecycleStub{authorizeErr: errors.New("database unavailable")}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+	request.Header.Set("X-CSRF-Token", "csrf")
+	request.Header.Set("Origin", "https://findur.example")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	sessionHandler(lifecycle, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"code":"initialization_failed"`) {
+		t.Fatalf("status=%d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
+	}
+}
+
+func TestLogoutRejectsMissingCSRFWithForbiddenBeforeRevocation(t *testing.T) {
+	lifecycle := &sessionLifecycleStub{authorizeErr: auth.ErrForbidden}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+	request.Header.Set("Origin", "https://findur.example")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	sessionHandler(lifecycle, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || len(lifecycle.revoked) != 0 {
+		t.Fatalf("status=%d revoked=%v body=%q", response.Code, lifecycle.revoked, response.Body.String())
+	}
+}
+
+func TestLogoutRevokesOnlyPresentedSessionAndExpiresBothCookies(t *testing.T) {
+	lifecycle := &sessionLifecycleStub{}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "current-browser"})
+	request.Header.Set("X-CSRF-Token", "session-bound-csrf")
+	request.Header.Set("Referer", "https://findur.example/portfolio")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	response := httptest.NewRecorder()
+	sessionHandler(lifecycle, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent || response.Header().Get("Cache-Control") != privateNoStoreDirective || len(lifecycle.revoked) != 1 || lifecycle.revoked[0] != "current-browser" {
+		t.Fatalf("status=%d headers=%v revoked=%v", response.Code, response.Header(), lifecycle.revoked)
+	}
+	cookies := response.Result().Cookies()
+	if len(cookies) != 2 || cookies[0].Name != sessionCookieName || cookies[1].Name != csrfCookieName || cookies[0].MaxAge != -1 || cookies[1].MaxAge != -1 || !cookies[0].HttpOnly || cookies[1].HttpOnly {
+		t.Fatalf("cookies=%+v", cookies)
+	}
 }
 
 func TestAuthorizationStatusIsNoStoreAndServerAuthoritative(t *testing.T) {
@@ -71,6 +228,17 @@ func TestAuthorizationStatusIsNoStoreAndServerAuthoritative(t *testing.T) {
 			t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
 		}
 	})
+	t.Run("authenticated session remains available while initiation is closed", func(t *testing.T) {
+		lifecycle := &sessionLifecycleStub{}
+		handler := sessionHandler(lifecycle, "https://findur.example")
+		request := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "active"})
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK || response.Body.String() != `{"authenticated":true,"authorizationAvailable":false}`+"\n" {
+			t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+		}
+	})
 }
 
 func TestAuthorizationCallbackRotatesSecureCookiesAndRedirectsCleanly(t *testing.T) {
@@ -88,7 +256,8 @@ func TestAuthorizationCallbackRotatesSecureCookiesAndRedirectsCleanly(t *testing
 		t.Fatalf("response=%d %v", response.Code, response.Header())
 	}
 	cookies := response.Result().Cookies()
-	if len(cookies) != 3 || cookies[0].MaxAge != -1 || !cookies[1].Secure || !cookies[1].HttpOnly || cookies[1].Domain != "" || cookies[2].HttpOnly || cookies[2].SameSite != http.SameSiteStrictMode {
+	wantSessionSeconds := 7 * 24 * 60 * 60
+	if len(cookies) != 3 || cookies[0].MaxAge != -1 || cookies[1].MaxAge != wantSessionSeconds || cookies[2].MaxAge != wantSessionSeconds || !cookies[1].Secure || !cookies[1].HttpOnly || cookies[1].Domain != "" || cookies[2].HttpOnly || cookies[2].SameSite != http.SameSiteStrictMode {
 		t.Fatalf("cookies=%+v", cookies)
 	}
 }

@@ -50,6 +50,7 @@ services:
       OAUTH_HASH_KEY: "${OAUTH_HASH_KEY:-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA}"
       OAUTH_ENCRYPTION_KEY: "${OAUTH_ENCRYPTION_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE}"
       SESSION_HASH_KEY: "${SESSION_HASH_KEY:-AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI}"
+      PUBLIC_ORIGIN: "${PUBLIC_ORIGIN:-http://127.0.0.1:8080}"
       OAUTH_TOKEN_KEY_V1: "${OAUTH_TOKEN_KEY_V1:-AwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwM}"
     depends_on:
       postgres:
@@ -151,6 +152,9 @@ services:
     # Sharing the frontend network namespace makes the configured loopback
     # callback reachable by the real browser exactly as it is on a local host.
     network_mode: "service:frontend"
+    environment:
+      SE_NODE_MAX_SESSIONS: "2"
+      SE_NODE_OVERRIDE_MAX_SESSIONS: "true"
     shm_size: 1gb
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:4444/wd/hub/status | grep -q '\"ready\": true'"]

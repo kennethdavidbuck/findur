@@ -126,7 +126,12 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		pool.Close()
 		return errInvalidConfiguration
 	}
-	server := newServer(cfg.Address, httpapi.NewHandlerWithCallback(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, authorization.fixture), logger)
+	sessions, err := buildSessions(cfg, pool)
+	if err != nil {
+		pool.Close()
+		return errInvalidConfiguration
+	}
+	server := newServer(cfg.Address, httpapi.NewHandlerWithSessions(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("http server starting", "address", cfg.Address)
@@ -159,6 +164,13 @@ type authorizationComponents struct {
 	fixture   http.Handler
 }
 
+func buildSessions(cfg config.Config, pool *pgxpool.Pool) (*auth.SessionService, error) {
+	if len(cfg.Session.HashKey) == 0 {
+		return nil, nil
+	}
+	return auth.NewSessionService(auth.SessionConfig{HashKey: cfg.Session.HashKey, Clock: time.Now}, postgresadapter.NewSessionRepository(pool))
+}
+
 func buildAuthorization(cfg config.Config, pool *pgxpool.Pool) (authorizationComponents, error) {
 	if !cfg.Authorization.Enabled {
 		return authorizationComponents{}, nil
@@ -184,7 +196,7 @@ func buildAuthorization(cfg config.Config, pool *pgxpool.Pool) (authorizationCom
 		Provider:         auth.SnapTradeProvider,
 		CallbackURL:      cfg.Authorization.CallbackURL,
 		AttemptHashKey:   cfg.Authorization.HashKey,
-		SessionHashKey:   cfg.Authorization.SessionHashKey,
+		SessionHashKey:   cfg.Session.HashKey,
 		VerifierKey:      cfg.Authorization.EncryptionKey,
 		TokenKeys:        cfg.Authorization.TokenKeys,
 		CurrentTokenKey:  cfg.Authorization.CurrentTokenKey,
