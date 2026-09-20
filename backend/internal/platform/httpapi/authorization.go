@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -26,8 +27,20 @@ type authorizationStatusProvider interface {
 	Status(context.Context, string) (auth.AuthorizationStatus, error)
 }
 
+type sessionLifecycle interface {
+	Authenticate(context.Context, string) (auth.Actor, error)
+	AuthorizeUnsafe(context.Context, string, string) (auth.Actor, error)
+	RevokeCurrent(context.Context, string) error
+}
+
 type callbackCookies struct{ attempt, session string }
 type callbackCookieKey struct{}
+type httpRequestContextKey struct{}
+
+func requestFromContext(ctx context.Context) *http.Request {
+	request, _ := ctx.Value(httpRequestContextKey{}).(*http.Request)
+	return request
+}
 
 const (
 	authorizationRequestLimit = 4 << 10
@@ -43,20 +56,24 @@ const (
 	sessionCheckCategory      = "session_check_failed"
 	cacheControlHeader        = "Cache-Control"
 	noStoreDirective          = "no-store"
+	privateNoStoreDirective   = "private, no-store"
 	contentTypeHeader         = "Content-Type"
 	jsonMediaType             = "application/json"
 	formMediaType             = "application/x-www-form-urlencoded"
 )
 
 type authorizationAPI struct {
-	logger    *slog.Logger
-	initiator authorizationInitiator
-	completer authorizationCompleter
-	status    authorizationStatusProvider
+	logger                 *slog.Logger
+	initiator              authorizationInitiator
+	completer              authorizationCompleter
+	status                 authorizationStatusProvider
+	sessions               sessionLifecycle
+	authorizationAvailable bool
+	publicOrigin           string
 }
 
-func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter) {
-	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer}
+func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, authorizationAvailable bool, publicOrigin string) {
+	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
 	if provider, ok := completer.(authorizationStatusProvider); ok {
 		api.status = provider
 	}
@@ -77,12 +94,18 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 			writeGeneratedError(w, http.StatusBadRequest, generated.InvalidRequest)
 		},
 	})
-	generated.HandlerWithOptions(strict, generated.StdHTTPServerOptions{BaseRouter: mux, Middlewares: []generated.MiddlewareFunc{
-		validateRequests,
-		noStoreMiddleware,
-		callbackContextMiddleware,
-		contentTypeMiddleware,
-	}})
+	generated.HandlerWithOptions(strict, generated.StdHTTPServerOptions{
+		BaseRouter: mux,
+		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
+			writeGeneratedError(w, http.StatusBadRequest, generated.InvalidRequest)
+		},
+		Middlewares: []generated.MiddlewareFunc{
+			validateRequests,
+			noStoreMiddleware,
+			callbackContextMiddleware,
+			contentTypeMiddleware,
+		},
+	})
 	mux.HandleFunc(authorizationPath, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Allow", http.MethodPost)
 		writeGeneratedError(w, http.StatusMethodNotAllowed, generated.InvalidRequest)
@@ -98,7 +121,7 @@ func noStoreMiddleware(next http.Handler) http.Handler {
 
 func callbackContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath {
+		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == "/api/auth/logout" {
 			cookies := callbackCookies{
 				attempt: cookieValue(r, attemptCookieName),
 				session: cookieValue(r, sessionCookieName),
@@ -106,6 +129,7 @@ func callbackContextMiddleware(next http.Handler) http.Handler {
 			r = r.WithContext(context.WithValue(r.Context(), callbackCookieKey{}, cookies))
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, authorizationRequestLimit)
+		r = r.WithContext(context.WithValue(r.Context(), httpRequestContextKey{}, r))
 		next.ServeHTTP(w, r)
 	})
 }
@@ -123,8 +147,14 @@ func contentTypeMiddleware(next http.Handler) http.Handler {
 
 func (a *authorizationAPI) GetAuthorizationStatus(ctx context.Context, _ generated.GetAuthorizationStatusRequestObject) (generated.GetAuthorizationStatusResponseObject, error) {
 	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
-	status := auth.AuthorizationStatus{}
-	if a.status != nil {
+	status := auth.AuthorizationStatus{AuthorizationAvailable: a.authorizationAvailable}
+	if a.sessions != nil {
+		_, err := a.sessions.Authenticate(ctx, cookies.session)
+		status.Authenticated = err == nil
+		if err != nil && !errors.Is(err, auth.ErrUnauthenticated) {
+			a.logger.WarnContext(ctx, "authorization status unavailable", "request_id", requestIDFromContext(ctx), "category", sessionCheckCategory)
+		}
+	} else if a.status != nil {
 		var err error
 		status, err = a.status.Status(ctx, cookies.session)
 		if err != nil {
@@ -132,6 +162,80 @@ func (a *authorizationAPI) GetAuthorizationStatus(ctx context.Context, _ generat
 		}
 	}
 	return generated.GetAuthorizationStatus200JSONResponse{Body: generated.AuthorizationStatus{AuthorizationAvailable: status.AuthorizationAvailable, Authenticated: status.Authenticated}, Headers: generated.GetAuthorizationStatus200ResponseHeaders{CacheControl: noStoreDirective}}, nil
+}
+
+type logoutResponse struct{ cookies []*http.Cookie }
+
+func (r logoutResponse) VisitLogoutCurrentSessionResponse(w http.ResponseWriter) error {
+	for _, cookie := range r.cookies {
+		http.SetCookie(w, cookie)
+	}
+	w.Header().Set(cacheControlHeader, privateNoStoreDirective)
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+type logoutErrorResponse struct {
+	status  int
+	code    generated.ErrorCode
+	cookies []*http.Cookie
+}
+
+func (r logoutErrorResponse) VisitLogoutCurrentSessionResponse(w http.ResponseWriter) error {
+	for _, cookie := range r.cookies {
+		http.SetCookie(w, cookie)
+	}
+	w.Header().Set(cacheControlHeader, privateNoStoreDirective)
+	w.Header().Set(contentTypeHeader, jsonMediaType)
+	w.WriteHeader(r.status)
+	return json.NewEncoder(w).Encode(generated.Error{Code: r.code})
+}
+
+func (a *authorizationAPI) LogoutCurrentSession(ctx context.Context, request generated.LogoutCurrentSessionRequestObject) (generated.LogoutCurrentSessionResponseObject, error) {
+	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
+	if a.sessions == nil || cookies.session == "" {
+		return logoutUnauthorized(), nil
+	}
+	httpRequest := requestFromContext(ctx)
+	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != "same-origin" {
+		return logoutForbidden(), nil
+	}
+	if _, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, optionalString(request.Params.XCSRFToken)); err != nil {
+		switch {
+		case errors.Is(err, auth.ErrUnauthenticated):
+			return logoutUnauthorized(), nil
+		case errors.Is(err, auth.ErrForbidden):
+			return logoutForbidden(), nil
+		default:
+			return nil, err
+		}
+	}
+	if err := a.sessions.RevokeCurrent(ctx, cookies.session); err != nil {
+		if errors.Is(err, auth.ErrUnauthenticated) {
+			return logoutUnauthorized(), nil
+		}
+		return nil, err
+	}
+	return logoutResponse{cookies: expiredSessionCookies()}, nil
+}
+
+func logoutUnauthorized() generated.LogoutCurrentSessionResponseObject {
+	return logoutErrorResponse{status: http.StatusUnauthorized, code: generated.Unauthenticated, cookies: expiredSessionCookies()}
+}
+
+func logoutForbidden() generated.LogoutCurrentSessionResponseObject {
+	return logoutErrorResponse{status: http.StatusForbidden, code: generated.Forbidden}
+}
+
+func sameOriginRequest(request *http.Request, publicOrigin string) bool {
+	if publicOrigin == "" {
+		return false
+	}
+	if origin := request.Header.Get("Origin"); origin != "" {
+		return origin == publicOrigin
+	}
+	referer, err := url.Parse(request.Header.Get("Referer"))
+	return err == nil && referer.Scheme+"://"+referer.Host == publicOrigin
 }
 
 type callbackRedirect struct {
@@ -251,6 +355,13 @@ func sessionCookies(result auth.CallbackResult) []*http.Cookie {
 	return []*http.Cookie{
 		{Name: sessionCookieName, Value: result.Session, Path: "/", MaxAge: maxAge, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode},
 		{Name: csrfCookieName, Value: result.CSRF, Path: "/", MaxAge: maxAge, Secure: true, SameSite: http.SameSiteStrictMode},
+	}
+}
+
+func expiredSessionCookies() []*http.Cookie {
+	return []*http.Cookie{
+		{Name: sessionCookieName, Path: "/", MaxAge: -1, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode},
+		{Name: csrfCookieName, Path: "/", MaxAge: -1, Secure: true, SameSite: http.SameSiteStrictMode},
 	}
 }
 

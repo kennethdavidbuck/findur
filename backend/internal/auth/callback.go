@@ -16,13 +16,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// Session lifetimes and callback persistence values.
 const (
-	SessionIdleLifetime     = 30 * time.Minute
-	SessionAbsoluteLifetime = 12 * time.Hour
-	tokenKindAccess         = "access"
-	tokenKindRefresh        = "refresh"
-	attemptSucceeded        = "succeeded"
+	tokenKindAccess  = "access"
+	tokenKindRefresh = "refresh"
+	attemptSucceeded = "succeeded"
 )
 
 // Stable callback errors exposed without provider detail.

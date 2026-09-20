@@ -12,6 +12,8 @@ func TestLoad(t *testing.T) {
 	t.Setenv("PORT", "8080")
 	t.Setenv("MIGRATIONS_URL", "file://testdata/migrations")
 	t.Setenv("APP_ENV", "production")
+	t.Setenv("PUBLIC_ORIGIN", "https://findur.example")
+	t.Setenv("SESSION_HASH_KEY", base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
 
 	got, err := Load()
 	if err != nil {
@@ -207,9 +209,38 @@ func setValidAuthorizationEnvironment(t *testing.T) {
 	t.Setenv("SNAPTRADE_OAUTH_CLIENT_ID", "synthetic-client")
 	t.Setenv("SNAPTRADE_OAUTH_CALLBACK_URL", "https://findur.example/api/auth/snaptrade/callback")
 	t.Setenv("SNAPTRADE_OIDC_ISSUER", "https://issuer.example")
+	t.Setenv("PUBLIC_ORIGIN", "https://findur.example")
 	t.Setenv("OAUTH_HASH_KEY", key)
 	t.Setenv("OAUTH_ENCRYPTION_KEY", encryptionKey)
 	setCompletionKeys(t)
+}
+
+func TestSessionLifecycleLoadsWhenAuthorizationInitiationIsClosed(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://localhost/findur")
+	t.Setenv("AUTH_INITIATION_ENABLED", "false")
+	t.Setenv("PUBLIC_ORIGIN", "https://findur.example")
+	t.Setenv("SESSION_HASH_KEY", base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)))
+	got, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Authorization.Enabled || got.Session.PublicOrigin != "https://findur.example" || len(got.Session.HashKey) != 32 {
+		t.Fatalf("authorization=%+v session=%+v", got.Authorization, got.Session)
+	}
+}
+
+func TestProductionRejectsMissingOrNonOriginPublicOrigin(t *testing.T) {
+	for _, origin := range []string{"", "https://findur.example/path", "http://findur.example"} {
+		t.Run(origin, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://localhost/findur")
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("PUBLIC_ORIGIN", origin)
+			t.Setenv("SESSION_HASH_KEY", base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)))
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load accepted PUBLIC_ORIGIN=%q", origin)
+			}
+		})
+	}
 }
 
 func setCompletionKeys(t *testing.T) {

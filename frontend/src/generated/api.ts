@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the authenticated browser session */
+        post: operations["logoutCurrentSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/status": {
         parameters: {
             query?: never;
@@ -68,10 +85,31 @@ export interface components {
         };
         Error: {
             /** @enum {string} */
-            code: "invalid_request" | "authorization_unavailable" | "initialization_failed" | "restart_required";
+            code: "invalid_request" | "authorization_unavailable" | "initialization_failed" | "restart_required" | "unauthenticated" | "forbidden";
         };
     };
     responses: {
+        /** @description The presented session is not active */
+        LogoutUnauthorized: {
+            headers: {
+                "Cache-Control": "private, no-store";
+                "Set-Cookie": string[];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description A session request defense failed */
+        LogoutForbidden: {
+            headers: {
+                "Cache-Control": "private, no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description Categorical, non-sensitive failure */
         SafeError: {
             headers: {
@@ -90,6 +128,30 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    logoutCurrentSession: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current session revoked and browser cookies expired */
+            204: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    "Set-Cookie": string[];
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["LogoutUnauthorized"];
+            403: components["responses"]["LogoutForbidden"];
+        };
+    };
     getAuthorizationStatus: {
         parameters: {
             query?: never;

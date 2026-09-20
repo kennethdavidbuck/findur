@@ -26,9 +26,11 @@ import (
 // Defines values for ErrorCode.
 const (
 	AuthorizationUnavailable ErrorCode = "authorization_unavailable"
+	Forbidden                ErrorCode = "forbidden"
 	InitializationFailed     ErrorCode = "initialization_failed"
 	InvalidRequest           ErrorCode = "invalid_request"
 	RestartRequired          ErrorCode = "restart_required"
+	Unauthenticated          ErrorCode = "unauthenticated"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -36,11 +38,15 @@ func (e ErrorCode) Valid() bool {
 	switch e {
 	case AuthorizationUnavailable:
 		return true
+	case Forbidden:
+		return true
 	case InitializationFailed:
 		return true
 	case InvalidRequest:
 		return true
 	case RestartRequired:
+		return true
+	case Unauthenticated:
 		return true
 	default:
 		return false
@@ -66,8 +72,19 @@ type Error struct {
 // ErrorCode defines model for Error.Code.
 type ErrorCode string
 
+// LogoutForbidden defines model for LogoutForbidden.
+type LogoutForbidden = Error
+
+// LogoutUnauthorized defines model for LogoutUnauthorized.
+type LogoutUnauthorized = Error
+
 // SafeError defines model for SafeError.
 type SafeError = Error
+
+// LogoutCurrentSessionParams defines parameters for LogoutCurrentSession.
+type LogoutCurrentSessionParams struct {
+	XCSRFToken *string `json:"X-CSRF-Token,omitempty"`
+}
 
 // CompleteSnapTradeAuthorizationParams defines parameters for CompleteSnapTradeAuthorization.
 type CompleteSnapTradeAuthorizationParams struct {
@@ -92,6 +109,9 @@ type BeginSnapTradeAuthorizationFormdataRequestBody = BeginAuthorizationRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// LogoutCurrentSession Revoke the authenticated browser session
+	// (POST /api/auth/logout)
+	LogoutCurrentSession(w http.ResponseWriter, r *http.Request, params LogoutCurrentSessionParams)
 	// BeginSnapTradeAuthorization Begin a short-lived hosted SnapTrade authorization attempt
 	// (POST /api/auth/snaptrade/authorize)
 	BeginSnapTradeAuthorization(w http.ResponseWriter, r *http.Request)
@@ -111,6 +131,47 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// LogoutCurrentSession operation middleware
+func (siw *ServerInterfaceWrapper) LogoutCurrentSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LogoutCurrentSessionParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = &XCSRFToken
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LogoutCurrentSession(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // BeginSnapTradeAuthorization operation middleware
 func (siw *ServerInterfaceWrapper) BeginSnapTradeAuthorization(w http.ResponseWriter, r *http.Request) {
@@ -332,11 +393,31 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.LogoutCurrentSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/status", wrapper.GetAuthorizationStatus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/snaptrade/authorize", wrapper.BeginSnapTradeAuthorization)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/snaptrade/callback", wrapper.CompleteSnapTradeAuthorization)
 
 	return m
+}
+
+type LogoutForbiddenResponseHeaders struct {
+	CacheControl string
+}
+type LogoutForbiddenJSONResponse struct {
+	Body Error
+
+	Headers LogoutForbiddenResponseHeaders
+}
+
+type LogoutUnauthorizedResponseHeaders struct {
+	CacheControl string
+	SetCookie    []string
+}
+type LogoutUnauthorizedJSONResponse struct {
+	Body Error
+
+	Headers LogoutUnauthorizedResponseHeaders
 }
 
 type SafeErrorResponseHeaders struct {
@@ -346,6 +427,61 @@ type SafeErrorJSONResponse struct {
 	Body Error
 
 	Headers SafeErrorResponseHeaders
+}
+
+type LogoutCurrentSessionRequestObject struct {
+	Params LogoutCurrentSessionParams
+}
+
+type LogoutCurrentSessionResponseObject interface {
+	VisitLogoutCurrentSessionResponse(w http.ResponseWriter) error
+}
+
+type LogoutCurrentSession204ResponseHeaders struct {
+	CacheControl string
+	SetCookie    []string
+}
+
+type LogoutCurrentSession204Response struct {
+	Headers LogoutCurrentSession204ResponseHeaders
+}
+
+func (response LogoutCurrentSession204Response) VisitLogoutCurrentSessionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Set-Cookie", fmt.Sprint(response.Headers.SetCookie))
+	w.WriteHeader(204)
+	return nil
+}
+
+type LogoutCurrentSession401JSONResponse struct{ LogoutUnauthorizedJSONResponse }
+
+func (response LogoutCurrentSession401JSONResponse) VisitLogoutCurrentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.Header().Set("Set-Cookie", fmt.Sprint(response.Headers.SetCookie))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LogoutCurrentSession403JSONResponse struct{ LogoutForbiddenJSONResponse }
+
+func (response LogoutCurrentSession403JSONResponse) VisitLogoutCurrentSessionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type BeginSnapTradeAuthorizationRequestObject struct {
@@ -502,6 +638,9 @@ func (response GetAuthorizationStatus200JSONResponse) VisitGetAuthorizationStatu
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// LogoutCurrentSession Revoke the authenticated browser session
+	// (POST /api/auth/logout)
+	LogoutCurrentSession(ctx context.Context, request LogoutCurrentSessionRequestObject) (LogoutCurrentSessionResponseObject, error)
 	// BeginSnapTradeAuthorization Begin a short-lived hosted SnapTrade authorization attempt
 	// (POST /api/auth/snaptrade/authorize)
 	BeginSnapTradeAuthorization(ctx context.Context, request BeginSnapTradeAuthorizationRequestObject) (BeginSnapTradeAuthorizationResponseObject, error)
@@ -550,6 +689,32 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// LogoutCurrentSession operation middleware
+func (sh *strictHandler) LogoutCurrentSession(w http.ResponseWriter, r *http.Request, params LogoutCurrentSessionParams) {
+	var request LogoutCurrentSessionRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LogoutCurrentSession(ctx, request.(LogoutCurrentSessionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LogoutCurrentSession")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LogoutCurrentSessionResponseObject); ok {
+		if err := validResponse.VisitLogoutCurrentSessionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // BeginSnapTradeAuthorization operation middleware
@@ -656,22 +821,25 @@ func (sh *strictHandler) GetAuthorizationStatus(w http.ResponseWriter, r *http.R
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"tFbBbuM2EP0Vgu1Rjr1N96LbxmiLBRZokOxtEQRjcmxzl+Iww6FTN/C/F5RqWXbkAEnTk21ZnHnvzeMj",
-	"n7ShJlLAIEnXT5oxRQoJ2x+3sMTfmInLD0NBMEj5CjF6Z0Achen3RKE8S2aNDZRvPzMuda1/mh4qT7t/",
-	"07SrttvtKm0xGXaxFNG1noPgitgZ8JUKFCYJQ3LiNqiW4Hxm1JVeI1jkFtoczBoncwrC5DvgD9kxWl0L",
-	"Z6wGeAyFJLrWgSZJqC0k24i61knYhVWBs9vtV7TVP2VZE7u/W4q3ApLbx2CtK0/AXzNFZHFFpyX4hJWO",
-	"g0dPGrKsMUhRqWB62rdcEHmEoHeVhmGTTxtwHhYex97dVQN6384trE6a3vU8afEdjZSeV7hy4YjdDT5k",
-	"TPJKeoySOXylAdpezJG2vYle0cKQbcXAkJvC2oUNeGfv+V/AJwLe5wADKVxw4sDv/yweQquLjkmA5b7X",
-	"864aITBUu8XxXMvymgvLTgEnZXD6dxdsZvXp+rOu9AY5dd6eXVxezIoMFDFAdLrWlxcfLma60hFk3bKd",
-	"QnTTQmiaAkRhsDjd82tliNQNqUjUcvpsdd3N8zZA/FpWHA1WdzQwyRXZ7bvt4PMOKooM6/41eXx8nCyJ",
-	"m0lmj6EIad+nUTejQVJdzi7Lx3Gm3KB1jEaUkJI1KuuSoQ0yWrWmJGjVkYMUBhvJBTlOmi/U8Xk5ZApN",
-	"EF3rzE6PWeoWZTIn+uHw5ULPo6nSv85m59TqVZgewrqs+PDxlSs+zi5ftaIEZm4a4O3ehgpUWhPLxLvN",
-	"QeLenCdigwg2sXPNmPkNeL8A86OAWuGI9efURI+CZ90fgaFBacf47dQbty6sPE5yOsVVXKq6eEOrKKjI",
-	"tHEWWaVsDKZ00aaLrvVDRt7qSgdoysTKQj2cZOPCFwwrWev6w4gjThH9GeEhozLEjL7DkgQElUspo1WL",
-	"rery5RyA9u3/guB6zxTLiJXpjuTtQQ0XkiBYRUsFrVDnoLQF3gWKRQHnFRiDsdhpSVwmImTIq+JRELdw",
-	"3slWQSgIBUN3wPitcqtAjPZFlPfDxi9txLvXRg4oU47vSpnD3UYtmB4TsmJM2b8pad4eLU6wSSMl+nkA",
-	"M2zfmDlHeTCnkHKDJREO+2w0c/ttfpID/Z1rdO//gTJ2RTuZ0C+z2bsde2PtRq6xV914JwmWz4IFIgyc",
-	"Orir9Vv9/7/i9hO6wUgsR9Y8yefuMnUAnDClA9JS758BAA==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

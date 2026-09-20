@@ -29,6 +29,105 @@ func TestOAuthAttemptRepositoryAgainstPostgres(t *testing.T) {
 	t.Run("rolls back partial finalization", fixture.testFinalizationRollback)
 	t.Run("expires and cleans attempts", fixture.testExpirationAndCleanup)
 	t.Run("honors canceled cleanup", fixture.testCanceledCleanup)
+	t.Run("touches, isolates, revokes, expires, and cleans sessions", fixture.testSessionLifecycle)
+}
+
+func (f *repositoryFixture) testSessionLifecycle(t *testing.T) {
+	f.reset(t)
+	firstAttempt := f.createAttempt(t, 20, f.now.Add(10*time.Minute))
+	f.claimCallback(t, firstAttempt)
+	owner := uuid.New()
+	first := finalization(firstAttempt.StateHash, owner, f.now, 30)
+	if err := f.repository.FinalizeCallback(f.ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	secondAttempt := f.createAttempt(t, 40, f.now.Add(10*time.Minute))
+	f.claimCallback(t, secondAttempt)
+	second := finalization(secondAttempt.StateHash, owner, f.now, 60)
+	second.Subject = first.Subject
+	second.SessionHash = bytes.Repeat([]byte{61}, 32)
+	second.CSRFHash = bytes.Repeat([]byte{62}, 32)
+	if err := f.repository.FinalizeCallback(f.ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	thirdAttempt := f.createAttempt(t, 70, f.now.Add(10*time.Minute))
+	f.claimCallback(t, thirdAttempt)
+	third := finalization(thirdAttempt.StateHash, owner, f.now, 70)
+	third.Subject = first.Subject
+	if err := f.repository.FinalizeCallback(f.ctx, third); err != nil {
+		t.Fatal(err)
+	}
+	fourthAttempt := f.createAttempt(t, 80, f.now.Add(10*time.Minute))
+	f.claimCallback(t, fourthAttempt)
+	fourth := finalization(fourthAttempt.StateHash, owner, f.now, 80)
+	fourth.Subject = first.Subject
+	if err := f.repository.FinalizeCallback(f.ctx, fourth); err != nil {
+		t.Fatal(err)
+	}
+	sessions := postgresadapter.NewSessionRepository(f.pool)
+	got, err := sessions.AuthenticateAndTouch(f.ctx, first.SessionHash, f.now.Add(time.Hour), f.now.Add(10*24*time.Hour))
+	if err != nil || got.UserID != owner || !bytes.Equal(got.CSRFHash, first.CSRFHash) {
+		t.Fatalf("session=%+v err=%v", got, err)
+	}
+	var idle, absolute time.Time
+	if err := f.pool.QueryRow(f.ctx, `SELECT idle_expires_at,absolute_expires_at FROM sessions WHERE session_hash=$1`, first.SessionHash).Scan(&idle, &absolute); err != nil {
+		t.Fatal(err)
+	}
+	if !idle.Equal(absolute) {
+		t.Fatalf("idle=%v was not capped by absolute=%v", idle, absolute)
+	}
+	if revoked, err := sessions.RevokeCurrent(f.ctx, first.SessionHash, f.now.Add(2*time.Hour)); err != nil || !revoked {
+		t.Fatalf("revoked=%v err=%v", revoked, err)
+	}
+	if _, err := sessions.AuthenticateAndTouch(f.ctx, first.SessionHash, f.now.Add(2*time.Hour), f.now.Add(3*time.Hour)); !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Fatalf("revoked session error=%v", err)
+	}
+	if _, err := sessions.AuthenticateAndTouch(f.ctx, second.SessionHash, f.now.Add(2*time.Hour), f.now.Add(3*time.Hour)); err != nil {
+		t.Fatalf("other browser was affected: %v", err)
+	}
+	if _, err := sessions.AuthenticateAndTouch(f.ctx, second.SessionHash, second.SessionAbsoluteExpiresAt, second.SessionAbsoluteExpiresAt.Add(time.Hour)); !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Fatalf("absolute boundary error=%v", err)
+	}
+	if _, err := sessions.AuthenticateAndTouch(f.ctx, third.SessionHash, third.SessionIdleExpiresAt, third.SessionIdleExpiresAt.Add(time.Hour)); !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Fatalf("idle boundary error=%v", err)
+	}
+	var start sync.WaitGroup
+	start.Add(1)
+	touchResult := make(chan error, 1)
+	revokeResult := make(chan error, 1)
+	go func() {
+		start.Wait()
+		_, err := sessions.AuthenticateAndTouch(f.ctx, fourth.SessionHash, f.now.Add(time.Hour), f.now.Add(13*time.Hour))
+		touchResult <- err
+	}()
+	go func() {
+		start.Wait()
+		revoked, err := sessions.RevokeCurrent(f.ctx, fourth.SessionHash, f.now.Add(time.Hour))
+		if err == nil && !revoked {
+			err = errors.New("concurrent revoke did not revoke the session")
+		}
+		revokeResult <- err
+	}()
+	start.Done()
+	if err := <-touchResult; err != nil && !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Fatalf("concurrent touch error=%v", err)
+	}
+	if err := <-revokeResult; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sessions.AuthenticateAndTouch(f.ctx, fourth.SessionHash, f.now.Add(time.Hour), f.now.Add(13*time.Hour)); !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Fatalf("concurrent touch revived revoked session: %v", err)
+	}
+	if _, err := f.pool.Exec(f.ctx, `UPDATE users SET active=false WHERE id=$1`, owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sessions.AuthenticateAndTouch(f.ctx, second.SessionHash, f.now.Add(150*time.Minute), f.now.Add(14*time.Hour)); !errors.Is(err, auth.ErrUnauthenticated) {
+		t.Fatalf("inactive owner error=%v", err)
+	}
+	removed, err := sessions.CleanupSessions(f.ctx, f.now.Add(2*time.Hour))
+	if err != nil || removed != 2 {
+		t.Fatalf("cleanup removed=%d err=%v", removed, err)
+	}
 }
 
 type repositoryFixture struct {
@@ -289,7 +388,7 @@ func finalization(stateHash []byte, userID uuid.UUID, now time.Time, sessionMark
 		StateHash: stateHash, Provider: auth.SnapTradeProvider, Subject: "isolated-subject", UserID: userID,
 		AccessToken: []byte("encrypted-access"), RefreshToken: []byte("encrypted-refresh"), EnvelopeVersion: 1, TokenExpiresAt: now.Add(time.Hour),
 		SessionHash: bytes.Repeat([]byte{sessionMarker}, 32), CSRFHash: bytes.Repeat([]byte{sessionMarker + 1}, 32),
-		SessionIdleExpiresAt: now.Add(30 * time.Minute), SessionAbsoluteExpiresAt: now.Add(12 * time.Hour), CompletedAt: now, ReturnRoute: "/portfolio",
+		SessionIdleExpiresAt: now.Add(auth.SessionIdleLifetime), SessionAbsoluteExpiresAt: now.Add(auth.SessionAbsoluteLifetime), CompletedAt: now, ReturnRoute: "/portfolio",
 	}
 }
 

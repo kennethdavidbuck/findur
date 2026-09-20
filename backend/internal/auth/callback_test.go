@@ -123,6 +123,12 @@ func TestCallbackSuccessCreatesOpaqueEncryptedSessionMaterial(t *testing.T) {
 	if result.Route != "/connect/result" {
 		t.Fatalf("route=%q", result.Route)
 	}
+	if got := repo.final.SessionIdleExpiresAt.Sub(repo.final.CompletedAt); got != 12*time.Hour {
+		t.Fatalf("persisted idle lifetime=%s", got)
+	}
+	if got := repo.final.SessionAbsoluteExpiresAt.Sub(repo.final.CompletedAt); got != 7*24*time.Hour {
+		t.Fatalf("persisted absolute lifetime=%s", got)
+	}
 }
 
 func TestCallbackInputFailuresNeverExchange(t *testing.T) {

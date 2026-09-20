@@ -171,7 +171,7 @@ func (r *OAuthAttemptRepository) FailCallback(ctx context.Context, stateHash []b
 // SessionActive reports whether a hashed session belongs to an active user and is unexpired.
 func (r *OAuthAttemptRepository) SessionActive(ctx context.Context, sessionHash []byte, now time.Time) (bool, error) {
 	var active bool
-	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.session_hash=$1 AND s.idle_expires_at>$2 AND s.absolute_expires_at>$2 AND u.active)`, sessionHash, now).Scan(&active)
+	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.session_hash=$1 AND s.revoked_at IS NULL AND s.idle_expires_at>$2 AND s.absolute_expires_at>$2 AND u.active)`, sessionHash, now).Scan(&active)
 	return active, err
 }
 

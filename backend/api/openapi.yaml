@@ -1,8 +1,32 @@
 openapi: 3.1.0
 info:
   title: Findur API
-  version: 0.3.0
+  version: 0.4.0
 paths:
+  /api/auth/logout:
+    post:
+      operationId: logoutCurrentSession
+      summary: Revoke the authenticated browser session
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          schema: { type: string, minLength: 1 }
+      responses:
+        '204':
+          description: Current session revoked and browser cookies expired
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+            Set-Cookie:
+              required: true
+              schema:
+                type: array
+                items: { type: string }
+        '401':
+          $ref: '#/components/responses/LogoutUnauthorized'
+        '403':
+          $ref: '#/components/responses/LogoutForbidden'
   /api/auth/status:
     get:
       operationId: getAuthorizationStatus
@@ -104,8 +128,33 @@ components:
       properties:
         code:
           type: string
-          enum: [invalid_request, authorization_unavailable, initialization_failed, restart_required]
+          enum: [invalid_request, authorization_unavailable, initialization_failed, restart_required, unauthenticated, forbidden]
   responses:
+    LogoutUnauthorized:
+      description: The presented session is not active
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
+        Set-Cookie:
+          required: true
+          schema:
+            type: array
+            items: { type: string }
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    LogoutForbidden:
+      description: A session request defense failed
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     SafeError:
       description: Categorical, non-sensitive failure
       headers:
