@@ -327,7 +327,12 @@ describe('public site', () => {
 
 	it('gates private content before mounting and exposes only the MVP private destinations', async () => {
 		let resolveStatus!: (response: Response) => void
-		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => path === '/api/auth/status' ? new Promise<Response>((resolve) => { resolveStatus = resolve }) : Promise.resolve(jsonResponseBody(emptyShowcase()))))
+		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => {
+			if (path === '/api/auth/status') return new Promise<Response>((resolve) => { resolveStatus = resolve })
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+			if (path === '/api/profile') return Promise.resolve(jsonResponseBody({ locations: [] }))
+			return Promise.resolve(new Response(null, { status: 404 }))
+		}))
 		window.history.replaceState(null, '', '/portfolio')
 		render(<App />)
 		expect(screen.getByRole('status')).toHaveTextContent('Checking your secure session…')
@@ -339,8 +344,7 @@ describe('public site', () => {
 		expect(screen.queryByRole('link', { name: 'Discovery' })).not.toBeInTheDocument()
 		expect(screen.getAllByRole('navigation')).toHaveLength(1)
 		fireEvent.click(screen.getByRole('link', { name: 'Profile' }))
-		const profile = screen.getByRole('heading', { level: 1, name: 'Make the profile yours.' })
-		await waitFor(() => expect(profile).toHaveFocus())
+		await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Make the profile yours.' })).toHaveFocus())
 		expect(window.location.pathname).toBe('/profile')
 		window.history.back()
 		window.dispatchEvent(new PopStateEvent('popstate'))
