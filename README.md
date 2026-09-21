@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="frontend/public/icon.svg" alt="Findur constellation mark" width="96" height="96">
+</p>
+
 # Findur
 
 > Meet the portfolio before the profile photo.
@@ -16,7 +20,7 @@ Delivery is organized into epics and stories rather than described as a fixed sn
 
 ## How the idea becomes a product
 
-Findur is being planned and built with the BMad Method. The repository keeps the path from “what if?” to working software visible, so the product thinking can be explored alongside the code instead of disappearing into a separate planning system.
+Findur is being planned and built with the [BMad Method](https://docs.bmad-method.org/). The repository keeps the path from “what if?” to working software visible, so the product thinking can be explored alongside the code instead of disappearing into a separate planning system.
 
 | Stage | Artifact | What it establishes |
 | --- | --- | --- |
@@ -37,6 +41,16 @@ Together, these artifacts preserve the chain from product intent to acceptance c
 - **Architecture that records trade-offs:** the architecture spine contains adopted decisions for identity, encryption, provider isolation, refresh, data minimization, consistency, accessibility, deployment, and observability. Its reviews test technology currency and cross-boundary failure modes; the [adversarial seam review](_bmad-output/planning-artifacts/architecture/architecture-findur-2026-09-19/reviews/review-adversarial-seams.md#resolution-check) keeps both the original concerns and their resolution visible.
 - **Delivery with memory:** epics map requirements into user-valued slices, implementation specs retain acceptance decisions and review triage, [deferred work](_bmad-output/implementation-artifacts/deferred-work.md) prevents consciously postponed concerns from disappearing, and [sprint status](_bmad-output/implementation-artifacts/sprint-status.yaml) provides the live view without freezing story progress into this README.
 
+### View the HTML designs
+
+The visual explorations are self-contained HTML files. With Python 3 available, run this from the repository root:
+
+```sh
+python3 -m http.server 4173 --bind 127.0.0.1 --directory _bmad-output/planning-artifacts/ux-designs/ux-findur-2026-09-19/.working
+```
+
+Then open the [selected Constellation direction](http://127.0.0.1:4173/direction-constellation.html), [owner entry](http://127.0.0.1:4173/key-owner-entry.html), [account selection](http://127.0.0.1:4173/key-account-selection.html), [portfolio showcase](http://127.0.0.1:4173/key-portfolio-showcase.html), [discovery](http://127.0.0.1:4173/key-discovery.html), or [candidate detail](http://127.0.0.1:4173/key-candidate-detail.html). Press `Ctrl+C` to stop the server. These are design explorations; the written UX spines remain authoritative.
+
 ### A queryable project record
 
 The documents for the whole project live here with the code as versioned Markdown, YAML, HTML, and generated evidence. They can be read directly, compared through Git history, or queried with a coding agent. For example, an agent can trace a trust decision from the product brief into a PRD requirement, find the architecture rule that supports it, identify the stories that deliver it, and inspect the corresponding implementation spec and status—all from repository evidence.
@@ -56,8 +70,6 @@ For the container workflow:
 - Docker with Docker Compose v2
 - Git
 
-Native development additionally requires Go and Node.js/npm. Exact versions are pinned in [`.tool-versions`](.tool-versions).
-
 ### Start the complete local stack
 
 From the repository root:
@@ -66,7 +78,7 @@ From the repository root:
 ./scripts/compose-up.sh
 ```
 
-This builds the application and starts PostgreSQL, WireMock, the Go API, and the production frontend proxy. Open [http://127.0.0.1:8080](http://127.0.0.1:8080). The deployment diagnostic is available at [http://127.0.0.1:8080/__status](http://127.0.0.1:8080/__status).
+That is the complete startup command. It builds and starts PostgreSQL, WireMock, the Go API, and the production frontend proxy. Open [http://127.0.0.1:8080](http://127.0.0.1:8080). The deployment diagnostic is available at [http://127.0.0.1:8080/__status](http://127.0.0.1:8080/__status).
 
 The local stack uses a complete synthetic OAuth and masked-account flow by default. Choosing **Continue to SnapTrade** completes authorization against WireMock without contacting SnapTrade or requiring real credentials or financial data.
 
@@ -91,30 +103,9 @@ To run the complete synthetic integration suite, including the headless-browser 
 ./scripts/compose-down.sh
 ```
 
-### Run the application natively
-
-Start the repository's PostgreSQL service and provide its matching connection string; no `.env` file is required or tracked.
-
-```sh
-docker compose up --wait postgres
-export DATABASE_URL='postgresql://findur:synthetic-local-only@localhost:5432/findur?sslmode=disable'
-cd backend
-go run ./cmd/findur
-```
-
-In another terminal:
-
-```sh
-cd frontend
-npm ci
-npm run dev
-```
-
-Vite serves the frontend at [http://localhost:5173](http://localhost:5173) and proxies `/api/*` to `VITE_API_PROXY`, which defaults to `http://localhost:10000`.
-
-Native and production environments keep SnapTrade authorization closed unless the feature gate, issuer, client credentials, callback, provider API origin, public origin, and independent hashing/encryption keys are supplied explicitly. The canonical environment names and validation rules live in [`backend/internal/platform/config/config.go`](backend/internal/platform/config/config.go). HTTP callbacks are accepted only for loopback hosts; non-loopback callbacks require HTTPS.
-
 ## Verification
+
+Native verification requires Go and Node.js/npm; exact versions are pinned in [`.tool-versions`](.tool-versions).
 
 Verify the Go API and generated provider boundary:
 
