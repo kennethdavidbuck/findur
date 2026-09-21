@@ -262,6 +262,116 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl) {
   assert.equal(result.stale.body.code, 'conflict')
 }
 
+async function exercisePersonalProfile(webdriver, sessionId, origin) {
+  await webdriver(`/session/${sessionId}/url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: `${origin}/profile` }),
+  })
+  let loaded
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    loaded = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const name=document.querySelector('#displayName');return {path:location.pathname,ready:!!name,name:name?.value??null,headingFocused:document.activeElement===document.querySelector('h1')}`, args: [] }),
+    })
+    if (loaded.ready && loaded.headingFocused) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(loaded.path, '/profile', 'profile loads directly')
+  assert.equal(loaded.ready, true, 'profile form becomes ready')
+  assert.equal(loaded.headingFocused, true, 'direct profile load focuses its heading')
+
+  for (const [width, layout] of [[767, 'grid'], [768, 'rail']]) {
+    await webdriver(`/session/${sessionId}/window/rect`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ width, height: 900 }),
+    })
+    const navigation = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const style=getComputedStyle(document.querySelector('.authenticated-nav'));return {position:style.position,direction:style.flexDirection,columns:style.gridTemplateColumns}`, args: [] }),
+    })
+    assert.equal(navigation.position, 'fixed', `${width}px profile navigation remains fixed`)
+    if (layout === 'grid') assert.notEqual(navigation.columns, 'none', '767px profile uses bottom grid navigation')
+    else assert.equal(navigation.direction, 'column', '768px profile uses rail navigation')
+  }
+
+  const initial = await webdriver(`/session/${sessionId}/execute/async`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/profile',{credentials:'same-origin',cache:'no-store'}).then(async response=>done({status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+  })
+  assert.equal(initial.status, 200)
+  assert.equal(initial.cache, 'private, no-store')
+
+  if (!initial.body.profile) {
+    assert.equal(loaded.name, '', 'new owner starts with a blank personal profile')
+    await editAndSaveProfile(webdriver, sessionId, { displayName: '  Alex Journey  ', biography: '  Created through the composed browser journey.  ', locale: 'en', theme: 'system' })
+    const created = await readProfile(webdriver, sessionId)
+    assert.equal(created.body.profile.displayName, 'Alex Journey', 'create applies the canonical trimmed display name')
+    assert.equal(created.body.profile.biography, 'Created through the composed browser journey.', 'create persists canonical biography text')
+    assert.equal(created.body.profile.version, 1, 'first browser save creates version one')
+
+    await webdriver(`/session/${sessionId}/url`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: `${origin}/profile` }),
+    })
+    const reloaded = await waitForProfileValue(webdriver, sessionId, 'Alex Journey')
+    assert.equal(reloaded.biography, 'Created through the composed browser journey.', 'created profile survives a direct reload')
+    assert.equal(reloaded.headingFocused, true, 'persisted profile reload preserves route focus')
+  }
+
+  const beforeEdit = await readProfile(webdriver, sessionId)
+  await editAndSaveProfile(webdriver, sessionId, { displayName: 'Alex Journey Updated', biography: 'Edited and persisted through the composed browser journey.', locale: 'fr', theme: 'dark' })
+  const edited = await readProfile(webdriver, sessionId)
+  assert.equal(edited.body.profile.displayName, 'Alex Journey Updated')
+  assert.equal(edited.body.profile.biography, 'Edited and persisted through the composed browser journey.')
+  assert.equal(edited.body.profile.relationshipIntent, 'open-to-long-term')
+  assert.equal(edited.body.profile.avatarKey, 'cedar')
+  assert.equal(edited.body.profile.locale, 'fr')
+  assert.equal(edited.body.profile.theme, 'dark')
+  assert.equal(edited.body.profile.version, beforeEdit.body.profile.version + 1, 'edit advances the optimistic version exactly once')
+
+  await webdriver(`/session/${sessionId}/url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: `${origin}/profile` }),
+  })
+  const persisted = await waitForProfileValue(webdriver, sessionId, 'Alex Journey Updated')
+  assert.equal(persisted.biography, 'Edited and persisted through the composed browser journey.', 'edited profile survives reload')
+}
+
+async function editAndSaveProfile(webdriver, sessionId, values) {
+  await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const values=arguments[0];const set=(selector,value)=>{const element=document.querySelector(selector);const setter=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element),'value').set;setter.call(element,value);element.dispatchEvent(new Event('input',{bubbles:true}));element.dispatchEvent(new Event('change',{bubbles:true}))};set('#displayName',values.displayName);set('#locationKey','halifax-ns');set('#biography',values.biography);const adult=document.querySelector('#adultAttested');if(!adult.checked)adult.click();document.querySelector('input[name="relationshipIntent"][value="open-to-long-term"]').click();document.querySelector('input[name="avatar"][value="cedar"]').click();document.querySelector('input[name="profile-locale"][value="'+values.locale+'"]').click();document.querySelector('input[name="profile-theme"][value="'+values.theme+'"]').click();const save=document.querySelector('.profile-save-region button[type="submit"]');save.focus();save.click()`, args: [values] }),
+  })
+  let result
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    result = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const save=document.querySelector('.profile-save-region button[type="submit"]');return {saved:document.querySelector('.profile-status')?.textContent?.trim()||'',disabled:save?.disabled,focused:document.activeElement===save,name:document.querySelector('#displayName')?.value}`, args: [] }),
+    })
+    if (result.saved && !result.disabled) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.match(result.saved, /saved|enregistré/i, 'profile success is announced')
+  assert.equal(result.focused, true, 'profile save success preserves button focus')
+  assert.equal(result.name, values.displayName.trim(), 'the canonical response replaces the submitted draft')
+}
+
+async function readProfile(webdriver, sessionId) {
+  return await webdriver(`/session/${sessionId}/execute/async`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/profile',{credentials:'same-origin',cache:'no-store'}).then(async response=>done({status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+  })
+}
+
+async function waitForProfileValue(webdriver, sessionId, displayName) {
+  let state
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    state = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `return {name:document.querySelector('#displayName')?.value,biography:document.querySelector('#biography')?.value,headingFocused:document.activeElement===document.querySelector('h1')}`, args: [] }),
+    })
+    if (state.name === displayName) return state
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(state?.name, displayName, 'profile value appears after direct load')
+}
+
 export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockUrl }) {
   await withWebDriverSession(browserUrl, async (first) => {
     await establishSession(first.webdriver, first.sessionId, publicOrigin)
@@ -324,6 +434,7 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
       })
       assert.equal(desktopHeader, 'sticky', 'desktop authenticated header remains visible above the fixed rail')
       await exerciseAccountInclusion(second.webdriver, second.sessionId, wiremockUrl)
+      await exercisePersonalProfile(second.webdriver, second.sessionId, publicOrigin)
       await exerciseInventoryFixtures(second.webdriver, second.sessionId, wiremockUrl)
     })
   })

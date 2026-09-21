@@ -21,6 +21,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the authenticated owner's personal profile and safe catalogues */
+        get: operations["getPersonalProfile"];
+        /** Atomically create or replace the authenticated owner's complete personal profile */
+        put: operations["putPersonalProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portfolio/inventory": {
         parameters: {
             query?: never;
@@ -145,6 +163,56 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ProfileLocation: {
+            key: string;
+            cityEn: string;
+            cityFr: string;
+            provinceEn: string;
+            provinceFr: string;
+        };
+        PersonalProfile: {
+            displayName: string;
+            /** Format: date-time */
+            adultAttestedAt: string;
+            locationKey: string;
+            /** @enum {string} */
+            relationshipIntent: "long-term" | "open-to-long-term" | "figuring-it-out";
+            biography: string;
+            /** @enum {string} */
+            avatarKey: "aurora" | "cedar" | "ember" | "harbour" | "meadow" | "solstice";
+            /** @enum {string} */
+            locale: "en" | "fr";
+            /** @enum {string} */
+            theme: "system" | "light" | "dark";
+            /** Format: int64 */
+            version: number;
+        };
+        PersonalProfileSnapshot: {
+            profile?: components["schemas"]["PersonalProfile"];
+            locations: components["schemas"]["ProfileLocation"][];
+        };
+        PersonalProfileInput: {
+            displayName: string;
+            /** @constant */
+            adultAttested: true;
+            locationKey: string;
+            /** @enum {string} */
+            relationshipIntent: "long-term" | "open-to-long-term" | "figuring-it-out";
+            biography: string;
+            /** @enum {string} */
+            avatarKey: "aurora" | "cedar" | "ember" | "harbour" | "meadow" | "solstice";
+            /** @enum {string} */
+            locale: "en" | "fr";
+            /** @enum {string} */
+            theme: "system" | "light" | "dark";
+            /** Format: int64 */
+            expectedVersion: number;
+        };
+        ProfileValidationError: {
+            /** @constant */
+            code: "invalid_profile";
+            fields: ("displayName" | "adultAttested" | "locationKey" | "relationshipIntent" | "biography" | "avatarKey" | "locale" | "theme" | "expectedVersion")[];
+        };
         /** @enum {string} */
         InventoryState: "pending" | "ready" | "empty" | "disabled" | "unauthorized" | "rate_limited" | "unavailable" | "malformed";
         InventoryAccount: {
@@ -264,10 +332,50 @@ export interface components {
         };
         Error: {
             /** @enum {string} */
-            code: "invalid_request" | "authorization_unavailable" | "initialization_failed" | "restart_required" | "unauthenticated" | "forbidden" | "conflict" | "invalid_selection";
+            code: "invalid_request" | "authorization_unavailable" | "initialization_failed" | "restart_required" | "unauthenticated" | "forbidden" | "conflict" | "invalid_selection" | "invalid_profile";
         };
     };
     responses: {
+        /** @description The complete profile failed bounded validation */
+        ProfileValidation: {
+            headers: {
+                "Cache-Control": "private, no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ProfileValidationError"];
+            };
+        };
+        /** @description The presented session is not active */
+        ProfileUnauthorized: {
+            headers: {
+                "Cache-Control": "private, no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description A session request defense failed */
+        ProfileForbidden: {
+            headers: {
+                "Cache-Control": "private, no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The expected profile version is stale */
+        ProfileConflict: {
+            headers: {
+                "Cache-Control": "private, no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description The presented session is not active */
         InventoryUnauthorized: {
             headers: {
@@ -303,6 +411,16 @@ export interface components {
             headers: {
                 "Cache-Control": "private, no-store";
                 "Set-Cookie": string[];
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description The owner-private profile is temporarily unavailable */
+        ProfileUnavailable: {
+            headers: {
+                "Cache-Control": "private, no-store";
                 [name: string]: unknown;
             };
             content: {
@@ -358,6 +476,61 @@ export interface operations {
             };
             401: components["responses"]["InventoryUnauthorized"];
             503: components["responses"]["SafeError"];
+        };
+    };
+    getPersonalProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owner-private profile state */
+            200: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalProfileSnapshot"];
+                };
+            };
+            401: components["responses"]["ProfileUnauthorized"];
+            503: components["responses"]["ProfileUnavailable"];
+        };
+    };
+    putPersonalProfile: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonalProfileInput"];
+            };
+        };
+        responses: {
+            /** @description Saved owner-private profile */
+            200: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonalProfile"];
+                };
+            };
+            400: components["responses"]["ProfileValidation"];
+            401: components["responses"]["ProfileUnauthorized"];
+            403: components["responses"]["ProfileForbidden"];
+            409: components["responses"]["ProfileConflict"];
+            503: components["responses"]["ProfileUnavailable"];
         };
     };
     getPortfolioInventory: {

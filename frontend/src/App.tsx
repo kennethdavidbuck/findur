@@ -8,6 +8,7 @@ import { ConsentPage } from './pages/ConsentPage'
 import { LandingPage } from './pages/LandingPage'
 import { PortfolioPage } from './pages/PortfolioPage'
 import { PortfolioShowcasePage } from './pages/PortfolioShowcasePage'
+import { ProfilePage } from './pages/ProfilePage'
 import { StatusPage } from './pages/StatusPage'
 import { resetInitialInventoryRequest } from './inventory'
 import { endCurrentSession } from './session'
@@ -92,7 +93,7 @@ function ProtectedApp({ requestedRoute, onNavigate }: { requestedRoute: Protecte
   }, [authorization, onNavigate, requestedRoute])
 
   useEffect(() => {
-    if (!authorization.resolving && authorization.status.authenticated) headingRef.current?.focus()
+    if (!authorization.resolving && authorization.status.authenticated && route !== '/profile') headingRef.current?.focus()
   }, [authorization.resolving, authorization.status, connectionSetup, requestedRoute, route])
 
   useEffect(() => {
@@ -119,7 +120,7 @@ function ProtectedApp({ requestedRoute, onNavigate }: { requestedRoute: Protecte
 
   return (
     <AuthenticatedLayout route={route} setup={onboarding} loggingOut={loggingOut} logoutFailed={logoutFailed} onNavigate={navigateProtected} onLogout={() => { void logout() }}>
-			{accountSelection ? <PortfolioPage editing={editingAccounts} headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/portfolio' ? <PortfolioShowcasePage headingRef={headingRef} onEdit={() => onNavigate('/portfolio/accounts')} onReconnect={reconnect} onSessionExpired={recoverSession} /> : <section className="private-placeholder">
+      {accountSelection ? <PortfolioPage editing={editingAccounts} headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/portfolio' ? <PortfolioShowcasePage headingRef={headingRef} onEdit={() => onNavigate('/portfolio/accounts')} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/profile' ? <ProfilePage headingRef={headingRef} onSessionExpired={recoverSession} /> : <section className="private-placeholder">
         <h1 ref={headingRef} tabIndex={-1}>{messages.authenticated[`${route.slice(1)}Title` as 'discoveryTitle' | 'portfolioTitle' | 'profileTitle']}</h1>
         <p className="large-copy">{messages.authenticated[`${route.slice(1)}Body` as 'discoveryBody' | 'portfolioBody' | 'profileBody']}</p>
       </section>}

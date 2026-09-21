@@ -144,11 +144,19 @@ describe('portfolio showcase', () => {
 
 afterEach(() => {
   cleanup()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.useRealTimers()
 })
 
 describe('public site', () => {
+  it('uses the first supported French browser preference on a first visit', () => {
+    vi.spyOn(window.navigator, 'languages', 'get').mockReturnValue(['fr-CA', 'en-CA'])
+    render(<App />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Trouvez une autre trajectoire dans le même ciel.')
+    expect(document.documentElement.lang).toBe('fr')
+  })
+
   it('renders the static landing page without requesting the backend', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -331,7 +339,7 @@ describe('public site', () => {
 		expect(screen.queryByRole('link', { name: 'Discovery' })).not.toBeInTheDocument()
 		expect(screen.getAllByRole('navigation')).toHaveLength(1)
 		fireEvent.click(screen.getByRole('link', { name: 'Profile' }))
-		const profile = screen.getByRole('heading', { level: 1, name: 'Profile setup comes later.' })
+		const profile = screen.getByRole('heading', { level: 1, name: 'Make the profile yours.' })
 		await waitFor(() => expect(profile).toHaveFocus())
 		expect(window.location.pathname).toBe('/profile')
 		window.history.back()

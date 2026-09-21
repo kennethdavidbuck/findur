@@ -51,34 +51,37 @@ func (e DatasetContextFreshness) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	AuthorizationUnavailable ErrorCode = "authorization_unavailable"
-	Conflict                 ErrorCode = "conflict"
-	Forbidden                ErrorCode = "forbidden"
-	InitializationFailed     ErrorCode = "initialization_failed"
-	InvalidRequest           ErrorCode = "invalid_request"
-	InvalidSelection         ErrorCode = "invalid_selection"
-	RestartRequired          ErrorCode = "restart_required"
-	Unauthenticated          ErrorCode = "unauthenticated"
+	ErrorCodeAuthorizationUnavailable ErrorCode = "authorization_unavailable"
+	ErrorCodeConflict                 ErrorCode = "conflict"
+	ErrorCodeForbidden                ErrorCode = "forbidden"
+	ErrorCodeInitializationFailed     ErrorCode = "initialization_failed"
+	ErrorCodeInvalidProfile           ErrorCode = "invalid_profile"
+	ErrorCodeInvalidRequest           ErrorCode = "invalid_request"
+	ErrorCodeInvalidSelection         ErrorCode = "invalid_selection"
+	ErrorCodeRestartRequired          ErrorCode = "restart_required"
+	ErrorCodeUnauthenticated          ErrorCode = "unauthenticated"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
-	case AuthorizationUnavailable:
+	case ErrorCodeAuthorizationUnavailable:
 		return true
-	case Conflict:
+	case ErrorCodeConflict:
 		return true
-	case Forbidden:
+	case ErrorCodeForbidden:
 		return true
-	case InitializationFailed:
+	case ErrorCodeInitializationFailed:
 		return true
-	case InvalidRequest:
+	case ErrorCodeInvalidProfile:
 		return true
-	case InvalidSelection:
+	case ErrorCodeInvalidRequest:
 		return true
-	case RestartRequired:
+	case ErrorCodeInvalidSelection:
 		return true
-	case Unauthenticated:
+	case ErrorCodeRestartRequired:
+		return true
+	case ErrorCodeUnauthenticated:
 		return true
 	default:
 		return false
@@ -301,6 +304,255 @@ func (e InventoryState) Valid() bool {
 	}
 }
 
+// Defines values for PersonalProfileAvatarKey.
+const (
+	PersonalProfileAvatarKeyAurora   PersonalProfileAvatarKey = "aurora"
+	PersonalProfileAvatarKeyCedar    PersonalProfileAvatarKey = "cedar"
+	PersonalProfileAvatarKeyEmber    PersonalProfileAvatarKey = "ember"
+	PersonalProfileAvatarKeyHarbour  PersonalProfileAvatarKey = "harbour"
+	PersonalProfileAvatarKeyMeadow   PersonalProfileAvatarKey = "meadow"
+	PersonalProfileAvatarKeySolstice PersonalProfileAvatarKey = "solstice"
+)
+
+// Valid indicates whether the value is a known member of the PersonalProfileAvatarKey enum.
+func (e PersonalProfileAvatarKey) Valid() bool {
+	switch e {
+	case PersonalProfileAvatarKeyAurora:
+		return true
+	case PersonalProfileAvatarKeyCedar:
+		return true
+	case PersonalProfileAvatarKeyEmber:
+		return true
+	case PersonalProfileAvatarKeyHarbour:
+		return true
+	case PersonalProfileAvatarKeyMeadow:
+		return true
+	case PersonalProfileAvatarKeySolstice:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalProfileLocale.
+const (
+	PersonalProfileLocaleEn PersonalProfileLocale = "en"
+	PersonalProfileLocaleFr PersonalProfileLocale = "fr"
+)
+
+// Valid indicates whether the value is a known member of the PersonalProfileLocale enum.
+func (e PersonalProfileLocale) Valid() bool {
+	switch e {
+	case PersonalProfileLocaleEn:
+		return true
+	case PersonalProfileLocaleFr:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalProfileRelationshipIntent.
+const (
+	PersonalProfileRelationshipIntentFiguringItOut  PersonalProfileRelationshipIntent = "figuring-it-out"
+	PersonalProfileRelationshipIntentLongTerm       PersonalProfileRelationshipIntent = "long-term"
+	PersonalProfileRelationshipIntentOpenToLongTerm PersonalProfileRelationshipIntent = "open-to-long-term"
+)
+
+// Valid indicates whether the value is a known member of the PersonalProfileRelationshipIntent enum.
+func (e PersonalProfileRelationshipIntent) Valid() bool {
+	switch e {
+	case PersonalProfileRelationshipIntentFiguringItOut:
+		return true
+	case PersonalProfileRelationshipIntentLongTerm:
+		return true
+	case PersonalProfileRelationshipIntentOpenToLongTerm:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalProfileTheme.
+const (
+	PersonalProfileThemeDark   PersonalProfileTheme = "dark"
+	PersonalProfileThemeLight  PersonalProfileTheme = "light"
+	PersonalProfileThemeSystem PersonalProfileTheme = "system"
+)
+
+// Valid indicates whether the value is a known member of the PersonalProfileTheme enum.
+func (e PersonalProfileTheme) Valid() bool {
+	switch e {
+	case PersonalProfileThemeDark:
+		return true
+	case PersonalProfileThemeLight:
+		return true
+	case PersonalProfileThemeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalProfileInputAdultAttested.
+const (
+	True PersonalProfileInputAdultAttested = true
+)
+
+// Valid indicates whether the value is a known member of the PersonalProfileInputAdultAttested enum.
+func (e PersonalProfileInputAdultAttested) Valid() bool {
+	switch e {
+	case True:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalProfileInputAvatarKey.
+const (
+	PersonalProfileInputAvatarKeyAurora   PersonalProfileInputAvatarKey = "aurora"
+	PersonalProfileInputAvatarKeyCedar    PersonalProfileInputAvatarKey = "cedar"
+	PersonalProfileInputAvatarKeyEmber    PersonalProfileInputAvatarKey = "ember"
+	PersonalProfileInputAvatarKeyHarbour  PersonalProfileInputAvatarKey = "harbour"
+	PersonalProfileInputAvatarKeyMeadow   PersonalProfileInputAvatarKey = "meadow"
+	PersonalProfileInputAvatarKeySolstice PersonalProfileInputAvatarKey = "solstice"
+)
+
+// Valid indicates whether the value is a known member of the PersonalProfileInputAvatarKey enum.
+func (e PersonalProfileInputAvatarKey) Valid() bool {
+	switch e {
+	case PersonalProfileInputAvatarKeyAurora:
+		return true
+	case PersonalProfileInputAvatarKeyCedar:
+		return true
+	case PersonalProfileInputAvatarKeyEmber:
+		return true
+	case PersonalProfileInputAvatarKeyHarbour:
+		return true
+	case PersonalProfileInputAvatarKeyMeadow:
+		return true
+	case PersonalProfileInputAvatarKeySolstice:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalProfileInputLocale.
+const (
+	PersonalProfileInputLocaleEn PersonalProfileInputLocale = "en"
+	PersonalProfileInputLocaleFr PersonalProfileInputLocale = "fr"
+)
+
+// Valid indicates whether the value is a known member of the PersonalProfileInputLocale enum.
+func (e PersonalProfileInputLocale) Valid() bool {
+	switch e {
+	case PersonalProfileInputLocaleEn:
+		return true
+	case PersonalProfileInputLocaleFr:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalProfileInputRelationshipIntent.
+const (
+	PersonalProfileInputRelationshipIntentFiguringItOut  PersonalProfileInputRelationshipIntent = "figuring-it-out"
+	PersonalProfileInputRelationshipIntentLongTerm       PersonalProfileInputRelationshipIntent = "long-term"
+	PersonalProfileInputRelationshipIntentOpenToLongTerm PersonalProfileInputRelationshipIntent = "open-to-long-term"
+)
+
+// Valid indicates whether the value is a known member of the PersonalProfileInputRelationshipIntent enum.
+func (e PersonalProfileInputRelationshipIntent) Valid() bool {
+	switch e {
+	case PersonalProfileInputRelationshipIntentFiguringItOut:
+		return true
+	case PersonalProfileInputRelationshipIntentLongTerm:
+		return true
+	case PersonalProfileInputRelationshipIntentOpenToLongTerm:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonalProfileInputTheme.
+const (
+	PersonalProfileInputThemeDark   PersonalProfileInputTheme = "dark"
+	PersonalProfileInputThemeLight  PersonalProfileInputTheme = "light"
+	PersonalProfileInputThemeSystem PersonalProfileInputTheme = "system"
+)
+
+// Valid indicates whether the value is a known member of the PersonalProfileInputTheme enum.
+func (e PersonalProfileInputTheme) Valid() bool {
+	switch e {
+	case PersonalProfileInputThemeDark:
+		return true
+	case PersonalProfileInputThemeLight:
+		return true
+	case PersonalProfileInputThemeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileValidationErrorCode.
+const (
+	ProfileValidationErrorCodeInvalidProfile ProfileValidationErrorCode = "invalid_profile"
+)
+
+// Valid indicates whether the value is a known member of the ProfileValidationErrorCode enum.
+func (e ProfileValidationErrorCode) Valid() bool {
+	switch e {
+	case ProfileValidationErrorCodeInvalidProfile:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ProfileValidationErrorFields.
+const (
+	AdultAttested      ProfileValidationErrorFields = "adultAttested"
+	AvatarKey          ProfileValidationErrorFields = "avatarKey"
+	Biography          ProfileValidationErrorFields = "biography"
+	DisplayName        ProfileValidationErrorFields = "displayName"
+	ExpectedVersion    ProfileValidationErrorFields = "expectedVersion"
+	Locale             ProfileValidationErrorFields = "locale"
+	LocationKey        ProfileValidationErrorFields = "locationKey"
+	RelationshipIntent ProfileValidationErrorFields = "relationshipIntent"
+	Theme              ProfileValidationErrorFields = "theme"
+)
+
+// Valid indicates whether the value is a known member of the ProfileValidationErrorFields enum.
+func (e ProfileValidationErrorFields) Valid() bool {
+	switch e {
+	case AdultAttested:
+		return true
+	case AvatarKey:
+		return true
+	case Biography:
+		return true
+	case DisplayName:
+		return true
+	case ExpectedVersion:
+		return true
+	case Locale:
+		return true
+	case LocationKey:
+		return true
+	case RelationshipIntent:
+		return true
+	case Theme:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ShowcaseAccountSyncMode.
 const (
 	ShowcaseAccountSyncModeDelayed  ShowcaseAccountSyncMode = "delayed"
@@ -417,6 +669,65 @@ type InventoryConnectionSyncMode string
 // InventoryState defines model for InventoryState.
 type InventoryState string
 
+// PersonalProfile defines model for PersonalProfile.
+type PersonalProfile struct {
+	AdultAttestedAt    time.Time                         `json:"adultAttestedAt"`
+	AvatarKey          PersonalProfileAvatarKey          `json:"avatarKey"`
+	Biography          string                            `json:"biography"`
+	DisplayName        string                            `json:"displayName"`
+	Locale             PersonalProfileLocale             `json:"locale"`
+	LocationKey        string                            `json:"locationKey"`
+	RelationshipIntent PersonalProfileRelationshipIntent `json:"relationshipIntent"`
+	Theme              PersonalProfileTheme              `json:"theme"`
+	Version            int64                             `json:"version"`
+}
+
+// PersonalProfileAvatarKey defines model for PersonalProfile.AvatarKey.
+type PersonalProfileAvatarKey string
+
+// PersonalProfileLocale defines model for PersonalProfile.Locale.
+type PersonalProfileLocale string
+
+// PersonalProfileRelationshipIntent defines model for PersonalProfile.RelationshipIntent.
+type PersonalProfileRelationshipIntent string
+
+// PersonalProfileTheme defines model for PersonalProfile.Theme.
+type PersonalProfileTheme string
+
+// PersonalProfileInput defines model for PersonalProfileInput.
+type PersonalProfileInput struct {
+	AdultAttested      PersonalProfileInputAdultAttested      `json:"adultAttested"`
+	AvatarKey          PersonalProfileInputAvatarKey          `json:"avatarKey"`
+	Biography          string                                 `json:"biography"`
+	DisplayName        string                                 `json:"displayName"`
+	ExpectedVersion    int64                                  `json:"expectedVersion"`
+	Locale             PersonalProfileInputLocale             `json:"locale"`
+	LocationKey        string                                 `json:"locationKey"`
+	RelationshipIntent PersonalProfileInputRelationshipIntent `json:"relationshipIntent"`
+	Theme              PersonalProfileInputTheme              `json:"theme"`
+}
+
+// PersonalProfileInputAdultAttested defines model for PersonalProfileInput.AdultAttested.
+type PersonalProfileInputAdultAttested bool
+
+// PersonalProfileInputAvatarKey defines model for PersonalProfileInput.AvatarKey.
+type PersonalProfileInputAvatarKey string
+
+// PersonalProfileInputLocale defines model for PersonalProfileInput.Locale.
+type PersonalProfileInputLocale string
+
+// PersonalProfileInputRelationshipIntent defines model for PersonalProfileInput.RelationshipIntent.
+type PersonalProfileInputRelationshipIntent string
+
+// PersonalProfileInputTheme defines model for PersonalProfileInput.Theme.
+type PersonalProfileInputTheme string
+
+// PersonalProfileSnapshot defines model for PersonalProfileSnapshot.
+type PersonalProfileSnapshot struct {
+	Locations []ProfileLocation `json:"locations"`
+	Profile   *PersonalProfile  `json:"profile,omitempty"`
+}
+
 // PortfolioInclusion defines model for PortfolioInclusion.
 type PortfolioInclusion struct {
 	Change    *InclusionChange `json:"change,omitempty"`
@@ -437,6 +748,27 @@ type PortfolioInventory struct {
 type PortfolioShowcase struct {
 	Accounts []ShowcaseAccount `json:"accounts"`
 }
+
+// ProfileLocation defines model for ProfileLocation.
+type ProfileLocation struct {
+	CityEn     string `json:"cityEn"`
+	CityFr     string `json:"cityFr"`
+	Key        string `json:"key"`
+	ProvinceEn string `json:"provinceEn"`
+	ProvinceFr string `json:"provinceFr"`
+}
+
+// ProfileValidationError defines model for ProfileValidationError.
+type ProfileValidationError struct {
+	Code   ProfileValidationErrorCode     `json:"code"`
+	Fields []ProfileValidationErrorFields `json:"fields"`
+}
+
+// ProfileValidationErrorCode defines model for ProfileValidationError.Code.
+type ProfileValidationErrorCode string
+
+// ProfileValidationErrorFields defines model for ProfileValidationError.Fields.
+type ProfileValidationErrorFields string
 
 // ShowcaseAccount defines model for ShowcaseAccount.
 type ShowcaseAccount struct {
@@ -502,6 +834,21 @@ type LogoutForbidden = Error
 // LogoutUnauthorized defines model for LogoutUnauthorized.
 type LogoutUnauthorized = Error
 
+// ProfileConflict defines model for ProfileConflict.
+type ProfileConflict = Error
+
+// ProfileForbidden defines model for ProfileForbidden.
+type ProfileForbidden = Error
+
+// ProfileUnauthorized defines model for ProfileUnauthorized.
+type ProfileUnauthorized = Error
+
+// ProfileUnavailable defines model for ProfileUnavailable.
+type ProfileUnavailable = Error
+
+// ProfileValidation defines model for ProfileValidation.
+type ProfileValidation = ProfileValidationError
+
 // SafeError defines model for SafeError.
 type SafeError = Error
 
@@ -537,6 +884,11 @@ type RetryPortfolioInventoryParams struct {
 	XCSRFToken string `json:"X-CSRF-Token"`
 }
 
+// PutPersonalProfileParams defines parameters for PutPersonalProfile.
+type PutPersonalProfileParams struct {
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
 // BeginSnapTradeAuthorizationJSONRequestBody defines body for BeginSnapTradeAuthorization for application/json ContentType.
 type BeginSnapTradeAuthorizationJSONRequestBody = BeginAuthorizationRequest
 
@@ -545,6 +897,9 @@ type BeginSnapTradeAuthorizationFormdataRequestBody = BeginAuthorizationRequest
 
 // ConfirmPortfolioInclusionJSONRequestBody defines body for ConfirmPortfolioInclusion for application/json ContentType.
 type ConfirmPortfolioInclusionJSONRequestBody = ConfirmInclusionRequest
+
+// PutPersonalProfileJSONRequestBody defines body for PutPersonalProfile for application/json ContentType.
+type PutPersonalProfileJSONRequestBody = PersonalProfileInput
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -575,6 +930,12 @@ type ServerInterface interface {
 	// GetPortfolioShowcase Return the authenticated owner's persisted portfolio showcase
 	// (GET /api/portfolio/showcase)
 	GetPortfolioShowcase(w http.ResponseWriter, r *http.Request)
+	// GetPersonalProfile Return the authenticated owner's personal profile and safe catalogues
+	// (GET /api/profile)
+	GetPersonalProfile(w http.ResponseWriter, r *http.Request)
+	// PutPersonalProfile Atomically create or replace the authenticated owner's complete personal profile
+	// (PUT /api/profile)
+	PutPersonalProfile(w http.ResponseWriter, r *http.Request, params PutPersonalProfileParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -909,6 +1270,65 @@ func (siw *ServerInterfaceWrapper) GetPortfolioShowcase(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetPersonalProfile operation middleware
+func (siw *ServerInterfaceWrapper) GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPersonalProfile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutPersonalProfile operation middleware
+func (siw *ServerInterfaceWrapper) PutPersonalProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutPersonalProfileParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutPersonalProfile(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1030,6 +1450,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/showcase", wrapper.GetPortfolioShowcase)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/profile", wrapper.GetPersonalProfile)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/profile", wrapper.PutPersonalProfile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/inventory", wrapper.GetPortfolioInventory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/portfolio/inventory/retry", wrapper.RetryPortfolioInventory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/inclusion", wrapper.GetPortfolioInclusion)
@@ -1086,6 +1508,51 @@ type LogoutUnauthorizedJSONResponse struct {
 	Body Error
 
 	Headers LogoutUnauthorizedResponseHeaders
+}
+
+type ProfileConflictResponseHeaders struct {
+	CacheControl string
+}
+type ProfileConflictJSONResponse struct {
+	Body Error
+
+	Headers ProfileConflictResponseHeaders
+}
+
+type ProfileForbiddenResponseHeaders struct {
+	CacheControl string
+}
+type ProfileForbiddenJSONResponse struct {
+	Body Error
+
+	Headers ProfileForbiddenResponseHeaders
+}
+
+type ProfileUnauthorizedResponseHeaders struct {
+	CacheControl string
+}
+type ProfileUnauthorizedJSONResponse struct {
+	Body Error
+
+	Headers ProfileUnauthorizedResponseHeaders
+}
+
+type ProfileUnavailableResponseHeaders struct {
+	CacheControl string
+}
+type ProfileUnavailableJSONResponse struct {
+	Body Error
+
+	Headers ProfileUnavailableResponseHeaders
+}
+
+type ProfileValidationResponseHeaders struct {
+	CacheControl string
+}
+type ProfileValidationJSONResponse struct {
+	Body ProfileValidationError
+
+	Headers ProfileValidationResponseHeaders
 }
 
 type SafeErrorResponseHeaders struct {
@@ -1657,6 +2124,175 @@ func (response GetPortfolioShowcase503JSONResponse) VisitGetPortfolioShowcaseRes
 	return err
 }
 
+type GetPersonalProfileRequestObject struct {
+}
+
+type GetPersonalProfileResponseObject interface {
+	VisitGetPersonalProfileResponse(w http.ResponseWriter) error
+}
+
+type GetPersonalProfile200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetPersonalProfile200JSONResponse struct {
+	Body    PersonalProfileSnapshot
+	Headers GetPersonalProfile200ResponseHeaders
+}
+
+func (response GetPersonalProfile200JSONResponse) VisitGetPersonalProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonalProfile401JSONResponse struct {
+	ProfileUnauthorizedJSONResponse
+}
+
+func (response GetPersonalProfile401JSONResponse) VisitGetPersonalProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPersonalProfile503JSONResponse struct{ ProfileUnavailableJSONResponse }
+
+func (response GetPersonalProfile503JSONResponse) VisitGetPersonalProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPersonalProfileRequestObject struct {
+	Params PutPersonalProfileParams
+	Body   *PutPersonalProfileJSONRequestBody
+}
+
+type PutPersonalProfileResponseObject interface {
+	VisitPutPersonalProfileResponse(w http.ResponseWriter) error
+}
+
+type PutPersonalProfile200ResponseHeaders struct {
+	CacheControl string
+}
+
+type PutPersonalProfile200JSONResponse struct {
+	Body    PersonalProfile
+	Headers PutPersonalProfile200ResponseHeaders
+}
+
+func (response PutPersonalProfile200JSONResponse) VisitPutPersonalProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPersonalProfile400JSONResponse struct{ ProfileValidationJSONResponse }
+
+func (response PutPersonalProfile400JSONResponse) VisitPutPersonalProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPersonalProfile401JSONResponse struct {
+	ProfileUnauthorizedJSONResponse
+}
+
+func (response PutPersonalProfile401JSONResponse) VisitPutPersonalProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPersonalProfile403JSONResponse struct{ ProfileForbiddenJSONResponse }
+
+func (response PutPersonalProfile403JSONResponse) VisitPutPersonalProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPersonalProfile409JSONResponse struct{ ProfileConflictJSONResponse }
+
+func (response PutPersonalProfile409JSONResponse) VisitPutPersonalProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutPersonalProfile503JSONResponse struct{ ProfileUnavailableJSONResponse }
+
+func (response PutPersonalProfile503JSONResponse) VisitPutPersonalProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// LogoutCurrentSession Revoke the authenticated browser session
@@ -1686,6 +2322,12 @@ type StrictServerInterface interface {
 	// GetPortfolioShowcase Return the authenticated owner's persisted portfolio showcase
 	// (GET /api/portfolio/showcase)
 	GetPortfolioShowcase(ctx context.Context, request GetPortfolioShowcaseRequestObject) (GetPortfolioShowcaseResponseObject, error)
+	// GetPersonalProfile Return the authenticated owner's personal profile and safe catalogues
+	// (GET /api/profile)
+	GetPersonalProfile(ctx context.Context, request GetPersonalProfileRequestObject) (GetPersonalProfileResponseObject, error)
+	// PutPersonalProfile Atomically create or replace the authenticated owner's complete personal profile
+	// (PUT /api/profile)
+	PutPersonalProfile(ctx context.Context, request PutPersonalProfileRequestObject) (PutPersonalProfileResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1983,53 +2625,121 @@ func (sh *strictHandler) GetPortfolioShowcase(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// GetPersonalProfile operation middleware
+func (sh *strictHandler) GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
+	var request GetPersonalProfileRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPersonalProfile(ctx, request.(GetPersonalProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPersonalProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPersonalProfileResponseObject); ok {
+		if err := validResponse.VisitGetPersonalProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutPersonalProfile operation middleware
+func (sh *strictHandler) PutPersonalProfile(w http.ResponseWriter, r *http.Request, params PutPersonalProfileParams) {
+	var request PutPersonalProfileRequestObject
+
+	request.Params = params
+
+	var body PutPersonalProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutPersonalProfile(ctx, request.(PutPersonalProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutPersonalProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutPersonalProfileResponseObject); ok {
+		if err := validResponse.VisitPutPersonalProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"//8=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -10,10 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 	"github.com/kennethdavidbuck/findur/backend/internal/generated"
 	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
+	"github.com/kennethdavidbuck/findur/backend/internal/profile"
 	requestvalidator "github.com/oapi-codegen/nethttp-middleware"
 )
 
@@ -48,6 +50,11 @@ type showcaseLifecycle interface {
 	Get(context.Context, auth.Actor) (portfolio.Showcase, error)
 }
 
+type profileLifecycle interface {
+	Get(context.Context, auth.Actor) (profile.Snapshot, error)
+	Save(context.Context, auth.Actor, profile.Input) (profile.Profile, error)
+}
+
 type callbackCookies struct{ attempt, session string }
 type callbackCookieKey struct{}
 type httpRequestContextKey struct{}
@@ -70,6 +77,7 @@ const (
 	portfolioInventoryRetryPath = "/api/portfolio/inventory/retry"
 	portfolioInclusionPath      = "/api/portfolio/inclusion"
 	portfolioShowcasePath       = "/api/portfolio/showcase"
+	profilePath                 = "/api/profile"
 	callbackSucceededCategory   = "succeeded"
 	callbackRestartCategory     = "restart_required"
 	requestCanceledCategory     = "request_canceled"
@@ -93,25 +101,30 @@ type authorizationAPI struct {
 	inventory              inventoryLifecycle
 	inclusion              inclusionLifecycle
 	showcase               showcaseLifecycle
+	profile                profileLifecycle
 	authorizationAvailable bool
 	publicOrigin           string
 }
 
-func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, authorizationAvailable bool, publicOrigin string) {
-	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, inventory: inventory, inclusion: inclusion, showcase: showcase, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
+func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, authorizationAvailable bool, publicOrigin string) {
+	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, inventory: inventory, inclusion: inclusion, showcase: showcase, profile: profiles, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
 	if provider, ok := completer.(authorizationStatusProvider); ok {
 		api.status = provider
 	}
 	strict := generated.NewStrictHandlerWithOptions(api, nil, generated.StrictHTTPServerOptions{
-		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
+		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			if missingRequiredCSRF(r) {
 				writePrivateForbidden(w)
 				return
 			}
-			writeGeneratedError(w, http.StatusBadRequest, generated.InvalidRequest)
+			if r.URL.Path == profilePath {
+				writeProfileValidation(w, profileFieldsFromError(err))
+				return
+			}
+			writeGeneratedError(w, http.StatusBadRequest, generated.ErrorCodeInvalidRequest)
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
-			writeGeneratedError(w, http.StatusServiceUnavailable, generated.InitializationFailed)
+			writeGeneratedError(w, http.StatusServiceUnavailable, generated.ErrorCodeInitializationFailed)
 		},
 	})
 	spec, err := generated.GetSpec()
@@ -120,12 +133,16 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 	}
 	validateRequests := requestvalidator.OapiRequestValidatorWithOptions(spec, &requestvalidator.Options{
 		Options: openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc},
-		ErrorHandlerWithOpts: func(_ context.Context, _ error, w http.ResponseWriter, r *http.Request, _ requestvalidator.ErrorHandlerOpts) {
+		ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, r *http.Request, _ requestvalidator.ErrorHandlerOpts) {
 			if missingRequiredCSRF(r) {
 				writePrivateForbidden(w)
 				return
 			}
-			writeGeneratedError(w, http.StatusBadRequest, generated.InvalidRequest)
+			if r.URL.Path == profilePath {
+				writeProfileValidation(w, profileFieldsFromError(err))
+				return
+			}
+			writeGeneratedError(w, http.StatusBadRequest, generated.ErrorCodeInvalidRequest)
 		},
 	})
 	generated.HandlerWithOptions(strict, generated.StdHTTPServerOptions{
@@ -135,7 +152,7 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 				writePrivateForbidden(w)
 				return
 			}
-			writeGeneratedError(w, http.StatusBadRequest, generated.InvalidRequest)
+			writeGeneratedError(w, http.StatusBadRequest, generated.ErrorCodeInvalidRequest)
 		},
 		Middlewares: []generated.MiddlewareFunc{
 			validateRequests,
@@ -146,7 +163,7 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 	})
 	mux.HandleFunc(authorizationPath, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Allow", http.MethodPost)
-		writeGeneratedError(w, http.StatusMethodNotAllowed, generated.InvalidRequest)
+		writeGeneratedError(w, http.StatusMethodNotAllowed, generated.ErrorCodeInvalidRequest)
 	})
 }
 
@@ -158,13 +175,13 @@ func noStoreMiddleware(next http.Handler) http.Handler {
 }
 
 func missingRequiredCSRF(r *http.Request) bool {
-	unsafeSessionPath := r.URL.Path == logoutPath || r.URL.Path == portfolioInventoryRetryPath || r.URL.Path == portfolioInclusionPath
-	return r.Method == http.MethodPost && unsafeSessionPath && r.Header.Get(csrfHeaderName) == ""
+	unsafeSessionPath := r.URL.Path == logoutPath || r.URL.Path == portfolioInventoryRetryPath || r.URL.Path == portfolioInclusionPath || r.URL.Path == profilePath
+	return (r.Method == http.MethodPost || r.Method == http.MethodPut) && unsafeSessionPath && r.Header.Get(csrfHeaderName) == ""
 }
 
 func callbackContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == logoutPath || strings.HasPrefix(r.URL.Path, portfolioInventoryPath) || r.URL.Path == portfolioInclusionPath || r.URL.Path == portfolioShowcasePath {
+		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == logoutPath || strings.HasPrefix(r.URL.Path, portfolioInventoryPath) || r.URL.Path == portfolioInclusionPath || r.URL.Path == portfolioShowcasePath || r.URL.Path == profilePath {
 			cookies := callbackCookies{
 				attempt: cookieValue(r, attemptCookieName),
 				session: cookieValue(r, sessionCookieName),
@@ -175,6 +192,146 @@ func callbackContextMiddleware(next http.Handler) http.Handler {
 		r = r.WithContext(context.WithValue(r.Context(), httpRequestContextKey{}, r))
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (a *authorizationAPI) GetPersonalProfile(ctx context.Context, _ generated.GetPersonalProfileRequestObject) (generated.GetPersonalProfileResponseObject, error) {
+	actor, err := a.portfolioActor(ctx, a.profile != nil)
+	if errors.Is(err, auth.ErrUnauthenticated) {
+		return generated.GetPersonalProfile401JSONResponse{ProfileUnauthorizedJSONResponse: profileUnauthorized()}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := a.profile.Get(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetPersonalProfile200JSONResponse{Body: profileSnapshotResponse(snapshot), Headers: generated.GetPersonalProfile200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
+}
+
+func (a *authorizationAPI) PutPersonalProfile(ctx context.Context, request generated.PutPersonalProfileRequestObject) (generated.PutPersonalProfileResponseObject, error) {
+	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
+	if a.sessions == nil || a.profile == nil || cookies.session == "" {
+		return generated.PutPersonalProfile401JSONResponse{ProfileUnauthorizedJSONResponse: profileUnauthorized()}, nil
+	}
+	httpRequest := requestFromContext(ctx)
+	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != secFetchSameOrigin {
+		return profileForbidden(), nil
+	}
+	actor, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, request.Params.XCSRFToken)
+	if errors.Is(err, auth.ErrUnauthenticated) {
+		return generated.PutPersonalProfile401JSONResponse{ProfileUnauthorizedJSONResponse: profileUnauthorized()}, nil
+	}
+	if errors.Is(err, auth.ErrForbidden) {
+		return profileForbidden(), nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if request.Body == nil {
+		return profileValidation([]string{"displayName"}), nil
+	}
+	input := profile.Input{DisplayName: request.Body.DisplayName, AdultAttested: bool(request.Body.AdultAttested), LocationKey: request.Body.LocationKey, RelationshipIntent: string(request.Body.RelationshipIntent), Biography: request.Body.Biography, AvatarKey: string(request.Body.AvatarKey), Locale: string(request.Body.Locale), Theme: string(request.Body.Theme), ExpectedVersion: request.Body.ExpectedVersion}
+	saved, err := a.profile.Save(ctx, actor, input)
+	if err != nil {
+		var invalid *profile.ValidationError
+		switch {
+		case errors.As(err, &invalid):
+			return profileValidation(invalid.Fields), nil
+		case errors.Is(err, profile.ErrConflict):
+			return generated.PutPersonalProfile409JSONResponse{ProfileConflictJSONResponse: generated.ProfileConflictJSONResponse{Body: generated.Error{Code: generated.ErrorCodeConflict}, Headers: generated.ProfileConflictResponseHeaders{CacheControl: privateNoStoreDirective}}}, nil
+		default:
+			return nil, err
+		}
+	}
+	return generated.PutPersonalProfile200JSONResponse{Body: personalProfileResponse(saved), Headers: generated.PutPersonalProfile200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
+}
+
+func profileUnauthorized() generated.ProfileUnauthorizedJSONResponse {
+	return generated.ProfileUnauthorizedJSONResponse{Body: generated.Error{Code: generated.ErrorCodeUnauthenticated}, Headers: generated.ProfileUnauthorizedResponseHeaders{CacheControl: privateNoStoreDirective}}
+}
+func profileForbidden() generated.PutPersonalProfileResponseObject {
+	return generated.PutPersonalProfile403JSONResponse{ProfileForbiddenJSONResponse: generated.ProfileForbiddenJSONResponse{Body: generated.Error{Code: generated.ErrorCodeForbidden}, Headers: generated.ProfileForbiddenResponseHeaders{CacheControl: privateNoStoreDirective}}}
+}
+func profileValidation(fields []string) generated.PutPersonalProfileResponseObject {
+	converted := make([]generated.ProfileValidationErrorFields, len(fields))
+	for index, field := range fields {
+		converted[index] = generated.ProfileValidationErrorFields(field)
+	}
+	return generated.PutPersonalProfile400JSONResponse{ProfileValidationJSONResponse: generated.ProfileValidationJSONResponse{Body: generated.ProfileValidationError{Code: generated.ProfileValidationErrorCodeInvalidProfile, Fields: converted}, Headers: generated.ProfileValidationResponseHeaders{CacheControl: privateNoStoreDirective}}}
+}
+
+func writeProfileValidation(w http.ResponseWriter, fields []string) {
+	converted := make([]generated.ProfileValidationErrorFields, len(fields))
+	for index, field := range fields {
+		converted[index] = generated.ProfileValidationErrorFields(field)
+	}
+	w.Header().Set(cacheControlHeader, privateNoStoreDirective)
+	w.Header().Set(contentTypeHeader, jsonMediaType)
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(generated.ProfileValidationError{Code: generated.ProfileValidationErrorCodeInvalidProfile, Fields: converted})
+}
+
+func profileFieldsFromError(err error) []string {
+	allowedFields := []string{"displayName", "adultAttested", "locationKey", "relationshipIntent", "biography", "avatarKey", "locale", "theme", "expectedVersion"}
+	allowedSet := make(map[string]struct{}, len(allowedFields))
+	for _, field := range allowedFields {
+		allowedSet[field] = struct{}{}
+	}
+	found := make(map[string]struct{})
+	var collect func(error)
+	collect = func(current error) {
+		var multiple openapi3.MultiError
+		if errors.As(current, &multiple) {
+			for _, item := range multiple {
+				collect(item)
+			}
+			return
+		}
+		var requestError *openapi3filter.RequestError
+		if errors.As(current, &requestError) {
+			collect(requestError.Err)
+			return
+		}
+		var schemaError *openapi3.SchemaError
+		if errors.As(current, &schemaError) {
+			pointer := schemaError.JSONPointer()
+			if len(pointer) > 0 {
+				if _, ok := allowedSet[pointer[0]]; ok {
+					found[pointer[0]] = struct{}{}
+				}
+			}
+			return
+		}
+		if next := errors.Unwrap(current); next != nil {
+			collect(next)
+		}
+	}
+	collect(err)
+	if len(found) == 0 {
+		return allowedFields
+	}
+	fields := make([]string, 0, len(found))
+	for _, field := range allowedFields {
+		if _, ok := found[field]; ok {
+			fields = append(fields, field)
+		}
+	}
+	return fields
+}
+func personalProfileResponse(value profile.Profile) generated.PersonalProfile {
+	return generated.PersonalProfile{DisplayName: value.DisplayName, AdultAttestedAt: value.AdultAttestedAt, LocationKey: value.LocationKey, RelationshipIntent: generated.PersonalProfileRelationshipIntent(value.RelationshipIntent), Biography: value.Biography, AvatarKey: generated.PersonalProfileAvatarKey(value.AvatarKey), Locale: generated.PersonalProfileLocale(value.Locale), Theme: generated.PersonalProfileTheme(value.Theme), Version: value.Version}
+}
+func profileSnapshotResponse(value profile.Snapshot) generated.PersonalProfileSnapshot {
+	result := generated.PersonalProfileSnapshot{Locations: make([]generated.ProfileLocation, 0, len(value.Locations))}
+	for _, location := range value.Locations {
+		result.Locations = append(result.Locations, generated.ProfileLocation{Key: location.Key, CityEn: location.CityEN, CityFr: location.CityFR, ProvinceEn: location.ProvinceEN, ProvinceFr: location.ProvinceFR})
+	}
+	if value.Profile != nil {
+		item := personalProfileResponse(*value.Profile)
+		result.Profile = &item
+	}
+	return result
 }
 
 func (a *authorizationAPI) GetPortfolioInventory(ctx context.Context, _ generated.GetPortfolioInventoryRequestObject) (generated.GetPortfolioInventoryResponseObject, error) {
@@ -268,15 +425,15 @@ func (a *authorizationAPI) ConfirmPortfolioInclusion(ctx context.Context, reques
 		return nil, err
 	}
 	if request.Body == nil {
-		return inclusionConflict(generated.InvalidSelection), nil
+		return inclusionConflict(generated.ErrorCodeInvalidSelection), nil
 	}
 	snapshot, err := a.inclusion.Confirm(ctx, actor, request.Params.XInclusionVersion, request.Params.IdempotencyKey, request.Body.AccountIds)
 	if err != nil {
 		switch {
 		case errors.Is(err, portfolio.ErrInvalidAccountSelection):
-			return inclusionConflict(generated.InvalidSelection), nil
+			return inclusionConflict(generated.ErrorCodeInvalidSelection), nil
 		case errors.Is(err, portfolio.ErrInclusionConflict), errors.Is(err, portfolio.ErrIdempotencyConflict):
-			return inclusionConflict(generated.Conflict), nil
+			return inclusionConflict(generated.ErrorCodeConflict), nil
 		default:
 			return nil, err
 		}
@@ -301,11 +458,11 @@ func (a *authorizationAPI) portfolioActor(ctx context.Context, available bool) (
 }
 
 func inventoryUnauthorized() generated.InventoryUnauthorizedJSONResponse {
-	return generated.InventoryUnauthorizedJSONResponse{Body: generated.Error{Code: generated.Unauthenticated}, Headers: generated.InventoryUnauthorizedResponseHeaders{CacheControl: privateNoStoreDirective}}
+	return generated.InventoryUnauthorizedJSONResponse{Body: generated.Error{Code: generated.ErrorCodeUnauthenticated}, Headers: generated.InventoryUnauthorizedResponseHeaders{CacheControl: privateNoStoreDirective}}
 }
 
 func inventoryForbidden() generated.InventoryForbiddenJSONResponse {
-	return generated.InventoryForbiddenJSONResponse{Body: generated.Error{Code: generated.Forbidden}, Headers: generated.InventoryForbiddenResponseHeaders{CacheControl: privateNoStoreDirective}}
+	return generated.InventoryForbiddenJSONResponse{Body: generated.Error{Code: generated.ErrorCodeForbidden}, Headers: generated.InventoryForbiddenResponseHeaders{CacheControl: privateNoStoreDirective}}
 }
 
 func inventoryResponse(snapshot portfolio.Snapshot) generated.PortfolioInventory {
@@ -367,7 +524,7 @@ func contentTypeMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		contentType := strings.TrimSpace(strings.Split(r.Header.Get(contentTypeHeader), ";")[0])
 		if contentType != "" && contentType != jsonMediaType && contentType != formMediaType {
-			writeGeneratedError(w, http.StatusUnsupportedMediaType, generated.InvalidRequest)
+			writeGeneratedError(w, http.StatusUnsupportedMediaType, generated.ErrorCodeInvalidRequest)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -449,11 +606,11 @@ func (a *authorizationAPI) LogoutCurrentSession(ctx context.Context, request gen
 }
 
 func logoutUnauthorized() generated.LogoutCurrentSessionResponseObject {
-	return logoutErrorResponse{status: http.StatusUnauthorized, code: generated.Unauthenticated, cookies: expiredSessionCookies()}
+	return logoutErrorResponse{status: http.StatusUnauthorized, code: generated.ErrorCodeUnauthenticated, cookies: expiredSessionCookies()}
 }
 
 func logoutForbidden() generated.LogoutCurrentSessionResponseObject {
-	return logoutErrorResponse{status: http.StatusForbidden, code: generated.Forbidden}
+	return logoutErrorResponse{status: http.StatusForbidden, code: generated.ErrorCodeForbidden}
 }
 
 func sameOriginRequest(request *http.Request, publicOrigin string) bool {
@@ -503,15 +660,15 @@ func (a *authorizationAPI) CompleteSnapTradeAuthorization(ctx context.Context, r
 
 func (a *authorizationAPI) BeginSnapTradeAuthorization(ctx context.Context, request generated.BeginSnapTradeAuthorizationRequestObject) (generated.BeginSnapTradeAuthorizationResponseObject, error) {
 	if a.initiator == nil {
-		return unavailableResponse(generated.AuthorizationUnavailable), nil
+		return unavailableResponse(generated.ErrorCodeAuthorizationUnavailable), nil
 	}
 	result, err := a.initiator.Begin(ctx, requestedReturn(request))
 	if err != nil {
-		code := generated.InitializationFailed
+		code := generated.ErrorCodeInitializationFailed
 		category := string(code)
 		switch {
 		case errors.Is(err, auth.ErrUnavailable):
-			code = generated.AuthorizationUnavailable
+			code = generated.ErrorCodeAuthorizationUnavailable
 			category = string(code)
 		case errors.Is(err, context.Canceled):
 			category = requestCanceledCategory
@@ -527,7 +684,7 @@ func (a *authorizationAPI) BeginSnapTradeAuthorization(ctx context.Context, requ
 	}
 	maxAge := int(time.Until(result.ExpiresAt) / time.Second)
 	if maxAge < 1 || maxAge > int(auth.AttemptLifetime/time.Second) {
-		return unavailableResponse(generated.InitializationFailed), nil
+		return unavailableResponse(generated.ErrorCodeInitializationFailed), nil
 	}
 	cookie := (&http.Cookie{Name: attemptCookieName, Value: result.BrowserBinding, Path: auth.SnapTradeCallbackPath, MaxAge: maxAge, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode}).String()
 	return generated.BeginSnapTradeAuthorization303Response{Headers: generated.BeginSnapTradeAuthorization303ResponseHeaders{Location: result.AuthorizationURL, SetCookie: cookie}}, nil
@@ -609,5 +766,5 @@ func writePrivateForbidden(w http.ResponseWriter) {
 	w.Header().Set(cacheControlHeader, privateNoStoreDirective)
 	w.Header().Set(contentTypeHeader, jsonMediaType)
 	w.WriteHeader(http.StatusForbidden)
-	_ = json.NewEncoder(w).Encode(generated.Error{Code: generated.Forbidden})
+	_ = json.NewEncoder(w).Encode(generated.Error{Code: generated.ErrorCodeForbidden})
 }
