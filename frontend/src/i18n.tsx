@@ -88,7 +88,7 @@ const copy = {
       thesisLabel: 'What changes',
       thesisTitle: 'The portfolio becomes the first impression.',
       thesisBody:
-        'Findur looks at the mix of holdings, diversification, recent activity, and account coverage a person chooses to include. Those signals help shape synthetic introductions. Exact detail stays limited by that person’s disclosure choice, and photos appear only after mutual interest.',
+        'Findur looks at the mix of holdings, diversification, recent activity, and account coverage a person chooses to include. Those signals show where investing styles might align or complement each other. Exact detail stays limited by that person’s disclosure choice, and photos appear only after mutual interest.',
       principlesEyebrow: 'How it stays human',
       principlesTitle: 'The numbers never get the last word.',
       principles: [
@@ -335,7 +335,7 @@ const copy = {
       thesisLabel: 'Ce qui change',
       thesisTitle: 'Le portefeuille devient la première impression.',
       thesisBody:
-        'Findur observe la composition des placements, la diversification, l’activité récente et la couverture des comptes qu’une personne choisit d’inclure. Ces signaux orientent les rencontres synthétiques. Le niveau de partage choisi limite les détails exacts, et les photos apparaissent seulement après un intérêt mutuel.',
+        'Findur observe la composition des placements, la diversification, l’activité récente et la couverture des comptes qu’une personne choisit d’inclure. Ces signaux montrent où les styles d’investissement peuvent se rejoindre ou se compléter. Le niveau de partage choisi limite les détails exacts, et les photos apparaissent seulement après un intérêt mutuel.',
       principlesEyebrow: 'Pour garder l’humain au centre',
       principlesTitle: 'Les chiffres n’ont jamais le dernier mot.',
       principles: [
