@@ -3,7 +3,7 @@
   "results": [
     {
       "instrument": { "id": "1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324", "symbol": "FDR", "kind": "stock" },
-      "currency": "CAD",
+      "currency": "USD",
       "units": "10.50000001",
       "price": "123.45",
       "cost_basis": "118.20"

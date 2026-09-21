@@ -9,6 +9,7 @@ const emptyInventory = () => new Response(JSON.stringify({
 }), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
 const jsonResponseBody = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+const emptyShowcase = () => ({ accounts: [] })
 
 function inclusionAccount(id: string, maskedLabel: string, selectable: boolean, usabilityReason: string, category = 'investment') {
 	return { id, category, type: category === 'investment' ? 'Margin' : 'Checking', maskedLabel, available: true, eligible: selectable, selectable, usabilityReason, syncState: 'complete' }
@@ -27,6 +28,7 @@ function installInclusionFetch(inventory: ReturnType<typeof inclusionInventory>,
 		if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
 		if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 		if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody(inclusion))
+		if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
 		return Promise.resolve(new Response(null, { status: 404 }))
 	})
 	vi.stubGlobal('fetch', fetchMock)
@@ -68,6 +70,76 @@ beforeEach(() => {
   document.documentElement.removeAttribute('data-theme-preference')
   document.head.innerHTML = '<meta name="description" content=""><meta name="theme-color" content="">'
   installMatchMedia(false)
+})
+
+describe('portfolio showcase', () => {
+  function installShowcase(body: unknown, status = 200) {
+    window.history.replaceState(null, '', '/portfolio')
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
+      ? jsonResponseBody({ authorizationAvailable: true, authenticated: true })
+      : path === '/api/portfolio/showcase' ? new Response(JSON.stringify(body), { status }) : new Response(null, { status: 404 }))))
+  }
+	it('renders saved facts and separately routes account editing', async () => {
+    installShowcase({ accounts: [{ label: 'Retirement (•••• 8443)', brokerage: 'Synthetic Broker', syncMode: 'realtime', balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '1234.50' }], positions: [], activities: [] }, positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'stale_usable' }, balances: [], positions: [], activities: [] }, activities: { context: { source: 'SnapTrade', coverage: 'included account; last 30 days, up to 500 rows', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] } }] })
+    render(<App />)
+    expect((await screen.findAllByText('Retirement (•••• 8443)'))[0].textContent).toBe('Retirement (•••• 8443)')
+    expect(screen.getAllByText('CAD $1,234.50').length).toBeGreaterThan(0)
+    // These dedicated regions remain stacked at the 375 px / 400% reflow breakpoint;
+    // only the bounded evidence table is permitted to provide horizontal scrolling.
+    expect(document.querySelector('.showcase-reference .topline')).toBeInTheDocument()
+    expect(document.querySelector('.showcase-reference .coverage')).toBeInTheDocument()
+    expect(document.querySelector('.showcase-reference .account-grid')).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Balances table' })).toHaveClass('table-wrap')
+    expect(screen.getByText((_, element) => element?.classList.contains('freshness--stale_usable') === true && element.textContent?.includes('Stale, still usable') === true)).toBeVisible()
+    expect(screen.getAllByText('This complete dataset has no recorded rows.')).toHaveLength(2)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit included accounts →' }))
+		await waitFor(() => expect(window.location.pathname).toBe('/portfolio/accounts'))
+	})
+	it('keeps each account dataset and its evidence context together', async () => {
+		const dataset = (kind: 'balances' | 'positions' | 'activities', observedAt: string) => ({
+			context: {
+				source: 'SnapTrade', coverage: kind === 'activities' ? 'included account; last 30 days, up to 500 rows' : 'included account',
+				currency: 'CAD', freshness: 'current', observedAt,
+			},
+			balances: kind === 'balances' ? [{ currency: 'CAD', cash: '100.00' }] : [],
+			positions: kind === 'positions' ? [{ symbol: 'FND', kind: 'equity', currency: 'CAD', units: '2.0' }] : [],
+			activities: kind === 'activities' ? [{ type: 'DIVIDEND', tradeDate: observedAt, currency: 'CAD', amount: '4.00' }] : [],
+		})
+		installShowcase({ accounts: [
+			{ label: 'Retirement (•••• 8443)', brokerage: 'Synthetic Broker', syncMode: 'realtime', balances: dataset('balances', '2026-09-20T12:00:00Z'), positions: dataset('positions', '2026-09-20T12:01:00Z'), activities: dataset('activities', '2026-09-20T12:02:00Z') },
+			{ label: 'Savings (•••• 1221)', brokerage: 'Synthetic Broker', syncMode: 'delayed', balances: dataset('balances', '2026-09-19T12:00:00Z'), positions: dataset('positions', '2026-09-19T12:01:00Z'), activities: dataset('activities', '2026-09-19T12:02:00Z') },
+		] })
+
+		render(<App />)
+
+		expect(await screen.findAllByRole('heading', { name: 'Balances' })).toHaveLength(2)
+		expect(screen.getAllByRole('heading', { name: 'Positions' })).toHaveLength(2)
+		expect(screen.getAllByRole('heading', { name: 'Recent activities' })).toHaveLength(2)
+		expect(screen.getAllByRole('region', { name: 'Balances table' })).toHaveLength(2)
+	})
+	it('hides expired facts and offers a safe reconnect action', async () => {
+		installShowcase({ accounts: [{
+			label: 'Expired account (•••• 9000)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
+			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'expired', observedAt: '2026-09-01T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '999999.00' }], positions: [], activities: [] },
+			positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
+			activities: { context: { source: 'SnapTrade', coverage: 'included account; last 30 days, up to 500 rows', currency: 'CAD', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
+		}] })
+
+		render(<App />)
+
+		expect(await screen.findByText((_, element) => element?.classList.contains('freshness') === true && element.textContent?.includes('Expired') === true)).toBeVisible()
+		expect(screen.queryByText('CAD $999,999.00')).not.toBeInTheDocument()
+		fireEvent.click(screen.getAllByRole('button', { name: 'Reconnect' })[0])
+		await waitFor(() => expect(window.location.pathname).toBe('/connect'))
+	})
+	it('names empty, unavailable, and French states', async () => {
+    installShowcase({ accounts: [] }); render(<App />)
+    expect(await screen.findByText('No included accounts are saved.')).toBeVisible()
+    cleanup(); installShowcase({ accounts: [] }, 503); render(<App />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('saved portfolio evidence')
+    cleanup(); window.localStorage.setItem('findur-locale', 'fr'); installShowcase({ accounts: [] }); render(<App />)
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Votre portefeuille' })).toBeVisible())
+  })
 })
 
 afterEach(() => {
@@ -245,17 +317,18 @@ describe('public site', () => {
 		expect(window.location.pathname).toBe('/onboarding/accounts')
 	})
 
-	it('gates private content before mounting and exposes only the three private destinations', async () => {
+	it('gates private content before mounting and exposes only the MVP private destinations', async () => {
 		let resolveStatus!: (response: Response) => void
-		vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise<Response>((resolve) => { resolveStatus = resolve })))
+		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => path === '/api/auth/status' ? new Promise<Response>((resolve) => { resolveStatus = resolve }) : Promise.resolve(jsonResponseBody(emptyShowcase()))))
 		window.history.replaceState(null, '', '/portfolio')
 		render(<App />)
 		expect(screen.getByRole('status')).toHaveTextContent('Checking your secure session…')
 		expect(screen.queryByText('Choose accounts before anything else.')).not.toBeInTheDocument()
 		resolveStatus(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
-		const heading = await screen.findByRole('heading', { level: 1, name: 'Your portfolio profile is taking shape.' })
-		await waitFor(() => expect(heading).toHaveFocus())
-		for (const name of ['Discovery', 'Portfolio', 'Profile']) expect(screen.getAllByRole('link', { name })).toHaveLength(1)
+		await screen.findByRole('heading', { level: 1, name: 'Your portfolio' })
+		await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Your portfolio' })).toHaveFocus())
+		for (const name of ['Portfolio', 'Profile']) expect(screen.getAllByRole('link', { name })).toHaveLength(1)
+		expect(screen.queryByRole('link', { name: 'Discovery' })).not.toBeInTheDocument()
 		expect(screen.getAllByRole('navigation')).toHaveLength(1)
 		fireEvent.click(screen.getByRole('link', { name: 'Profile' }))
 		const profile = screen.getByRole('heading', { level: 1, name: 'Profile setup comes later.' })
@@ -263,7 +336,7 @@ describe('public site', () => {
 		expect(window.location.pathname).toBe('/profile')
 		window.history.back()
 		window.dispatchEvent(new PopStateEvent('popstate'))
-		await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Your portfolio profile is taking shape.' })).toHaveFocus())
+		await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Your portfolio' })).toHaveFocus())
 	})
 
 	it('renders one integrated account selection list without render-driven repeats', async () => {
@@ -292,8 +365,9 @@ describe('public site', () => {
 		expect(screen.getByText('1 · Connect', { selector: 'li' })).toBeVisible()
 		expect(screen.getByText('2 · Choose accounts', { selector: 'li' })).toHaveAttribute('aria-current', 'step')
 		expect(screen.getByText('3 · Portfolio showcase', { selector: 'li' })).toBeVisible()
-		expect(screen.getByText('4 · Preferences & privacy', { selector: 'li' })).toBeVisible()
-		expect(screen.getByText('5 · Preview & discover', { selector: 'li' })).toBeVisible()
+		expect(screen.queryByText('4 · Preferences & privacy', { selector: 'li' })).not.toBeInTheDocument()
+		expect(screen.queryByText('5 · Preview & discover', { selector: 'li' })).not.toBeInTheDocument()
+		expect(document.querySelectorAll('.setup-progress li')).toHaveLength(3)
 		expect(screen.getByText('3 · Portfolio')).toBeInTheDocument()
 		expect(screen.getByText(/Pick the accounts you’d like to include/)).toBeVisible()
 		expect(screen.getByText(/You can change this anytime/)).toBeVisible()
@@ -342,7 +416,8 @@ describe('public site', () => {
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
 			if (path === '/api/auth/status') return Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(new Response(JSON.stringify(inventory), { status: 200 }))
-			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(new Response(JSON.stringify({ version: 0, committed: [] }), { status: 200 }))
+		if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(new Response(JSON.stringify({ version: 0, committed: [] }), { status: 200 }))
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') return saveResponse
 			return Promise.resolve(new Response(null, { status: 404 }))
 		})
@@ -368,6 +443,7 @@ describe('public site', () => {
 		expect(dialog).toHaveTextContent('Retirement (•••• 8443)')
 		expect(dialog).toHaveTextContent('Synthetic Broker')
 		expect(dialog).toHaveTextContent('You can change these accounts anytime')
+		expect(dialog).toHaveTextContent('Saving opens your Portfolio Showcase')
 		expect(dialog).not.toHaveTextContent(/provider|balance|position|purpose|lifecycle|purge/i)
 		fireEvent.click(screen.getByRole('button', { name: 'Back' }))
 		await waitFor(() => expect(review).toHaveFocus())
@@ -387,11 +463,10 @@ describe('public site', () => {
 		await act(async () => {
 			resolveSave(new Response(JSON.stringify({ version: 1, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'committed', additions: ['account-1'], removals: [] } }), { status: 200 }))
 		})
-		await waitFor(() => expect(window.location.pathname).toBe('/onboarding/portfolio'))
-		expect(replaceState).toHaveBeenLastCalledWith(null, '', '/onboarding/portfolio')
-		expect(screen.getByRole('heading', { level: 1, name: 'Your portfolio profile is taking shape.' })).toBeVisible()
-		expect(screen.getByRole('status')).toHaveTextContent('Account choices saved. Your portfolio profile is ready for the next step.')
-		expect(screen.getByRole('link', { name: 'Edit included accounts' })).toHaveAttribute('href', '/onboarding/accounts')
+		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+		expect(replaceState).toHaveBeenLastCalledWith(null, '', '/portfolio')
+		expect(await screen.findByRole('heading', { level: 1, name: 'Your portfolio' })).toBeVisible()
+		expect(screen.getByRole('button', { name: 'Edit included accounts →' })).toBeVisible()
 		const post = fetchMock.mock.calls.find(([path, init]) => path === '/api/portfolio/inclusion' && init?.method === 'POST')
 		expect(post?.[1]).toEqual(expect.objectContaining({
 			cache: 'no-store', credentials: 'same-origin', body: JSON.stringify({ accountIds: ['account-1'] }),
@@ -502,7 +577,7 @@ describe('public site', () => {
 		fireEvent.click(retry)
 		expect(screen.getByRole('dialog', { name: 'Ready to save your choices?' })).toBeVisible()
 		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
-		await waitFor(() => expect(window.location.pathname).toBe('/onboarding/portfolio'))
+		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
 		const post = fetchMock.mock.calls.find(([path, init]) => path === '/api/portfolio/inclusion' && init?.method === 'POST')
 		expect(post?.[1]).toEqual(expect.objectContaining({
 			body: JSON.stringify({ accountIds: ['account-1'] }),
@@ -557,8 +632,8 @@ describe('public site', () => {
 		fireEvent.click(await screen.findByRole('checkbox', { name: /Retirement/ }))
 		fireEvent.click(screen.getByRole('button', { name: 'Review my choices' }))
 		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
-		await waitFor(() => expect(window.location.pathname).toBe('/onboarding/portfolio'))
-		expect(screen.getByRole('status')).toHaveTextContent('Account choices saved')
+		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+		expect(await screen.findByRole('heading', { name: 'Your portfolio' })).toBeVisible()
 		expect(getCalls).toBe(2)
 	})
 
@@ -930,9 +1005,11 @@ describe('public site', () => {
 		window.localStorage.setItem('protected-payload', 'secret')
 		window.sessionStorage.setItem('private-task', 'secret')
 		document.cookie = 'findur_csrf=csrf-token; Path=/'
-		const fetchMock = vi.fn()
-			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
-			.mockResolvedValueOnce(new Response(null, { status: 204 }))
+		const fetchMock = vi.fn().mockImplementation((path: string) => {
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+			return Promise.resolve(new Response(null, { status: 204 }))
+		})
 		vi.stubGlobal('fetch', fetchMock)
 		render(<App />)
 		fireEvent.click(await screen.findByRole('button', { name: 'Se déconnecter' }))
@@ -946,9 +1023,11 @@ describe('public site', () => {
 
 	it('keeps the authenticated shell retryable when logout fails', async () => {
 		window.history.replaceState(null, '', '/portfolio')
-		const fetchMock = vi.fn()
-			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
-			.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'forbidden' }), { status: 403 }))
+		const fetchMock = vi.fn().mockImplementation((path: string) => {
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+			return Promise.resolve(new Response(JSON.stringify({ code: 'forbidden' }), { status: 403 }))
+		})
 		vi.stubGlobal('fetch', fetchMock)
 		render(<App />)
 		fireEvent.click(await screen.findByRole('button', { name: 'Log out' }))
@@ -960,9 +1039,11 @@ describe('public site', () => {
 	it('cleans up and exits the shell when logout reports an already-ended session', async () => {
 		window.history.replaceState(null, '', '/portfolio')
 		window.localStorage.setItem('protected-payload', 'secret')
-		const fetchMock = vi.fn()
-			.mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: false, authenticated: true }), { status: 200 }))
-			.mockResolvedValueOnce(new Response(JSON.stringify({ code: 'unauthenticated' }), { status: 401 }))
+		const fetchMock = vi.fn().mockImplementation((path: string) => {
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: false, authenticated: true }))
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+			return Promise.resolve(new Response(JSON.stringify({ code: 'unauthenticated' }), { status: 401 }))
+		})
 		vi.stubGlobal('fetch', fetchMock)
 		render(<App />)
 		fireEvent.click(await screen.findByRole('button', { name: 'Log out' }))

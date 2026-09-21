@@ -55,7 +55,7 @@ async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
       assert.equal(result.body.state, fixture.want, `${fixture.name} categorical state`)
       assert.ok(Array.isArray(result.body.connections), `${fixture.name} normalized connections`)
       const serialized = JSON.stringify(result.body)
-      for (const forbidden of ['15363.23', 'RAW-SYMBOL-DO-NOT-RENDER', 'synthetic-access-token']) assert.doesNotMatch(serialized, new RegExp(forbidden), `${fixture.name} response is minimized`)
+      for (const forbidden of ['25000', '12500', '5000', 'synthetic-access-token']) assert.doesNotMatch(serialized, new RegExp(forbidden), `${fixture.name} response is minimized`)
       if (fixture.want === 'disabled') {
         assert.equal(result.body.connections[0]?.brokerageLabel, 'Synthetic Disabled Broker')
         assert.equal(result.body.connections[0]?.available, false)
@@ -68,7 +68,7 @@ async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
   }
 }
 
-async function exerciseAccountInclusion(webdriver, sessionId) {
+async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl) {
   let inventory
   for (let attempt = 0; attempt < 40; attempt += 1) {
     inventory = await webdriver(`/session/${sessionId}/execute/async`, {
@@ -80,24 +80,186 @@ async function exerciseAccountInclusion(webdriver, sessionId) {
   }
   assert.equal(inventory?.body?.state, 'ready', 'masked inventory is ready before inclusion')
 
+  let initial = await webdriver(`/session/${sessionId}/execute/async`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/portfolio/inclusion',{credentials:'same-origin',cache:'no-store'}).then(async response=>done({status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+  })
+  assert.equal(initial.status, 200)
+  assert.equal(initial.cache, 'private, no-store')
+  if (initial.body.committed.length > 0) {
+    initial = await webdriver(`/session/${sessionId}/execute/async`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const done=arguments[arguments.length-1];const csrf=decodeURIComponent(document.cookie.split('; ').find(value=>value.startsWith('findur_csrf='))?.split('=',2)[1]||'');fetch('/api/portfolio/inclusion',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'X-Inclusion-Version':String(${initial.body.version}),'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({accountIds:[]})}).then(async response=>done({status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+    })
+    assert.equal(initial.status, 200, 'a repeated local run clears prior synthetic inclusion state')
+  }
+  assert.deepEqual(initial.body.committed, [], 'no account is included by default')
+
+  await webdriver(`/session/${sessionId}/url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: 'http://127.0.0.1:8080/onboarding/accounts' }),
+  })
+  let chooserReady = false
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    chooserReady = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const text=document.body.innerText;const steps=document.querySelectorAll('.setup-progress li');return document.querySelector('h1')?.innerText==='Choose what Findur may use.'&&steps.length===3&&getComputedStyle(steps[0],'::after').borderLeftWidth==='1px'&&getComputedStyle(steps[2],'::after').borderLeftWidth==='0px'&&text.includes('Individual')&&text.includes('IRA')&&text.includes('Cash Account')`, args: [] }),
+    })
+    if (chooserReady) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(chooserReady, true, 'account chooser is ready with the three-step initial progress rail')
+
+  const selected = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const input=document.querySelector('.select-all input[type="checkbox"]');input?.click();return Boolean(input)`, args: [] }),
+  })
+  assert.equal(selected, true, 'all three default synthetic accounts can be selected')
+  let reviewOpened = false
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    reviewOpened = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const button=[...document.querySelectorAll('button')].find(value=>value.innerText==='Review my choices');if(button&&!button.disabled){button.click();return true}return false`, args: [] }),
+    })
+    if (reviewOpened) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(reviewOpened, true, 'account choice review opens')
+  const saved = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const button=[...document.querySelectorAll('button')].find(value=>value.innerText==='Save my choices');if(button){button.click();return true}return false`, args: [] }),
+  })
+  assert.equal(saved, true, 'account choice is saved through the UI')
+
+  let showcaseState
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    showcaseState = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const accounts=[...document.querySelectorAll('.account h2')].map(value=>value.innerText);return {path:location.pathname,heading:document.querySelector('h1')?.innerText,focused:document.activeElement===document.querySelector('h1'),accounts:accounts.length===3&&['Individual','IRA','Cash Account'].every(name=>accounts.some(value=>value.includes(name))),tables:document.querySelectorAll('.table-wrap').length,mvpNav:[...document.querySelectorAll('.authenticated-nav a')].map(value=>value.innerText).join('|')}`, args: [] }),
+    })
+    if (showcaseState.path === '/portfolio' && showcaseState.accounts && showcaseState.tables === 5) break
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  assert.deepEqual(showcaseState, { path: '/portfolio', heading: 'Your portfolio', focused: true, accounts: true, tables: 5, mvpNav: 'Portfolio|Profile' }, 'initial save opens the focused Portfolio Showcase with only the MVP navigation')
+
+  const showcase = await webdriver(`/session/${sessionId}/execute/async`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/portfolio/showcase',{credentials:'same-origin',cache:'no-store'}).then(async response=>done({status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+  })
+  assert.equal(showcase.status, 200)
+  assert.equal(showcase.cache, 'private, no-store')
+  assert.equal(showcase.body.accounts.length, 3)
+  const individual = showcase.body.accounts.find(({ label }) => label.startsWith('Individual'))
+  const ira = showcase.body.accounts.find(({ label }) => label.startsWith('IRA'))
+  const cash = showcase.body.accounts.find(({ label }) => label.startsWith('Cash Account'))
+  assert.equal(individual?.balances.balances[0].cash, '25000', 'the self-directed cash balance survives the full stack')
+  assert.equal(individual?.balances.balances[0].buyingPower, '50000', 'the supplied buying power survives the full stack')
+  assert.equal(individual?.positions.positions[0].units, '10.50000001', 'exact position precision survives the full stack')
+  assert.equal(individual?.activities.activities[0].amount, '-123.45', 'bounded activities reach the Showcase')
+  assert.equal(ira?.balances.balances[0].cash, '12500', 'the IRA synthetic is fully selectable')
+  assert.deepEqual(ira?.positions.positions, [], 'the IRA empty positions dataset remains complete')
+  assert.equal(cash?.balances.balances[0].cash, '5000', 'the Cash Account synthetic is fully selectable')
+  assert.deepEqual(cash?.activities.activities, [], 'the Cash Account empty activities dataset remains complete')
+  assert.doesNotMatch(JSON.stringify(showcase.body), /03867fbb|7e7dcb86|50bb0405|synthetic-access-token/, 'Showcase response omits IDs, raw payload fields, and credentials')
+
+  const requestsBeforeReload = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
+  const providerReadsBeforeReload = requestsBeforeReload.requests.filter(({ request }) => request.url.startsWith('/accounts/')).length
+  await webdriver(`/session/${sessionId}/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const ready = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `return location.pathname==='/portfolio'&&document.querySelectorAll('.table-wrap').length===5`, args: [] }),
+    })
+    if (ready) break
+    await new Promise((resolve) => setTimeout(resolve, 150))
+  }
+  const requestsAfterReload = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
+  const providerReadsAfterReload = requestsAfterReload.requests.filter(({ request }) => request.url.startsWith('/accounts/')).length
+  assert.equal(providerReadsAfterReload, providerReadsBeforeReload, 'rendering and reloading the Showcase makes zero provider calls')
+
+  for (const width of [1440, 390, 320]) {
+    await webdriver(`/session/${sessionId}/window/rect`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ width, height: 900 }),
+    })
+    const layout = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const table=document.querySelector('.table-wrap');const summary=document.querySelector('.dataset-summary');return {innerWidth,documentWidth:document.documentElement.scrollWidth,tableClientWidth:table.clientWidth,tableScrollWidth:table.scrollWidth,summaryLeft:summary.getBoundingClientRect().left,summaryRight:summary.getBoundingClientRect().right,datasetDirection:getComputedStyle(document.querySelector('.dataset>header')).flexDirection}`, args: [] }),
+    })
+    assert.ok(layout.documentWidth <= layout.innerWidth, `${width}px has no page-level horizontal scrolling`)
+    assert.ok(layout.summaryLeft >= 0 && layout.summaryRight <= layout.innerWidth, `${width}px keeps the table summary in the readable flow`)
+    if (width <= 390) {
+      assert.ok(layout.tableScrollWidth > layout.tableClientWidth, `${width}px confines horizontal overflow to the evidence table`)
+      assert.equal(layout.datasetDirection, 'column', `${width}px stacks dataset headings and freshness`)
+    }
+  }
+
+  const switchedToFrench = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const control=[...document.querySelectorAll('label.choice')].find(value=>value.innerText==='FR');control?.click();return Boolean(control)`, args: [] }),
+  })
+  assert.equal(switchedToFrench, true)
+  const frenchLayout = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `return {heading:document.querySelector('h1')?.innerText,innerWidth,documentWidth:document.documentElement.scrollWidth}`, args: [] }),
+  })
+  assert.equal(frenchLayout.heading, 'Votre portefeuille')
+  assert.ok(frenchLayout.documentWidth <= frenchLayout.innerWidth, 'French copy reflows without page-level horizontal scrolling')
+
+  const editOpened = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const button=[...document.querySelectorAll('button')].find(value=>value.innerText.includes('Modifier les comptes inclus'));button?.click();return Boolean(button)`, args: [] }),
+  })
+  assert.equal(editOpened, true)
+  let editor
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    editor = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const checked=[...document.querySelectorAll('.account-choice input[type="checkbox"]')].filter(value=>value.checked).length;return {path:location.pathname,checked}`, args: [] }),
+    })
+    if (editor.path === '/portfolio/accounts' && editor.checked === 3) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.deepEqual(editor, { path: '/portfolio/accounts', checked: 3 }, 'Edit included accounts opens the separate editor with all saved choices')
+
+  const editReviewed = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const button=[...document.querySelectorAll('button')].find(value=>value.innerText==='Vérifier mes choix');button?.click();return Boolean(button)`, args: [] }),
+  })
+  assert.equal(editReviewed, true, 'saved account choices can be reviewed from the separate editor')
+  let editSaved = false
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    editSaved = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const button=[...document.querySelectorAll('button')].find(value=>value.innerText==='Enregistrer mes choix');if(button){button.click();return true}return false`, args: [] }),
+    })
+    if (editSaved) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(editSaved, true, 'saved account choices can be confirmed from the editor')
+  let editReturn
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    editReturn = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `return {path:location.pathname,heading:document.querySelector('h1')?.innerText,accounts:document.querySelectorAll('.account h2').length}`, args: [] }),
+    })
+    if (editReturn.path === '/portfolio' && editReturn.accounts === 3) break
+    await new Promise((resolve) => setTimeout(resolve, 150))
+  }
+  assert.deepEqual(editReturn, { path: '/portfolio', heading: 'Votre portefeuille', accounts: 3 }, 'a successful edit returns to the Portfolio Showcase')
+
   const result = await webdriver(`/session/${sessionId}/execute/async`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ script: `const done=arguments[arguments.length-1];(async()=>{const csrf=decodeURIComponent(document.cookie.split('; ').find(value=>value.startsWith('findur_csrf='))?.split('=',2)[1]||'');const read=async()=>{const response=await fetch('/api/portfolio/inclusion',{credentials:'same-origin',cache:'no-store'});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const initial=await read();const send=async(version,key,accountIds)=>{const response=await fetch('/api/portfolio/inclusion',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'X-Inclusion-Version':String(version),'Idempotency-Key':key},body:JSON.stringify({accountIds})});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const addKey=crypto.randomUUID();const added=await send(initial.body.version,addKey,['917c8734-8470-4a3e-a18f-57c3f2ee6631']);const replay=await send(initial.body.version,addKey,['917c8734-8470-4a3e-a18f-57c3f2ee6631']);const stale=await send(initial.body.version,crypto.randomUUID(),[]);const foreign=await send(added.body.version,crypto.randomUUID(),['00000000-0000-0000-0000-000000000001']);const removed=await send(added.body.version,crypto.randomUUID(),[]);done({initial,added,replay,stale,foreign,removed})})().catch(error=>done({error:String(error)}))`, args: [] }),
+    body: JSON.stringify({ script: `const done=arguments[arguments.length-1];(async()=>{const csrf=decodeURIComponent(document.cookie.split('; ').find(value=>value.startsWith('findur_csrf='))?.split('=',2)[1]||'');const read=async()=>{const response=await fetch('/api/portfolio/inclusion',{credentials:'same-origin',cache:'no-store'});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const send=async(version,key,accountIds)=>{const response=await fetch('/api/portfolio/inclusion',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'X-Inclusion-Version':String(version),'Idempotency-Key':key},body:JSON.stringify({accountIds})});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const added=await read();const foreign=await send(added.body.version,crypto.randomUUID(),['00000000-0000-0000-0000-000000000001']);const removeKey=crypto.randomUUID();const removed=await send(added.body.version,removeKey,[]);const replay=await send(added.body.version,removeKey,[]);const stale=await send(${initial.body.version},crypto.randomUUID(),[]);done({added,foreign,removed,replay,stale})})().catch(error=>done({error:String(error)}))`, args: [] }),
   })
-  assert.equal(result.initial.status, 200)
-  assert.equal(result.initial.cache, 'private, no-store')
-  assert.deepEqual(result.initial.body.committed, [], 'no account is included by default')
   assert.equal(result.added.status, 200)
-  assert.equal(result.added.body.change.status, 'committed')
-  assert.deepEqual(result.added.body.committed, ['917c8734-8470-4a3e-a18f-57c3f2ee6631'])
-  assert.deepEqual(result.replay.body, result.added.body, 'identical idempotency replay has one effect')
-  assert.equal(result.stale.status, 409)
-  assert.equal(result.stale.body.code, 'conflict')
+  assert.deepEqual(result.added.body.committed, ['03867fbb-41b4-4a05-8815-c96f94f8ba6b', '50bb0405-5efd-473f-a742-78a82bb1db53', '7e7dcb86-7d52-4f46-8fcf-91d5c9f81629'])
   assert.equal(result.foreign.status, 409)
   assert.equal(result.foreign.body.code, 'invalid_selection')
   assert.doesNotMatch(JSON.stringify(result.foreign.body), /00000000-0000-0000-0000-000000000001/)
   assert.equal(result.removed.status, 200)
   assert.deepEqual(result.removed.body.committed, [], 'removal is committed immediately')
+  assert.deepEqual(result.replay.body, result.removed.body, 'identical idempotency replay has one effect')
+  assert.equal(result.stale.status, 409)
+  assert.equal(result.stale.body.code, 'conflict')
 }
 
 export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockUrl }) {
@@ -144,7 +306,7 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
         if (otherSessionHeading) break
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
-      assert.equal(otherSessionHeading, 'Your portfolio profile is taking shape.', 'logging out one browser preserves another active session')
+      assert.equal(otherSessionHeading, 'Your portfolio', 'logging out one browser preserves another active session')
 
       for (const [width, expectedPosition] of [[767, 'fixed'], [768, 'fixed']]) {
         await second.webdriver(`/session/${second.sessionId}/window/rect`, {
@@ -161,7 +323,7 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script: `return getComputedStyle(document.querySelector('.authenticated-header')).position`, args: [] }),
       })
       assert.equal(desktopHeader, 'sticky', 'desktop authenticated header remains visible above the fixed rail')
-      await exerciseAccountInclusion(second.webdriver, second.sessionId)
+      await exerciseAccountInclusion(second.webdriver, second.sessionId, wiremockUrl)
       await exerciseInventoryFixtures(second.webdriver, second.sessionId, wiremockUrl)
     })
   })

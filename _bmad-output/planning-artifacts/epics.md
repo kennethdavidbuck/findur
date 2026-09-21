@@ -785,6 +785,8 @@ So that no portfolio data is retrieved or used without my separate, scoped confi
 
 ### Story 1.2: Inspect the Private Portfolio Showcase
 
+**Status:** Done
+
 As an authenticated user,
 I want to inspect the supported data from my Included Accounts,
 So that I can understand exactly what Findur received before it powers any dating experience.

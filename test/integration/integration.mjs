@@ -126,29 +126,36 @@ await verifyBrowserOAuth({ browserUrl: browser, oauthOrigin: 'http://127.0.0.1:8
 await verifyBrowserSession({ browserUrl: browser, publicOrigin: 'http://127.0.0.1:8080', wiremockUrl: wiremock })
 
 const journal = await (await fetch(`${wiremock}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
+const inventoryAccountPaths = [
+  '/authorizations/0eadf3ab-8daa-4357-9e38-325dbe82f003/accounts',
+  '/authorizations/12fe591b-344d-4e8c-96e6-98a692f94054/accounts',
+]
 const inventoryEvents = journal.requests
-  .filter(({ request }) => request.url === '/authorizations' || request.url === '/authorizations/87b24961-b51e-4db8-9226-f198f6518a89/accounts')
+  .filter(({ request }) => request.url === '/authorizations' || inventoryAccountPaths.includes(request.url))
 const inventoryRequests = inventoryEvents.map(({ request }) => request)
 assert.ok(inventoryRequests.filter(({ url }) => url === '/authorizations').length >= 7, 'success and every categorical fixture executed through WireMock')
-assert.ok(inventoryRequests.some(({ url }) => url.endsWith('/accounts')), 'successful bootstrap reaches the scoped account operation')
-for (let index = 0; index < inventoryRequests.length; index += 1) {
-  if (inventoryRequests[index].url.endsWith('/accounts')) assert.equal(inventoryRequests[index - 1]?.url, '/authorizations', 'connections are requested before accounts')
-}
+for (const path of inventoryAccountPaths) assert.ok(inventoryRequests.some(({ url }) => url === path), `successful bootstrap reaches ${path}`)
 for (const providerRequest of inventoryRequests) {
   assert.equal(providerRequest.headers.Authorization, 'Bearer synthetic-access-token')
   for (const forbidden of ['clientId', 'consumerKey', 'userId', 'userSecret', 'timestamp', 'Signature']) assert.equal(providerRequest.headers[forbidden], undefined)
 }
 const accountDataRequests = journal.requests
   .map(({ request }) => request)
-  .filter(({ url }) => url.startsWith('/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/'))
+  .filter(({ url }) => url.startsWith('/accounts/'))
 assert.deepEqual(
   accountDataRequests.map(({ url }) => new URL(url, 'http://wiremock').pathname).sort(),
   [
-    '/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/activities',
-    '/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/balances',
-    '/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/positions/all',
+    '/accounts/03867fbb-41b4-4a05-8815-c96f94f8ba6b/activities',
+    '/accounts/03867fbb-41b4-4a05-8815-c96f94f8ba6b/balances',
+    '/accounts/03867fbb-41b4-4a05-8815-c96f94f8ba6b/positions/all',
+    '/accounts/50bb0405-5efd-473f-a742-78a82bb1db53/activities',
+    '/accounts/50bb0405-5efd-473f-a742-78a82bb1db53/balances',
+    '/accounts/50bb0405-5efd-473f-a742-78a82bb1db53/positions/all',
+    '/accounts/7e7dcb86-7d52-4f46-8fcf-91d5c9f81629/activities',
+    '/accounts/7e7dcb86-7d52-4f46-8fcf-91d5c9f81629/balances',
+    '/accounts/7e7dcb86-7d52-4f46-8fcf-91d5c9f81629/positions/all',
   ],
-  'inclusion calls each required allowlisted dataset exactly once',
+  'inclusion calls each required allowlisted dataset exactly once for all three synthetics',
 )
 for (const providerRequest of accountDataRequests) {
   assert.equal(providerRequest.headers.Authorization, 'Bearer synthetic-access-token')

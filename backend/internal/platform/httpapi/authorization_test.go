@@ -45,6 +45,15 @@ type inclusionLifecycleStub struct {
 	key          string
 	accountIDs   []string
 }
+type showcaseLifecycleStub struct {
+	snapshot portfolio.Showcase
+	calls    int
+}
+
+func (s *showcaseLifecycleStub) Get(context.Context, auth.Actor) (portfolio.Showcase, error) {
+	s.calls++
+	return s.snapshot, nil
+}
 
 func (s *inclusionLifecycleStub) Get(context.Context, auth.Actor) (portfolio.InclusionSnapshot, error) {
 	s.getCalls++
@@ -131,6 +140,32 @@ func portfolioHandler(sessions sessionLifecycle, inventory inventoryLifecycle, i
 	readiness.SetReady(true)
 	return NewHandlerWithPortfolio(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, nil, sessions, inventory, inclusion, false, publicOrigin)
 }
+func showcaseHandler(sessions sessionLifecycle, showcase showcaseLifecycle) http.Handler {
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	return NewHandlerWithShowcase(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, nil, sessions, nil, nil, showcase, false, "https://findur.example")
+}
+
+func TestShowcaseGETRequiresSessionAndSerializesOnlySafeFields(t *testing.T) {
+	showcase := &showcaseLifecycleStub{snapshot: portfolio.Showcase{Accounts: []portfolio.ShowcaseAccount{{Label: "Account (•••• 1234)", Brokerage: "Broker", SyncMode: portfolio.SyncModeRealtime, Balances: portfolio.ShowcaseDataset{Context: portfolio.DatasetContext{Source: "SnapTrade", Coverage: "included account", Currency: "CAD", Freshness: portfolio.FreshnessCurrent}, Balances: []portfolio.ShowcaseBalance{{Currency: "CAD", Cash: stringPtr("1.2300")}}}}}}}
+	request := httptest.NewRequest(http.MethodGet, "/api/portfolio/showcase", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "owner-session"})
+	response := httptest.NewRecorder()
+	showcaseHandler(&sessionLifecycleStub{}, showcase).ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != privateNoStoreDirective || showcase.calls != 1 {
+		t.Fatalf("status=%d cache=%q calls=%d", response.Code, response.Header().Get("Cache-Control"), showcase.calls)
+	}
+	body := response.Body.String()
+	if strings.Contains(body, "owner-session") || !strings.Contains(body, "1.2300") || !strings.Contains(body, "•••• 1234") {
+		t.Fatalf("unsafe or missing body %q", body)
+	}
+	unauthenticated := httptest.NewRecorder()
+	showcaseHandler(&sessionLifecycleStub{authorizeErr: auth.ErrUnauthenticated}, showcase).ServeHTTP(unauthenticated, httptest.NewRequest(http.MethodGet, "/api/portfolio/showcase", nil))
+	if unauthenticated.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d", unauthenticated.Code)
+	}
+}
+func stringPtr(value string) *string { return &value }
 
 func TestInclusionGETIsOwnerPrivateAndStartsEmpty(t *testing.T) {
 	inclusion := &inclusionLifecycleStub{snapshot: portfolio.InclusionSnapshot{Version: 0, Committed: []string{}}}

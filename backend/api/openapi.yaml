@@ -3,6 +3,24 @@ info:
   title: Findur API
   version: 0.5.0
 paths:
+  /api/portfolio/showcase:
+    get:
+      operationId: getPortfolioShowcase
+      summary: Return the authenticated owner's persisted portfolio showcase
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Owner-private committed dataset heads without provider reads
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioShowcase' }
+        '401': { $ref: '#/components/responses/InventoryUnauthorized' }
+        '503': { $ref: '#/components/responses/SafeError' }
   /api/portfolio/inventory:
     get:
       operationId: getPortfolioInventory
@@ -259,6 +277,75 @@ components:
         connections:
           type: array
           items: { $ref: '#/components/schemas/InventoryConnection' }
+    DatasetContext:
+      type: object
+      additionalProperties: false
+      required: [source, coverage, currency, freshness]
+      properties:
+        source: { type: string }
+        coverage: { type: string }
+        currency: { type: string }
+        observedAt: { type: string, format: date-time }
+        retrievedAt: { type: string, format: date-time }
+        publishedAt: { type: string, format: date-time }
+        freshness: { type: string, enum: [current, stale_usable, expired, unavailable] }
+    ShowcaseBalance:
+      type: object
+      additionalProperties: false
+      required: [currency]
+      properties:
+        currency: { type: string }
+        cash: { type: string }
+        buyingPower: { type: string }
+    ShowcasePosition:
+      type: object
+      additionalProperties: false
+      required: [symbol, kind, currency]
+      properties:
+        symbol: { type: string }
+        kind: { type: string }
+        currency: { type: string }
+        units: { type: string }
+        price: { type: string }
+        costBasis: { type: string }
+    ShowcaseActivity:
+      type: object
+      additionalProperties: false
+      required: [type, currency]
+      properties:
+        type: { type: string }
+        currency: { type: string }
+        tradeDate: { type: string, format: date-time }
+        amount: { type: string }
+        fee: { type: string }
+        price: { type: string }
+        units: { type: string }
+    ShowcaseDataset:
+      type: object
+      additionalProperties: false
+      required: [context, balances, positions, activities]
+      properties:
+        context: { $ref: '#/components/schemas/DatasetContext' }
+        balances: { type: array, items: { $ref: '#/components/schemas/ShowcaseBalance' } }
+        positions: { type: array, items: { $ref: '#/components/schemas/ShowcasePosition' } }
+        activities: { type: array, items: { $ref: '#/components/schemas/ShowcaseActivity' } }
+    ShowcaseAccount:
+      type: object
+      additionalProperties: false
+      required: [label, brokerage, syncMode, balances, positions, activities]
+      properties:
+        label: { type: string }
+        brokerage: { type: string }
+        syncMode: { type: string, enum: [realtime, delayed, unknown] }
+        balances: { $ref: '#/components/schemas/ShowcaseDataset' }
+        positions: { $ref: '#/components/schemas/ShowcaseDataset' }
+        activities: { $ref: '#/components/schemas/ShowcaseDataset' }
+    PortfolioShowcase:
+      type: object
+      additionalProperties: false
+      required: [accounts]
+      properties:
+        accounts: { type: array, items: { $ref: '#/components/schemas/ShowcaseAccount' } }
     InclusionChange:
       type: object
       additionalProperties: false

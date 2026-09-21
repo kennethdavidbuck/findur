@@ -65,3 +65,19 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-deployment-health-smoke.md`
   summary: Update the governing Epic 0 planning acceptance criteria from exact frontend/API SHA equality to the approved deployment-health contract.
   evidence: The approved follow-up treats differing component revisions as diagnostic information, but `epics.md` still requires exact-SHA convergence; changing planning artifacts is deferred to a planning correction rather than this implementation fix.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-inspect-the-private-portfolio-showcase.md`
+  summary: Preserve a committed account as an explicit lifecycle row when current inventory metadata is absent or the inventory lifecycle is not ready.
+  evidence: The Showcase inner-joins the current inventory head and does not consult `current_status`, so an account can disappear or old facts can remain readable during later pending or failed inventory states; the human accepted deferral to close Story 1.2.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-inspect-the-private-portfolio-showcase.md`
+  summary: Tighten Showcase API fail-closed validation for expired rows, future or malformed timestamps, currency codes, and dataset-specific row shapes.
+  evidence: Review confirmed that expired rows still serialize and that current runtime/schema checks admit malformed evidence shapes; the human explicitly asked not to expand the privacy pass during close-out.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-inspect-the-private-portfolio-showcase.md`
+  summary: Complete Showcase evidence presentation for non-USD money, stale summaries/actions, activity price and units, and fully localized French context.
+  evidence: Review confirmed these display gaps, including a dollar sign on every currency; the human accepted the current page and requested wrap-up.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-inspect-the-private-portfolio-showcase.md`
+  summary: Expand Showcase recovery and lifecycle regression coverage.
+  evidence: Current tests do not click the Showcase retry action, show populated stale rows, or independently exercise every fail-closed lifecycle predicate; deferred at the human's request to keep moving.

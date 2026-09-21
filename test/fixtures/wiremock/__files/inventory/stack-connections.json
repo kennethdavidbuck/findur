@@ -1,0 +1,14 @@
+[
+  {
+    "id": "0eadf3ab-8daa-4357-9e38-325dbe82f003",
+    "disabled": false,
+    "brokerage": { "display_name": "Synthetic Self-Directed" },
+    "data_freshness_mode": { "institution": "realtime", "snaptrade": "delayed" }
+  },
+  {
+    "id": "12fe591b-344d-4e8c-96e6-98a692f94054",
+    "disabled": false,
+    "brokerage": { "display_name": "Synthetic Cash" },
+    "data_freshness_mode": { "institution": "realtime", "snaptrade": "delayed" }
+  }
+]

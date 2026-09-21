@@ -1,3 +1,7 @@
 [
-  { "cash": 300.71000001, "buying_power": 410.71, "currency": { "code": "CAD" } }
+  {
+    "currency": { "code": "USD", "name": "US Dollar", "id": "57f81c53-bdda-45a7-a51f-032afd1ae41b" },
+    "cash": 25000,
+    "buying_power": 50000
+  }
 ]
