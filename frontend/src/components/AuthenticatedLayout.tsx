@@ -7,6 +7,7 @@ export type ProtectedRoute = '/discovery' | '/portfolio' | '/profile'
 type Props = {
   children: ReactNode
   route: ProtectedRoute
+  setup?: boolean
   loggingOut: boolean
   logoutFailed: boolean
   onNavigate: (route: ProtectedRoute) => void
@@ -37,13 +38,14 @@ function Navigation({ route, onNavigate }: Pick<Props, 'route' | 'onNavigate'>) 
   )
 }
 
-export function AuthenticatedLayout({ children, route, loggingOut, logoutFailed, onNavigate, onLogout }: Props) {
+export function AuthenticatedLayout({ children, route, setup = false, loggingOut, logoutFailed, onNavigate, onLogout }: Props) {
   const { messages } = useI18n()
   return (
-    <div className="authenticated-shell">
+    <div className={`authenticated-shell${setup ? ' authenticated-shell--setup' : ''}`}>
       <a className="skip-link" href="#private-content">{messages.skipLink}</a>
       <header className="authenticated-header">
-        <a className="wordmark" href="/portfolio" onClick={(event) => { event.preventDefault(); onNavigate('/portfolio') }}>find<span>ur</span></a>
+        {setup ? <span className="wordmark wordmark--static" aria-label="findur">find<span>ur</span></span>
+          : <a className="wordmark" href="/portfolio" onClick={(event) => { event.preventDefault(); onNavigate('/portfolio') }}>find<span>ur</span></a>}
         <PreferenceControls compact />
         <div className="logout-control">
           <button className="action action--secondary" type="button" disabled={loggingOut} onClick={onLogout}>
@@ -52,7 +54,7 @@ export function AuthenticatedLayout({ children, route, loggingOut, logoutFailed,
           {logoutFailed && <p role="alert">{messages.authenticated.logoutFailed}</p>}
         </div>
       </header>
-      <Navigation route={route} onNavigate={onNavigate} />
+      {!setup && <Navigation route={route} onNavigate={onNavigate} />}
       <main id="private-content" className="authenticated-content">{children}</main>
     </div>
   )

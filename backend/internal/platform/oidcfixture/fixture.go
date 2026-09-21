@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -21,9 +22,18 @@ const (
 	clientIDField         = "client_id"
 	clientSecretField     = "client_secret"
 	codeField             = "code"
+	codeChallengeField    = "code_challenge"
+	codeChallengeMethod   = "code_challenge_method"
 	codeVerifierField     = "code_verifier"
 	redirectURIField      = "redirect_uri"
 	grantTypeField        = "grant_type"
+	nonceField            = "nonce"
+	responseTypeField     = "response_type"
+	scopeField            = "scope"
+	stateField            = "state"
+	authorizationScope    = "openid read"
+	authorizationResponse = "code"
+	pkceS256              = "S256"
 	bearerTokenType       = "Bearer"
 	jsonContentType       = "application/json"
 	noStore               = "no-store"
@@ -53,6 +63,8 @@ func New(issuer, clientID, clientSecret, callbackURL string) (*Handler, error) {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", noStore)
 	switch {
+	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/authorize"):
+		h.serveAuthorization(w, r)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/jwks"):
 		h.serveJWKS(w)
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/token"):
@@ -62,6 +74,46 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (h *Handler) serveAuthorization(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	if !h.validAuthorizationRequest(query) {
+		http.Error(w, "invalid_request", http.StatusBadRequest)
+		return
+	}
+	callback, err := url.Parse(h.callbackURL)
+	if err != nil {
+		http.Error(w, "server_error", http.StatusInternalServerError)
+		return
+	}
+	redirectQuery := callback.Query()
+	redirectQuery.Set(codeField, query.Get(nonceField))
+	redirectQuery.Set(stateField, query.Get(stateField))
+	callback.RawQuery = redirectQuery.Encode()
+	http.Redirect(w, r, callback.String(), http.StatusSeeOther)
+}
+
+func (h *Handler) validAuthorizationRequest(query url.Values) bool {
+	return len(query) == 8 &&
+		exactQueryValue(query, clientIDField, h.clientID) &&
+		exactQueryValue(query, responseTypeField, authorizationResponse) &&
+		exactQueryValue(query, redirectURIField, h.callbackURL) &&
+		exactQueryValue(query, scopeField, authorizationScope) &&
+		nonEmptyQueryValue(query, stateField) &&
+		nonEmptyQueryValue(query, nonceField) &&
+		nonEmptyQueryValue(query, codeChallengeField) &&
+		exactQueryValue(query, codeChallengeMethod, pkceS256)
+}
+
+func exactQueryValue(query url.Values, key, expected string) bool {
+	values := query[key]
+	return len(values) == 1 && values[0] == expected
+}
+
+func nonEmptyQueryValue(query url.Values, key string) bool {
+	values := query[key]
+	return len(values) == 1 && values[0] != ""
 }
 
 func (h *Handler) serveJWKS(w http.ResponseWriter) {

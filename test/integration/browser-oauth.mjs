@@ -33,22 +33,25 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script: `return { path: location.pathname, search: location.search, heading: document.querySelector('h1')?.innerText }`, args: [] }),
       })
-      if (oauthEvidence.path === '/portfolio' && oauthEvidence.heading === 'Your masked account inventory') break
+      if (oauthEvidence.path === '/onboarding/accounts' && oauthEvidence.heading === 'Choose what Findur may use.') break
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
-    assert.deepEqual(oauthEvidence, { path: '/portfolio', search: '', heading: 'Your masked account inventory' })
+    assert.deepEqual(oauthEvidence, { path: '/onboarding/accounts', search: '', heading: 'Choose what Findur may use.' })
     let inventoryEvidence
     for (let attempt = 0; attempt < 40; attempt += 1) {
       inventoryEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: `return {text:document.body.innerText,focused:document.activeElement===document.querySelector('h1')}`, args: [] }),
+        body: JSON.stringify({ script: `const text=document.body.innerText;const check=[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Check again'&&!button.disabled);if(check)check.click();return {text,focused:document.activeElement===document.querySelector('h1'),chooserCount:document.querySelectorAll('.account-selection').length,inventoryCount:document.querySelectorAll('.inventory-connections').length,accountLabelCount:text.split('Retirement (•••• 8443)').length-1}`, args: [] }),
       })
       if (inventoryEvidence.text.includes('Retirement (•••• 8443)')) break
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
-    assert.equal(inventoryEvidence.focused, true, 'the masked inventory heading retains meaningful focus')
-    assert.match(inventoryEvidence.text, /Connection status[\s\S]*Retirement \(•••• 8443\)/, 'connection state precedes accounts')
-    assert.match(inventoryEvidence.text, /No account is included by default/, 'account inclusion remains a later choice')
+    assert.equal(inventoryEvidence.focused, true, 'the account-choice heading retains meaningful focus')
+    assert.equal(inventoryEvidence.chooserCount, 1, 'one account chooser is rendered')
+    assert.equal(inventoryEvidence.inventoryCount, 0, 'the raw inventory is not duplicated beside the chooser')
+    assert.equal(inventoryEvidence.accountLabelCount, 1, `the account is rendered once; observed: ${JSON.stringify(inventoryEvidence)}`)
+    assert.match(inventoryEvidence.text, /Pick the accounts you’d like to include\. You can change this anytime\./)
+    assert.match(inventoryEvidence.text, /Saved to your profile:\s*0\s*of\s*1\s*available accounts/)
     for (const forbidden of ['Q6542138443', '15363.23', 'RAW-SYMBOL-DO-NOT-RENDER']) assert.doesNotMatch(inventoryEvidence.text, new RegExp(forbidden), `${forbidden} is not rendered`)
     const browserCookies = await webdriver(`/session/${sessionId}/cookie`)
     assert.ok(browserCookies.some((cookie) => cookie.name === 'findur_session' && cookie.httpOnly && cookie.secure), 'opaque secure session cookie is issued')

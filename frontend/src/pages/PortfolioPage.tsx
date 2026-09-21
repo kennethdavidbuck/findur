@@ -5,11 +5,12 @@ import { useI18n } from '../i18n'
 
 type Props = {
   headingRef: RefObject<HTMLHeadingElement | null>
+  onComplete: (savedNow: boolean) => void
   onReconnect: () => void
   onSessionExpired: () => void
 }
 
-export function PortfolioPage({ headingRef, onReconnect, onSessionExpired }: Props) {
+export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionExpired }: Props) {
   const { locale, messages } = useI18n()
   const copy = messages.authenticated.inventory
   const [inventory, setInventory] = useState<PortfolioInventory | null>(null)
@@ -17,12 +18,13 @@ export function PortfolioPage({ headingRef, onReconnect, onSessionExpired }: Pro
   const [draft, setDraft] = useState<Set<string>>(new Set())
   const [failed, setFailed] = useState(false)
   const [inclusionFailed, setInclusionFailed] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
   const [retrying, setRetrying] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirming, setConfirming] = useState(false)
   const [inclusionReload, setInclusionReload] = useState(0)
   const selectAllRef = useRef<HTMLInputElement>(null)
-  const confirmButtonRef = useRef<HTMLButtonElement>(null)
+  const reviewButtonRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let active = true
@@ -33,25 +35,36 @@ export function PortfolioPage({ headingRef, onReconnect, onSessionExpired }: Pro
   }, [onSessionExpired])
 
   useEffect(() => {
-    if (inventory?.state !== 'ready') return
+    if (!inventory) return
     let active = true
     void getPortfolioInclusion().then((result) => {
       if (!active) return
+      if (result.committed.length > 0) {
+        onComplete(false)
+        return
+      }
       setInclusion(result)
       setDraft(recoveryDraft(result))
       setInclusionFailed(false)
     }).catch((error: unknown) => handleFailure(error, onSessionExpired, () => active && setInclusionFailed(true)))
     return () => { active = false }
-  }, [inventory?.state, inclusionReload, onSessionExpired])
+  }, [inclusionReload, inventory, onComplete, onSessionExpired])
 
-  const accounts = useMemo(() => inventory?.connections.flatMap((connection) => connection.accounts) ?? [], [inventory])
-  const selectable = useMemo(() => accounts.filter((account) => account.selectable), [accounts])
-  const labels = useMemo(() => new Map(accounts.map((account) => [account.id, account.maskedLabel])), [accounts])
   const committed = useMemo(() => new Set(inclusion?.committed ?? []), [inclusion])
+  const visibleConnections = useMemo(() => inventory?.connections.map((connection) => ({
+    ...connection,
+    accounts: connection.accounts.filter((account) => account.usabilityReason !== 'account_closed' &&
+      (!temporaryUsabilityReasons.has(account.usabilityReason) || committed.has(account.id) || draft.has(account.id))),
+  })).filter((connection) => connection.accounts.length > 0) ?? [], [committed, draft, inventory])
+  const accounts = useMemo(() => visibleConnections.flatMap((connection) => connection.accounts.map((account) => ({ ...account, brokerageLabel: connection.brokerageLabel }))), [visibleConnections])
+  const selectable = useMemo(() => accounts.filter((account) => account.selectable), [accounts])
   const additions = accounts.filter((account) => draft.has(account.id) && !committed.has(account.id))
   const removals = accounts.filter((account) => !draft.has(account.id) && committed.has(account.id))
+  const committedVisibleCount = accounts.filter((account) => committed.has(account.id)).length
+  const selectedVisibleCount = draftVisibleCount(draft, accounts)
   const allSelected = selectable.length > 0 && selectable.every((account) => draft.has(account.id))
   const someSelected = selectable.some((account) => draft.has(account.id)) && !allSelected
+  const currentChangeDraft = inclusion ? sameIDs([...draft], [...recoveryDraft(inclusion)]) : false
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected
@@ -82,6 +95,7 @@ export function PortfolioPage({ headingRef, onReconnect, onSessionExpired }: Pro
   }
 
   const toggleAccount = (id: string) => {
+    setSaveFailed(false)
     setDraft((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
@@ -92,15 +106,33 @@ export function PortfolioPage({ headingRef, onReconnect, onSessionExpired }: Pro
 
   const save = async () => {
     if (!inclusion) return
+    const visibleIDs = new Set(accounts.map((account) => account.id))
+    const desired = [...draft].filter((id) => committed.has(id) || visibleIDs.has(id)).sort()
     setSaving(true)
-    setInclusionFailed(false)
+    setSaveFailed(false)
     updateConfirmation(false)
     try {
-      const result = await confirmPortfolioInclusion(inclusion.version, [...draft].sort())
+      const result = await confirmPortfolioInclusion(inclusion.version, desired)
       setInclusion(result)
       setDraft(recoveryDraft(result))
+      if (result.change?.status === 'committed') onComplete(true)
     } catch (error: unknown) {
-      handleFailure(error, onSessionExpired, () => setInclusionFailed(true))
+      if (isSessionError(error)) {
+        onSessionExpired()
+      } else {
+        try {
+          const durable = await getPortfolioInclusion()
+          if (sameIDs(durable.committed, desired)) {
+            onComplete(true)
+          } else {
+            setInclusion(durable)
+            setDraft(recoveryDraft(durable))
+            setSaveFailed(durable.change?.status !== 'pending' && durable.change?.status !== 'failed')
+          }
+        } catch (reconciliationError: unknown) {
+          handleFailure(reconciliationError, onSessionExpired, () => setSaveFailed(true))
+        }
+      }
     } finally {
       setSaving(false)
     }
@@ -108,10 +140,11 @@ export function PortfolioPage({ headingRef, onReconnect, onSessionExpired }: Pro
 
   function updateConfirmation(open: boolean) {
     setConfirming(open)
-    if (!open) requestAnimationFrame(() => confirmButtonRef.current?.focus())
+    if (!open) requestAnimationFrame(() => reviewButtonRef.current?.focus())
   }
 
   const toggleAllSelectable = () => {
+    setSaveFailed(false)
     setDraft((current) => {
       const next = new Set(current)
       for (const account of selectable) {
@@ -123,98 +156,94 @@ export function PortfolioPage({ headingRef, onReconnect, onSessionExpired }: Pro
   }
 
   const state = failed ? 'unavailable' : inventory?.state ?? 'pending'
-  const recovery = state === 'disabled' || state === 'unauthorized' ? 'reconnect' : state === 'rate_limited' || state === 'unavailable' || state === 'malformed' ? 'retry' : null
+  const recovery = state === 'empty' || state === 'disabled' || state === 'unauthorized' ? 'reconnect' : state === 'rate_limited' || state === 'unavailable' || state === 'malformed' ? 'retry' : null
+  const connectionComplete = state === 'ready'
 
   return (
-    <section className="portfolio-inventory">
-      <p className="eyebrow">{messages.authenticated.privateEyebrow}</p>
-      <h1 ref={headingRef} tabIndex={-1}>{copy.title}</h1>
-      <p className="large-copy">{copy.noDefault}</p>
-      <div className="inventory-status" role="status" aria-live="polite">
-        <h2>{copy.connectionHeading}</h2>
-        <p>{copy.states[state]}</p>
-        {state === 'rate_limited' && inventory?.retryAt && <p>{copy.retryAfter} <time dateTime={inventory.retryAt}>{new Date(inventory.retryAt).toLocaleString(locale === 'fr' ? 'fr-CA' : 'en-CA')}</time></p>}
+    <div className="connection-setup-grid">
+      <aside className="setup-progress" aria-labelledby="setup-progress-title">
+        <h2 id="setup-progress-title">{copy.inclusion.progressTitle}</h2>
+        <ol>
+          {copy.inclusion.progressSteps.map((step, index) => <li className={connectionComplete && index === 0 ? 'done' : index === (connectionComplete ? 1 : 0) ? 'active' : ''} aria-current={index === (connectionComplete ? 1 : 0) ? 'step' : undefined} key={step}>{step}</li>)}
+        </ol>
+        <p>{copy.inclusion.progressNote}</p>
+      </aside>
+      <section className="portfolio-inventory">
+      <p className="eyebrow">{connectionComplete ? copy.inclusion.setupEyebrow : copy.inclusion.recoveryEyebrow}</p>
+      <h1 ref={headingRef} tabIndex={-1}>{copy.inclusion.setupTitle}</h1>
+      <p className="large-copy">{copy.inclusion.setupIntro}</p>
+      <div className="setup-layers" aria-label={copy.inclusion.permissionLayers}>
+        {connectionComplete ? <span>{copy.inclusion.oauthLayer}</span> : <strong>{copy.inclusion.oauthLayer}</strong>}<i aria-hidden="true" />
+        {connectionComplete ? <strong>{copy.inclusion.accountLayer}</strong> : <span>{copy.inclusion.accountLayer}</span>}<i aria-hidden="true" /><span>{copy.inclusion.disclosureLayer}</span>
       </div>
-      {inventory && inventory.connections.length > 0 && (
+      {state !== 'ready' && <div className="inventory-status" role="status">
+          <h2>{copy.connectionHeading}</h2>
+          <p>{copy.states[state]}</p>
+          {state === 'rate_limited' && inventory?.retryAt && <p>{copy.retryAfter} <time dateTime={inventory.retryAt}>{new Date(inventory.retryAt).toLocaleString(locale === 'fr' ? 'fr-CA' : 'en-CA')}</time></p>}
+        </div>}
+      {state !== 'ready' && inventory && inventory.connections.length > 0 && (
         <div className="inventory-connections">
           {inventory.connections.map((connection) => (
             <section className="inventory-connection" key={connection.id}>
               <h3>{connection.brokerageLabel}</h3>
-              <p className="mono-label">{copy.connectionStatus}: {copy.connectionStates[connection.status]}</p>
-              <p>{copy.availability}: {connection.available ? copy.available : copy.unavailable}</p>
-              <p>{copy.eligibility}: {connection.eligible ? copy.eligible : copy.ineligible}</p>
-              <p>{copy.syncMode}: {copy.syncModes[connection.syncMode]}</p>
-              <h4>{copy.accountsHeading}</h4>
-              {connection.accounts.length === 0 ? <p>{copy.noAccounts}</p> : (
-                <ul>
-                  {connection.accounts.map((account) => (
-                    <li key={account.id}>
-                      <strong>{account.maskedLabel}</strong>
-                      <span>{copy.category}: {copy.categories[account.category]}</span>
-                      <span>{copy.accountType}: {account.type}</span>
-                      <span>{copy.availability}: {account.available ? copy.available : copy.unavailable}</span>
-                      <span>{copy.inclusionReadiness}: {account.selectable ? copy.selectableForInclusion : copy.unavailableForInclusion}</span>
-                      <span>{copy.syncState}: {copy.syncStates[account.syncState]}</span>
-                      <span>{copy.usabilityReasons[account.usabilityReason]}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <p>{copy.connectionStates[connection.status]}</p>
             </section>
           ))}
         </div>
       )}
       {state === 'ready' && (
-        <section className="account-inclusion" aria-labelledby="account-inclusion-title">
-          <h2 id="account-inclusion-title">{copy.inclusion.title}</h2>
-          <p>{copy.inclusion.intro}</p>
+        <section className={`account-inclusion${saving ? ' account-inclusion--saving' : ''}`} aria-busy={saving}>
+          <p className="connection-success"><strong>✓ {copy.inclusion.connected}</strong> {copy.inclusion.connectedNext}</p>
           {!inclusion && !inclusionFailed && <p role="status">{copy.inclusion.loading}</p>}
           {inclusionFailed && <div className="inclusion-recovery" role="alert"><p>{copy.inclusion.loadFailed}</p><button className="action action--secondary" type="button" onClick={() => setInclusionReload((value) => value + 1)}>{copy.inclusion.reload}</button></div>}
-          {inclusion && (
+          {inclusion && accounts.length === 0 && <div className="inclusion-zero-state">
+            <p>{copy.inclusion.noAvailableAccounts}</p>
+            <button className="action action--primary" type="button" onClick={onReconnect}>{copy.inclusion.manageAccounts}</button>
+          </div>}
+          {inclusion && accounts.length > 0 && (
             <>
-              <fieldset className="account-selection" disabled={saving || inclusion.change?.status === 'pending'}>
+              <fieldset className="account-selection" disabled={saving}>
                 <legend>{copy.inclusion.groupName}</legend>
                 <label className="select-all">
-                  <input ref={selectAllRef} type="checkbox" checked={allSelected} onChange={toggleAllSelectable} />
+                  <input ref={selectAllRef} type="checkbox" checked={allSelected} disabled={saving || selectable.length === 0} onChange={toggleAllSelectable} />
                   <span>{copy.inclusion.selectAll}</span>
+                  <span className="select-all__ratio" aria-live="polite">{selectedVisibleCount} / {accounts.length}</span>
                 </label>
-                {accounts.map((account) => (
-                  <label className={`account-choice${account.selectable ? '' : ' account-choice--disabled'}`} key={account.id}>
-                    <input type="checkbox" checked={draft.has(account.id)} disabled={!account.selectable && !committed.has(account.id)} onChange={() => toggleAccount(account.id)} />
-                    <span><strong>{account.maskedLabel}</strong><small>{copy.usabilityReasons[account.usabilityReason]}</small></span>
-                  </label>
-                ))}
+                {accounts.map((account) => {
+                      const selected = draft.has(account.id)
+                      const choiceDisabled = !account.selectable && !committed.has(account.id)
+                      return (
+                        <label className={`account-choice${choiceDisabled ? ' account-choice--disabled' : ''}`} key={account.id}>
+                          <input type="checkbox" checked={selected} disabled={choiceDisabled} onChange={() => toggleAccount(account.id)} />
+                          <span className="account-choice__details">
+                            <strong>{account.maskedLabel}</strong>
+                            <small>{account.brokerageLabel} · {copy.categories[account.category]}</small>
+                            {!account.selectable && <small>{copy.usabilityReasons[account.usabilityReason]}</small>}
+                          </span>
+                          <span className={`account-choice__state${account.selectable ? '' : ' account-choice__state--unavailable'}`}>{account.selectable ? copy.inclusion.ready : copy.inclusion.unavailable}</span>
+                        </label>
+                      )
+                    })}
               </fieldset>
-              <div className="inclusion-summary" aria-live="polite">
-                <p>{copy.inclusion.committedCoverage}: {inclusion.committed.length} {copy.inclusion.of} {accounts.length} {copy.inclusion.connectedAccounts}. {copy.inclusion.committed}: {formatLabels(inclusion.committed, labels, copy.inclusion.none)}</p>
-                <p>{copy.inclusion.draftCoverage}: {draft.size} {copy.inclusion.of} {accounts.length} {copy.inclusion.connectedAccounts}. {copy.inclusion.draft}: {formatLabels([...draft], labels, copy.inclusion.none)}</p>
-                {inclusion.change?.status === 'pending' && <p role="status">{copy.inclusion.pending}</p>}
-                {inclusion.change?.status === 'failed' && <p role="alert">{copy.inclusion.failures[inclusion.change.failureReason ?? 'provider_unavailable']}</p>}
-                {saving && <p role="status">{copy.inclusion.saving}</p>}
+              <div className="inclusion-summary">
+                <p><strong>{copy.inclusion.using} {committedVisibleCount} {copy.inclusion.of} {accounts.length} {copy.inclusion.availableAccounts}.</strong></p>
+                {(additions.length > 0 || removals.length > 0) && <p>{copy.inclusion.afterSaving}: {selectedVisibleCount} {copy.inclusion.of} {accounts.length} {copy.inclusion.availableAccounts}.</p>}
               </div>
-              {(inclusion.change?.status === 'pending' || inclusion.change?.status === 'failed') && (
-                <div className="inclusion-recovery">
-                  <p>{inclusion.change.status === 'pending' ? copy.inclusion.pendingRecovery : copy.inclusion.failedRecovery}</p>
-                  <button className="action action--secondary" type="button" disabled={saving} onClick={() => setInclusionReload((value) => value + 1)}>{copy.inclusion.reloadStatus}</button>
-                </div>
-              )}
               <DialogTrigger isOpen={confirming} onOpenChange={updateConfirmation}>
-                <Button ref={confirmButtonRef} className="action action--primary" isDisabled={saving || additions.length + removals.length === 0}>{inclusion.change?.status === 'failed' || inclusion.change?.status === 'pending' ? copy.inclusion.retry : copy.inclusion.review}</Button>
+                <div className="inclusion-actions">
+                  <Button ref={reviewButtonRef} className="action action--primary" isDisabled={saving || additions.length + removals.length === 0}>{copy.inclusion.review}</Button>
+                </div>
                 <ModalOverlay className="dialog-backdrop" isDismissable>
-                  <Modal className="confirmation-dialog">
-                    <Dialog aria-labelledby="confirm-inclusion-title">
-                      <Heading slot="title" id="confirm-inclusion-title">{copy.inclusion.confirmTitle}</Heading>
-                      <p>{copy.inclusion.accessBoundary}</p>
-                      <p>{copy.inclusion.consequence}</p>
-                      <p>{copy.inclusion.coverageBefore}: {committed.size} {copy.inclusion.of} {accounts.length} {copy.inclusion.connectedAccounts}. {copy.inclusion.coverageAfter}: {draft.size} {copy.inclusion.of} {accounts.length} {copy.inclusion.connectedAccounts}.</p>
-                      <ChangeList title={copy.inclusion.additions} accounts={additions.map((account) => ({ label: account.maskedLabel, category: copy.categories[account.category] }))} none={copy.inclusion.none} categoryLabel={copy.category} />
-                      <ChangeList title={copy.inclusion.removals} accounts={removals.map((account) => ({ label: account.maskedLabel, category: copy.categories[account.category] }))} none={copy.inclusion.none} categoryLabel={copy.category} />
-                      <h3>{copy.inclusion.purposesHeading}</h3>
-                      <ul>{copy.inclusion.purposes.map((purpose) => <li key={purpose}>{purpose}</li>)}</ul>
-                      {removals.length > 0 && <p className="danger-notice"><strong>{copy.inclusion.destructiveLabel}:</strong> {copy.inclusion.purgeConsequence}</p>}
+                  <Modal className="confirmation-dialog confirmation-dialog--compact">
+                    <Dialog aria-labelledby="review-account-choices-title">
+                      <Heading slot="title" id="review-account-choices-title">{copy.inclusion.confirmTitle}</Heading>
+                      <p>{copy.inclusion.resultingSelection}: <strong>{selectedVisibleCount} {copy.inclusion.of} {accounts.length}</strong></p>
+                      {additions.length > 0 && <ChangeList title={copy.inclusion.additions} accounts={additions} />}
+                      {removals.length > 0 && <ChangeList title={copy.inclusion.removals} accounts={removals} />}
+                      <p>{copy.inclusion.reminder}</p>
                       <div className="dialog-actions">
-                        <Button slot="close" className="action action--secondary" autoFocus>{copy.inclusion.cancel}</Button>
-                        <Button className={`action ${removals.length > 0 ? 'action--danger' : 'action--primary'}`} onPress={() => { void save() }}>{removals.length > 0 ? copy.inclusion.confirmRemoval : copy.inclusion.confirm}</Button>
+                        <Button slot="close" className="action action--secondary" autoFocus>{copy.inclusion.back}</Button>
+                        <Button className="action action--primary" onPress={() => { void save() }}>{copy.inclusion.save}</Button>
                       </div>
                     </Dialog>
                   </Modal>
@@ -222,18 +251,35 @@ export function PortfolioPage({ headingRef, onReconnect, onSessionExpired }: Pro
               </DialogTrigger>
             </>
           )}
+          {(saving || saveFailed || currentChangeDraft && (inclusion?.change?.status === 'pending' || inclusion?.change?.status === 'failed')) && (
+            <div className="inclusion-feedback" role={saveFailed || inclusion?.change?.status === 'failed' ? 'alert' : 'status'}>
+              {saving ? <p>{copy.inclusion.saving}</p>
+                : saveFailed ? <p>{copy.inclusion.saveFailed}</p>
+                  : inclusion?.change?.status === 'pending' ? <p>{copy.inclusion.pending}</p>
+                    : <p>{copy.inclusion.failures[inclusion?.change?.failureReason ?? 'provider_unavailable']}</p>}
+            </div>
+          )}
         </section>
       )}
       {state === 'pending' && <button className="action action--secondary" type="button" disabled={retrying} onClick={() => { void checkStatus() }}>{retrying ? copy.checking : copy.checkStatus}</button>}
       {recovery === 'reconnect' && <button className="action action--primary" type="button" onClick={onReconnect}>{copy.reconnect}</button>}
       {recovery === 'retry' && <button className="action action--primary" type="button" disabled={retrying} onClick={() => { void retry() }}>{retrying ? copy.retrying : copy.retry}</button>}
-      <p className="inventory-boundary">{copy.boundary}</p>
-    </section>
+      </section>
+    </div>
   )
 }
 
-function ChangeList({ title, accounts, none, categoryLabel }: { title: string, accounts: { label: string, category: string }[], none: string, categoryLabel: string }) {
-  return <section><h3>{title}</h3>{accounts.length === 0 ? <p>{none}</p> : <ul>{accounts.map((account) => <li key={account.label}>{account.label} — {categoryLabel}: {account.category}</li>)}</ul>}</section>
+function ChangeList({ title, accounts }: { title: string, accounts: { id: string, maskedLabel: string, brokerageLabel: string }[] }) {
+  return <section><h3>{title}</h3><ul>{accounts.map((account) => <li key={account.id}>{account.maskedLabel} — {account.brokerageLabel}</li>)}</ul></section>
+}
+
+function draftVisibleCount(draft: Set<string>, accounts: { id: string }[]) {
+  return accounts.filter((account) => draft.has(account.id)).length
+}
+
+function sameIDs(first: string[], second: string[]) {
+  const sortedSecond = [...second].sort()
+  return first.length === second.length && [...first].sort().every((id, index) => id === sortedSecond[index])
 }
 
 function recoveryDraft(inclusion: PortfolioInclusion) {
@@ -244,11 +290,13 @@ function recoveryDraft(inclusion: PortfolioInclusion) {
   return next
 }
 
-function formatLabels(ids: string[], labels: Map<string, string>, none: string) {
-  return ids.length === 0 ? none : ids.map((id) => labels.get(id) ?? id).join(', ')
-}
-
 function handleFailure(error: unknown, onSessionExpired: () => void, fallback: () => void) {
-  if (error instanceof InventorySessionExpiredError || error instanceof InventorySessionDefenseError) onSessionExpired()
+  if (isSessionError(error)) onSessionExpired()
   else fallback()
 }
+
+function isSessionError(error: unknown) {
+  return error instanceof InventorySessionExpiredError || error instanceof InventorySessionDefenseError
+}
+
+const temporaryUsabilityReasons = new Set(['sync_pending', 'connection_disabled', 'connection_unavailable', 'account_unavailable', 'sync_unavailable'])

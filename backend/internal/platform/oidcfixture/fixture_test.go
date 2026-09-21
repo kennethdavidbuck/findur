@@ -32,6 +32,57 @@ func TestHandlerServesJWKS(t *testing.T) {
 	}
 }
 
+func TestHandlerRedirectsValidBrowserAuthorization(t *testing.T) {
+	handler := fixtureHandler(t)
+	query := validAuthorizationQuery()
+	request := httptest.NewRequest(http.MethodGet, fixtureIssuer+"/authorize?"+query.Encode(), nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	location, err := url.Parse(response.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusSeeOther || response.Header().Get("Cache-Control") != noStore {
+		t.Fatalf("status=%d cache-control=%q", response.Code, response.Header().Get("Cache-Control"))
+	}
+	if location.Scheme+"://"+location.Host+location.Path != fixtureCallbackURL {
+		t.Fatalf("redirect location=%q", location.String())
+	}
+	if location.Query().Get(codeField) != "expected-nonce" || location.Query().Get(stateField) != "expected-state" || len(location.Query()) != 2 {
+		t.Fatalf("redirect query=%q", location.RawQuery)
+	}
+}
+
+func TestHandlerRejectsMalformedOrUnsafeAuthorizationRequests(t *testing.T) {
+	handler := fixtureHandler(t)
+	tests := map[string]func(url.Values){
+		"missing client":       func(query url.Values) { query.Del(clientIDField) },
+		"wrong client":         func(query url.Values) { query.Set(clientIDField, "wrong-client") },
+		"wrong response type":  func(query url.Values) { query.Set(responseTypeField, "token") },
+		"unsafe redirect":      func(query url.Values) { query.Set(redirectURIField, "https://evil.example/callback") },
+		"wrong scope":          func(query url.Values) { query.Set(scopeField, "openid") },
+		"missing state":        func(query url.Values) { query.Set(stateField, "") },
+		"missing nonce":        func(query url.Values) { query.Del(nonceField) },
+		"missing challenge":    func(query url.Values) { query.Set(codeChallengeField, "") },
+		"wrong challenge mode": func(query url.Values) { query.Set(codeChallengeMethod, "plain") },
+		"duplicate redirect":   func(query url.Values) { query.Add(redirectURIField, fixtureCallbackURL) },
+		"unexpected parameter": func(query url.Values) { query.Set("prompt", "login") },
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			query := validAuthorizationQuery()
+			mutate(query)
+			request := httptest.NewRequest(http.MethodGet, fixtureIssuer+"/authorize?"+query.Encode(), nil)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest || response.Header().Get("Location") != "" || response.Header().Get("Cache-Control") != noStore {
+				t.Fatalf("status=%d location=%q cache-control=%q", response.Code, response.Header().Get("Location"), response.Header().Get("Cache-Control"))
+			}
+		})
+	}
+}
+
 func TestHandlerIssuesSignedNonceTokenForAuthenticatedRequest(t *testing.T) {
 	handler := fixtureHandler(t)
 	form := url.Values{
@@ -145,4 +196,17 @@ func fixtureHandler(t *testing.T) *Handler {
 		t.Fatal(err)
 	}
 	return handler
+}
+
+func validAuthorizationQuery() url.Values {
+	return url.Values{
+		clientIDField:       {fixtureClientID},
+		responseTypeField:   {authorizationResponse},
+		redirectURIField:    {fixtureCallbackURL},
+		scopeField:          {authorizationScope},
+		stateField:          {"expected-state"},
+		nonceField:          {"expected-nonce"},
+		codeChallengeField:  {"expected-challenge"},
+		codeChallengeMethod: {pkceS256},
+	}
 }

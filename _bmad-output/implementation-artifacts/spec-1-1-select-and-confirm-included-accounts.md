@@ -10,6 +10,8 @@ context:
   - '_bmad-output/implementation-artifacts/epic-1-context.md'
 ---
 
+> **UX correction (2026-09-21):** The implementation remains authoritative for account-save semantics, but its original presentation requirements are superseded by `spec-fix-account-inclusion-ux.md` and the corrected UX/epic guidance. Account choice is a persistent dating-profile onboarding step: one list, compact friendly review, no destructive/technical consequence wall, closed accounts omitted, committed first save navigates to the Portfolio Showcase, and later edits open from and return to that Showcase.
+
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
 
 ## Intent
