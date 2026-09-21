@@ -99,13 +99,36 @@ func TestInventoryClassifiesProviderFailures(t *testing.T) {
 	}
 }
 
-func TestInventoryMakesIncompleteStatusOrCategoryProvisionalWithSpecificReason(t *testing.T) {
+func TestInventoryPreservesAccountUsabilityPrecedence(t *testing.T) {
+	accounts := fixtureBody(t, "success-accounts.json")
 	for _, test := range []struct {
 		name, accounts string
 		want           portfolio.UsabilityReason
+		selectable     bool
 	}{
-		{name: "missing status", accounts: strings.Replace(fixtureBody(t, "success-accounts.json"), `"status": "open",`, "", 1), want: portfolio.UsabilityProvisionalStatus},
-		{name: "missing category", accounts: strings.Replace(fixtureBody(t, "success-accounts.json"), `"account_category": "INVESTMENT",`, "", 1), want: portfolio.UsabilityProvisionalCategory},
+		{name: "missing status", accounts: strings.Replace(accounts, `"status": "open",`, "", 1), want: portfolio.UsabilityProvisionalStatus, selectable: true},
+		{name: "missing category", accounts: strings.Replace(accounts, `"account_category": "INVESTMENT",`, "", 1), want: portfolio.UsabilityProvisionalCategory, selectable: true},
+		{
+			name: "closed before unavailable holdings",
+			accounts: strings.NewReplacer(
+				`"status": "open"`, `"status": "closed"`,
+				`"initial_sync_completed": true`, `"initial_sync_completed": true, "holdings_unavailable": true`,
+			).Replace(accounts),
+			want: portfolio.UsabilityAccountClosed,
+		},
+		{
+			name:     "unavailable holdings before sync reason",
+			accounts: strings.Replace(accounts, `"initial_sync_completed": true`, `"initial_sync_completed": true, "holdings_unavailable": true`, 1),
+			want:     portfolio.UsabilityAccountUnavailable,
+		},
+		{
+			name: "unsupported category before missing status",
+			accounts: strings.NewReplacer(
+				`"status": "open",`, "",
+				`"account_category": "INVESTMENT"`, `"account_category": "DEPOSIT"`,
+			).Replace(accounts),
+			want: portfolio.UsabilityUnsupportedCategory,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			baseURL, _ := url.Parse("https://api.snaptrade.example")
@@ -120,7 +143,7 @@ func TestInventoryMakesIncompleteStatusOrCategoryProvisionalWithSpecificReason(t
 				t.Fatalf("connections=%+v err=%v", connections, err)
 			}
 			account := connections[0].Accounts[0]
-			if !account.Selectable || account.Eligible || account.UsabilityReason != test.want {
+			if account.Selectable != test.selectable || account.Eligible || account.UsabilityReason != test.want {
 				t.Fatalf("account=%+v want reason=%s", account, test.want)
 			}
 		})

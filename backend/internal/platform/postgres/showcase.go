@@ -18,6 +18,20 @@ type ShowcaseRepository struct {
 	clock func() time.Time
 }
 
+type showcaseAccountHead struct {
+	id                                    string
+	account                               portfolio.ShowcaseAccount
+	connectionStatus, accountSyncState    string
+	connectionAvailable, accountAvailable bool
+}
+
+func (h showcaseAccountHead) usable() bool {
+	return h.connectionStatus == string(portfolio.ConnectionStatusActive) &&
+		h.connectionAvailable && h.accountAvailable &&
+		h.accountSyncState == string(portfolio.AccountSyncStateComplete) &&
+		h.account.SyncMode != portfolio.SyncModeUnknown
+}
+
 // NewShowcaseRepository creates a PostgreSQL-backed owner-scoped showcase reader.
 func NewShowcaseRepository(pool *pgxpool.Pool, clock func() time.Time) *ShowcaseRepository {
 	return &ShowcaseRepository{pool: pool, clock: clock}
@@ -31,39 +45,15 @@ func (r *ShowcaseRepository) GetShowcase(ctx context.Context, owner uuid.UUID) (
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	rows, err := tx.Query(ctx, `SELECT a.account_id,a.masked_label,c.brokerage_label,c.sync_mode,c.status,c.available,a.available,a.sync_state
- FROM portfolio_included_accounts i JOIN portfolio_inventory_state s ON s.user_id=i.user_id
- JOIN portfolio_inventory_accounts a ON a.user_id=i.user_id AND a.account_id=i.account_id AND a.generation=s.head_generation
- JOIN portfolio_inventory_connections c ON c.user_id=a.user_id AND c.generation=a.generation AND c.connection_id=a.connection_id
- WHERE i.user_id=$1 ORDER BY a.masked_label`, owner)
+	accounts, err := loadShowcaseAccounts(ctx, tx, owner)
 	if err != nil {
 		return portfolio.Showcase{}, err
 	}
-	type accountHead struct {
-		id                                    string
-		account                               portfolio.ShowcaseAccount
-		connectionStatus, accountSyncState    string
-		connectionAvailable, accountAvailable bool
-	}
-	accounts := make([]accountHead, 0)
-	for rows.Next() {
-		var head accountHead
-		if err := rows.Scan(&head.id, &head.account.Label, &head.account.Brokerage, &head.account.SyncMode, &head.connectionStatus, &head.connectionAvailable, &head.accountAvailable, &head.accountSyncState); err != nil {
-			rows.Close()
-			return portfolio.Showcase{}, err
-		}
-		accounts = append(accounts, head)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return portfolio.Showcase{}, err
-	}
-	rows.Close()
 
 	now := r.clock()
 	result := portfolio.Showcase{Accounts: make([]portfolio.ShowcaseAccount, 0, len(accounts))}
 	for _, head := range accounts {
-		if head.connectionStatus != string(portfolio.ConnectionStatusActive) || !head.connectionAvailable || !head.accountAvailable || head.accountSyncState != string(portfolio.AccountSyncStateComplete) || head.account.SyncMode == portfolio.SyncModeUnknown {
+		if !head.usable() {
 			head.account.Balances = unavailable("SnapTrade", "included account")
 			head.account.Positions = unavailable("SnapTrade", "included account")
 			head.account.Activities = unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
@@ -74,22 +64,66 @@ func (r *ShowcaseRepository) GetShowcase(ctx context.Context, owner uuid.UUID) (
 		}
 		result.Accounts = append(result.Accounts, head.account)
 	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return portfolio.Showcase{}, err
 	}
 	return result, nil
 }
+
+func loadShowcaseAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID) ([]showcaseAccountHead, error) {
+	rows, err := tx.Query(ctx, `SELECT a.account_id,a.masked_label,c.brokerage_label,c.sync_mode,c.status,c.available,a.available,a.sync_state
+		FROM portfolio_included_accounts i JOIN portfolio_inventory_state s ON s.user_id=i.user_id
+		JOIN portfolio_inventory_accounts a ON a.user_id=i.user_id AND a.account_id=i.account_id AND a.generation=s.head_generation
+		JOIN portfolio_inventory_connections c ON c.user_id=a.user_id AND c.generation=a.generation AND c.connection_id=a.connection_id
+		WHERE i.user_id=$1 ORDER BY a.masked_label`, owner)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	accounts := make([]showcaseAccountHead, 0)
+	for rows.Next() {
+		var head showcaseAccountHead
+		if err := rows.Scan(&head.id, &head.account.Label, &head.account.Brokerage, &head.account.SyncMode, &head.connectionStatus, &head.connectionAvailable, &head.accountAvailable, &head.accountSyncState); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, head)
+	}
+	return accounts, rows.Err()
+}
+
 func datasetContext(source, coverage, currency string, observed *time.Time, retrieved, published *time.Time, mode portfolio.SyncMode, activities bool, now time.Time) portfolio.DatasetContext {
-	return portfolio.DatasetContext{Source: source, Coverage: coverage, Currency: currency, ObservedAt: observed, RetrievedAt: retrieved, PublishedAt: published, Freshness: portfolio.ClassifyFreshness(mode, activities, observed, retrieved, now)}
+	return portfolio.DatasetContext{
+		Source:      source,
+		Coverage:    coverage,
+		Currency:    currency,
+		ObservedAt:  observed,
+		RetrievedAt: retrieved,
+		PublishedAt: published,
+		Freshness:   portfolio.ClassifyFreshness(mode, activities, observed, retrieved, now),
+	}
 }
+
 func unavailable(source, coverage string) portfolio.ShowcaseDataset {
-	return portfolio.ShowcaseDataset{Context: portfolio.DatasetContext{Source: source, Coverage: coverage, Freshness: portfolio.FreshnessUnavailable}}
+	return portfolio.ShowcaseDataset{
+		Context: portfolio.DatasetContext{
+			Source:    source,
+			Coverage:  coverage,
+			Freshness: portfolio.FreshnessUnavailable,
+		},
+	}
 }
+
 func (r *ShowcaseRepository) balances(ctx context.Context, tx pgx.Tx, owner uuid.UUID, account string, mode portfolio.SyncMode, now time.Time) portfolio.ShowcaseDataset {
 	var observed *time.Time
 	var retrieved, published time.Time
 	var version uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT v.id,v.observed_at,v.retrieved_at,v.published_at FROM portfolio_balance_heads h JOIN portfolio_balance_versions v ON v.id=h.version_id AND v.user_id=h.user_id AND v.account_id=h.account_id WHERE h.user_id=$1 AND h.account_id=$2`, owner, account).Scan(&version, &observed, &retrieved, &published)
+	err := tx.QueryRow(ctx, `SELECT v.id,v.observed_at,v.retrieved_at,v.published_at
+		FROM portfolio_balance_heads h
+		JOIN portfolio_balance_versions v ON v.id=h.version_id AND v.user_id=h.user_id AND v.account_id=h.account_id
+		WHERE h.user_id=$1 AND h.account_id=$2`, owner, account).
+		Scan(&version, &observed, &retrieved, &published)
 	if err != nil {
 		return unavailable("SnapTrade", "included account")
 	}
@@ -98,27 +132,33 @@ func (r *ShowcaseRepository) balances(ctx context.Context, tx pgx.Tx, owner uuid
 		return unavailable("SnapTrade", "included account")
 	}
 	defer rows.Close()
-	d := portfolio.ShowcaseDataset{Context: datasetContext("SnapTrade", "included account", "", observed, &retrieved, &published, mode, false, now)}
+
+	dataset := portfolio.ShowcaseDataset{Context: datasetContext("SnapTrade", "included account", "", observed, &retrieved, &published, mode, false, now)}
 	currencies := map[string]struct{}{}
 	for rows.Next() {
-		var x portfolio.ShowcaseBalance
-		if err := rows.Scan(&x.Currency, &x.Cash, &x.BuyingPower); err != nil {
+		var balance portfolio.ShowcaseBalance
+		if err := rows.Scan(&balance.Currency, &balance.Cash, &balance.BuyingPower); err != nil {
 			return unavailable("SnapTrade", "included account")
 		}
-		currencies[x.Currency] = struct{}{}
-		d.Balances = append(d.Balances, x)
+		currencies[balance.Currency] = struct{}{}
+		dataset.Balances = append(dataset.Balances, balance)
 	}
 	if rows.Err() != nil {
 		return unavailable("SnapTrade", "included account")
 	}
-	d.Context.Currency = currencySummary(currencies)
-	return d
+	dataset.Context.Currency = currencySummary(currencies)
+	return dataset
 }
+
 func (r *ShowcaseRepository) positions(ctx context.Context, tx pgx.Tx, owner uuid.UUID, account string, mode portfolio.SyncMode, now time.Time) portfolio.ShowcaseDataset {
 	var observed time.Time
 	var retrieved, published time.Time
 	var version uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT v.id,v.observed_at,v.retrieved_at,v.published_at FROM portfolio_position_heads h JOIN portfolio_position_versions v ON v.id=h.version_id AND v.user_id=h.user_id AND v.account_id=h.account_id WHERE h.user_id=$1 AND h.account_id=$2`, owner, account).Scan(&version, &observed, &retrieved, &published)
+	err := tx.QueryRow(ctx, `SELECT v.id,v.observed_at,v.retrieved_at,v.published_at
+		FROM portfolio_position_heads h
+		JOIN portfolio_position_versions v ON v.id=h.version_id AND v.user_id=h.user_id AND v.account_id=h.account_id
+		WHERE h.user_id=$1 AND h.account_id=$2`, owner, account).
+		Scan(&version, &observed, &retrieved, &published)
 	if err != nil {
 		return unavailable("SnapTrade", "included account")
 	}
@@ -127,27 +167,33 @@ func (r *ShowcaseRepository) positions(ctx context.Context, tx pgx.Tx, owner uui
 		return unavailable("SnapTrade", "included account")
 	}
 	defer rows.Close()
-	d := portfolio.ShowcaseDataset{Context: datasetContext("SnapTrade", "included account", "", &observed, &retrieved, &published, mode, false, now)}
+
+	dataset := portfolio.ShowcaseDataset{Context: datasetContext("SnapTrade", "included account", "", &observed, &retrieved, &published, mode, false, now)}
 	currencies := map[string]struct{}{}
 	for rows.Next() {
-		var x portfolio.ShowcasePosition
-		if err := rows.Scan(&x.Symbol, &x.Kind, &x.Currency, &x.Units, &x.Price, &x.CostBasis); err != nil {
+		var position portfolio.ShowcasePosition
+		if err := rows.Scan(&position.Symbol, &position.Kind, &position.Currency, &position.Units, &position.Price, &position.CostBasis); err != nil {
 			return unavailable("SnapTrade", "included account")
 		}
-		currencies[x.Currency] = struct{}{}
-		d.Positions = append(d.Positions, x)
+		currencies[position.Currency] = struct{}{}
+		dataset.Positions = append(dataset.Positions, position)
 	}
 	if rows.Err() != nil {
 		return unavailable("SnapTrade", "included account")
 	}
-	d.Context.Currency = currencySummary(currencies)
-	return d
+	dataset.Context.Currency = currencySummary(currencies)
+	return dataset
 }
+
 func (r *ShowcaseRepository) activities(ctx context.Context, tx pgx.Tx, owner uuid.UUID, account string, mode portfolio.SyncMode, now time.Time) portfolio.ShowcaseDataset {
 	var observed *time.Time
 	var retrieved, published time.Time
 	var version uuid.UUID
-	err := tx.QueryRow(ctx, `SELECT v.id,v.observed_at,v.retrieved_at,v.published_at FROM portfolio_activity_heads h JOIN portfolio_activity_versions v ON v.id=h.version_id AND v.user_id=h.user_id AND v.account_id=h.account_id WHERE h.user_id=$1 AND h.account_id=$2`, owner, account).Scan(&version, &observed, &retrieved, &published)
+	err := tx.QueryRow(ctx, `SELECT v.id,v.observed_at,v.retrieved_at,v.published_at
+		FROM portfolio_activity_heads h
+		JOIN portfolio_activity_versions v ON v.id=h.version_id AND v.user_id=h.user_id AND v.account_id=h.account_id
+		WHERE h.user_id=$1 AND h.account_id=$2`, owner, account).
+		Scan(&version, &observed, &retrieved, &published)
 	if err != nil {
 		return unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
 	}
@@ -156,21 +202,22 @@ func (r *ShowcaseRepository) activities(ctx context.Context, tx pgx.Tx, owner uu
 		return unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
 	}
 	defer rows.Close()
-	d := portfolio.ShowcaseDataset{Context: datasetContext("SnapTrade", "included account; last 30 days, up to 500 rows", "", observed, &retrieved, &published, mode, true, now)}
+
+	dataset := portfolio.ShowcaseDataset{Context: datasetContext("SnapTrade", "included account; last 30 days, up to 500 rows", "", observed, &retrieved, &published, mode, true, now)}
 	currencies := map[string]struct{}{}
 	for rows.Next() {
-		var x portfolio.ShowcaseActivity
-		if err := rows.Scan(&x.Type, &x.TradeDate, &x.Currency, &x.Amount, &x.Fee, &x.Price, &x.Units); err != nil {
+		var activity portfolio.ShowcaseActivity
+		if err := rows.Scan(&activity.Type, &activity.TradeDate, &activity.Currency, &activity.Amount, &activity.Fee, &activity.Price, &activity.Units); err != nil {
 			return unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
 		}
-		currencies[x.Currency] = struct{}{}
-		d.Activities = append(d.Activities, x)
+		currencies[activity.Currency] = struct{}{}
+		dataset.Activities = append(dataset.Activities, activity)
 	}
 	if rows.Err() != nil {
 		return unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
 	}
-	d.Context.Currency = currencySummary(currencies)
-	return d
+	dataset.Context.Currency = currencySummary(currencies)
+	return dataset
 }
 
 func currencySummary(values map[string]struct{}) string {

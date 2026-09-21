@@ -135,7 +135,13 @@ func NewInclusionService(repository InclusionRepository, provider AccountDataPro
 	if repository == nil || provider == nil || tokens == nil || clock == nil || timeout <= 0 {
 		return nil, errors.New("incomplete inclusion service configuration")
 	}
-	return &InclusionService{repository: repository, provider: provider, tokens: tokens, clock: clock, timeout: timeout}, nil
+	return &InclusionService{
+		repository: repository,
+		provider:   provider,
+		tokens:     tokens,
+		clock:      clock,
+		timeout:    timeout,
+	}, nil
 }
 
 // Get returns the authenticated owner's persisted inclusion state.
@@ -151,10 +157,12 @@ func (s *InclusionService) Confirm(ctx context.Context, actor auth.Actor, expect
 	if err != nil || !preparation.Claimed {
 		return preparation.InclusionSnapshot, err
 	}
+
 	token, err := s.tokens.DecryptAccess(actor.UserID(), preparation.TokenVersion, preparation.EncryptedToken)
 	if err != nil || token == "" {
 		return s.finish(ctx, actor.UserID(), preparation, nil, "authorization_required")
 	}
+
 	data := make(map[string]AccountData, len(preparation.Additions))
 	for _, accountID := range preparation.Additions {
 		opCtx, cancel := context.WithTimeout(ctx, s.timeout)
@@ -171,6 +179,7 @@ func (s *InclusionService) Confirm(ctx context.Context, actor auth.Actor, expect
 func (s *InclusionService) finish(ctx context.Context, owner uuid.UUID, preparation InclusionPreparation, data map[string]AccountData, failure string) (InclusionSnapshot, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout)
 	defer cancel()
+
 	snapshot, _, err := s.repository.FinalizeInclusion(cleanupCtx, owner, preparation.ChangeID, preparation.Version, preparation.InventoryGeneration, preparation.LifecycleGeneration, data, failure, s.clock().UTC())
 	return snapshot, err
 }
@@ -197,6 +206,7 @@ func canonicalAccountIDs(values []string) []string {
 			unique[value] = struct{}{}
 		}
 	}
+
 	result := make([]string, 0, len(unique))
 	for value := range unique {
 		result = append(result, value)
