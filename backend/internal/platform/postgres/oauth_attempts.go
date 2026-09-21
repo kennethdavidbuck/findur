@@ -151,6 +151,10 @@ func storeAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value a
 	if err != nil {
 		return err
 	}
+	if _, err = tx.Exec(ctx, `UPDATE portfolio_inclusion_state
+		SET lifecycle_generation=lifecycle_generation+1,updated_at=$2 WHERE user_id=$1`, owner, value.CompletedAt); err != nil {
+		return err
+	}
 	if _, err = tx.Exec(ctx, `UPDATE portfolio_inventory_state
 		SET current_generation=current_generation+1,current_status='pending',head_generation=NULL,retry_at=NULL,
 		claim_expires_at=$2,updated_at=$2 WHERE user_id=$1`, owner, value.CompletedAt); err != nil {

@@ -68,6 +68,38 @@ async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
   }
 }
 
+async function exerciseAccountInclusion(webdriver, sessionId) {
+  let inventory
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    inventory = await webdriver(`/session/${sessionId}/execute/async`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/portfolio/inventory',{credentials:'same-origin',cache:'no-store'}).then(async response=>done({status:response.status,body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+    })
+    if (inventory.status === 200 && inventory.body.state === 'ready') break
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  assert.equal(inventory?.body?.state, 'ready', 'masked inventory is ready before inclusion')
+
+  const result = await webdriver(`/session/${sessionId}/execute/async`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const done=arguments[arguments.length-1];(async()=>{const csrf=decodeURIComponent(document.cookie.split('; ').find(value=>value.startsWith('findur_csrf='))?.split('=',2)[1]||'');const read=async()=>{const response=await fetch('/api/portfolio/inclusion',{credentials:'same-origin',cache:'no-store'});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const initial=await read();const send=async(version,key,accountIds)=>{const response=await fetch('/api/portfolio/inclusion',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'X-Inclusion-Version':String(version),'Idempotency-Key':key},body:JSON.stringify({accountIds})});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const addKey=crypto.randomUUID();const added=await send(initial.body.version,addKey,['917c8734-8470-4a3e-a18f-57c3f2ee6631']);const replay=await send(initial.body.version,addKey,['917c8734-8470-4a3e-a18f-57c3f2ee6631']);const stale=await send(initial.body.version,crypto.randomUUID(),[]);const foreign=await send(added.body.version,crypto.randomUUID(),['00000000-0000-0000-0000-000000000001']);const removed=await send(added.body.version,crypto.randomUUID(),[]);done({initial,added,replay,stale,foreign,removed})})().catch(error=>done({error:String(error)}))`, args: [] }),
+  })
+  assert.equal(result.initial.status, 200)
+  assert.equal(result.initial.cache, 'private, no-store')
+  assert.deepEqual(result.initial.body.committed, [], 'no account is included by default')
+  assert.equal(result.added.status, 200)
+  assert.equal(result.added.body.change.status, 'committed')
+  assert.deepEqual(result.added.body.committed, ['917c8734-8470-4a3e-a18f-57c3f2ee6631'])
+  assert.deepEqual(result.replay.body, result.added.body, 'identical idempotency replay has one effect')
+  assert.equal(result.stale.status, 409)
+  assert.equal(result.stale.body.code, 'conflict')
+  assert.equal(result.foreign.status, 409)
+  assert.equal(result.foreign.body.code, 'invalid_selection')
+  assert.doesNotMatch(JSON.stringify(result.foreign.body), /00000000-0000-0000-0000-000000000001/)
+  assert.equal(result.removed.status, 200)
+  assert.deepEqual(result.removed.body.committed, [], 'removal is committed immediately')
+}
+
 export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockUrl }) {
   await withWebDriverSession(browserUrl, async (first) => {
     await establishSession(first.webdriver, first.sessionId, publicOrigin)
@@ -129,6 +161,7 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script: `return getComputedStyle(document.querySelector('.authenticated-header')).position`, args: [] }),
       })
       assert.equal(desktopHeader, 'sticky', 'desktop authenticated header remains visible above the fixed rail')
+      await exerciseAccountInclusion(second.webdriver, second.sessionId)
       await exerciseInventoryFixtures(second.webdriver, second.sessionId, wiremockUrl)
     })
   })

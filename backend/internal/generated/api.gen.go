@@ -22,14 +22,17 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for ErrorCode.
 const (
 	AuthorizationUnavailable ErrorCode = "authorization_unavailable"
+	Conflict                 ErrorCode = "conflict"
 	Forbidden                ErrorCode = "forbidden"
 	InitializationFailed     ErrorCode = "initialization_failed"
 	InvalidRequest           ErrorCode = "invalid_request"
+	InvalidSelection         ErrorCode = "invalid_selection"
 	RestartRequired          ErrorCode = "restart_required"
 	Unauthenticated          ErrorCode = "unauthenticated"
 )
@@ -39,15 +42,67 @@ func (e ErrorCode) Valid() bool {
 	switch e {
 	case AuthorizationUnavailable:
 		return true
+	case Conflict:
+		return true
 	case Forbidden:
 		return true
 	case InitializationFailed:
 		return true
 	case InvalidRequest:
 		return true
+	case InvalidSelection:
+		return true
 	case RestartRequired:
 		return true
 	case Unauthenticated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InclusionChangeFailureReason.
+const (
+	InclusionChangeFailureReasonAuthorizationRequired InclusionChangeFailureReason = "authorization_required"
+	InclusionChangeFailureReasonProviderUnavailable   InclusionChangeFailureReason = "provider_unavailable"
+	InclusionChangeFailureReasonRateLimited           InclusionChangeFailureReason = "rate_limited"
+	InclusionChangeFailureReasonStaleGuard            InclusionChangeFailureReason = "stale_guard"
+	InclusionChangeFailureReasonUnusableData          InclusionChangeFailureReason = "unusable_data"
+)
+
+// Valid indicates whether the value is a known member of the InclusionChangeFailureReason enum.
+func (e InclusionChangeFailureReason) Valid() bool {
+	switch e {
+	case InclusionChangeFailureReasonAuthorizationRequired:
+		return true
+	case InclusionChangeFailureReasonProviderUnavailable:
+		return true
+	case InclusionChangeFailureReasonRateLimited:
+		return true
+	case InclusionChangeFailureReasonStaleGuard:
+		return true
+	case InclusionChangeFailureReasonUnusableData:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InclusionChangeStatus.
+const (
+	InclusionChangeStatusCommitted InclusionChangeStatus = "committed"
+	InclusionChangeStatusFailed    InclusionChangeStatus = "failed"
+	InclusionChangeStatusPending   InclusionChangeStatus = "pending"
+)
+
+// Valid indicates whether the value is a known member of the InclusionChangeStatus enum.
+func (e InclusionChangeStatus) Valid() bool {
+	switch e {
+	case InclusionChangeStatusCommitted:
+		return true
+	case InclusionChangeStatusFailed:
+		return true
+	case InclusionChangeStatusPending:
 		return true
 	default:
 		return false
@@ -96,6 +151,48 @@ func (e InventoryAccountSyncState) Valid() bool {
 	case InventoryAccountSyncStateUnavailable:
 		return true
 	case InventoryAccountSyncStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InventoryAccountUsabilityReason.
+const (
+	InventoryAccountUsabilityReasonAccountClosed         InventoryAccountUsabilityReason = "account_closed"
+	InventoryAccountUsabilityReasonAccountUnavailable    InventoryAccountUsabilityReason = "account_unavailable"
+	InventoryAccountUsabilityReasonConnectionDisabled    InventoryAccountUsabilityReason = "connection_disabled"
+	InventoryAccountUsabilityReasonConnectionUnavailable InventoryAccountUsabilityReason = "connection_unavailable"
+	InventoryAccountUsabilityReasonProvisionalCategory   InventoryAccountUsabilityReason = "provisional_category"
+	InventoryAccountUsabilityReasonProvisionalStatus     InventoryAccountUsabilityReason = "provisional_status"
+	InventoryAccountUsabilityReasonReady                 InventoryAccountUsabilityReason = "ready"
+	InventoryAccountUsabilityReasonSyncPending           InventoryAccountUsabilityReason = "sync_pending"
+	InventoryAccountUsabilityReasonSyncUnavailable       InventoryAccountUsabilityReason = "sync_unavailable"
+	InventoryAccountUsabilityReasonUnsupportedCategory   InventoryAccountUsabilityReason = "unsupported_category"
+)
+
+// Valid indicates whether the value is a known member of the InventoryAccountUsabilityReason enum.
+func (e InventoryAccountUsabilityReason) Valid() bool {
+	switch e {
+	case InventoryAccountUsabilityReasonAccountClosed:
+		return true
+	case InventoryAccountUsabilityReasonAccountUnavailable:
+		return true
+	case InventoryAccountUsabilityReasonConnectionDisabled:
+		return true
+	case InventoryAccountUsabilityReasonConnectionUnavailable:
+		return true
+	case InventoryAccountUsabilityReasonProvisionalCategory:
+		return true
+	case InventoryAccountUsabilityReasonProvisionalStatus:
+		return true
+	case InventoryAccountUsabilityReasonReady:
+		return true
+	case InventoryAccountUsabilityReasonSyncPending:
+		return true
+	case InventoryAccountUsabilityReasonSyncUnavailable:
+		return true
+	case InventoryAccountUsabilityReasonUnsupportedCategory:
 		return true
 	default:
 		return false
@@ -191,6 +288,11 @@ type BeginAuthorizationRequest struct {
 	ReturnTo *string `json:"returnTo,omitempty"`
 }
 
+// ConfirmInclusionRequest defines model for ConfirmInclusionRequest.
+type ConfirmInclusionRequest struct {
+	AccountIds []string `json:"accountIds"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Code ErrorCode `json:"code"`
@@ -199,15 +301,32 @@ type Error struct {
 // ErrorCode defines model for Error.Code.
 type ErrorCode string
 
+// InclusionChange defines model for InclusionChange.
+type InclusionChange struct {
+	Additions     []string                      `json:"additions"`
+	FailureReason *InclusionChangeFailureReason `json:"failureReason,omitempty"`
+	Id            openapi_types.UUID            `json:"id"`
+	Removals      []string                      `json:"removals"`
+	Status        InclusionChangeStatus         `json:"status"`
+}
+
+// InclusionChangeFailureReason defines model for InclusionChange.FailureReason.
+type InclusionChangeFailureReason string
+
+// InclusionChangeStatus defines model for InclusionChange.Status.
+type InclusionChangeStatus string
+
 // InventoryAccount defines model for InventoryAccount.
 type InventoryAccount struct {
-	Available   bool                      `json:"available"`
-	Category    InventoryAccountCategory  `json:"category"`
-	Eligible    bool                      `json:"eligible"`
-	Id          string                    `json:"id"`
-	MaskedLabel string                    `json:"maskedLabel"`
-	SyncState   InventoryAccountSyncState `json:"syncState"`
-	Type        string                    `json:"type"`
+	Available       bool                            `json:"available"`
+	Category        InventoryAccountCategory        `json:"category"`
+	Eligible        bool                            `json:"eligible"`
+	Id              string                          `json:"id"`
+	MaskedLabel     string                          `json:"maskedLabel"`
+	Selectable      bool                            `json:"selectable"`
+	SyncState       InventoryAccountSyncState       `json:"syncState"`
+	Type            string                          `json:"type"`
+	UsabilityReason InventoryAccountUsabilityReason `json:"usabilityReason"`
 }
 
 // InventoryAccountCategory defines model for InventoryAccount.Category.
@@ -215,6 +334,9 @@ type InventoryAccountCategory string
 
 // InventoryAccountSyncState defines model for InventoryAccount.SyncState.
 type InventoryAccountSyncState string
+
+// InventoryAccountUsabilityReason defines model for InventoryAccount.UsabilityReason.
+type InventoryAccountUsabilityReason string
 
 // InventoryConnection defines model for InventoryConnection.
 type InventoryConnection struct {
@@ -236,6 +358,13 @@ type InventoryConnectionSyncMode string
 // InventoryState defines model for InventoryState.
 type InventoryState string
 
+// PortfolioInclusion defines model for PortfolioInclusion.
+type PortfolioInclusion struct {
+	Change    *InclusionChange `json:"change,omitempty"`
+	Committed []string         `json:"committed"`
+	Version   int64            `json:"version"`
+}
+
 // PortfolioInventory defines model for PortfolioInventory.
 type PortfolioInventory struct {
 	Connections []InventoryConnection `json:"connections"`
@@ -244,6 +373,9 @@ type PortfolioInventory struct {
 	State       InventoryState        `json:"state"`
 	UpdatedAt   time.Time             `json:"updatedAt"`
 }
+
+// InclusionConflict defines model for InclusionConflict.
+type InclusionConflict = Error
 
 // InventoryForbidden defines model for InventoryForbidden.
 type InventoryForbidden = Error
@@ -280,6 +412,13 @@ type CompleteSnapTradeAuthorizationParams struct {
 	ErrorDescription *string `form:"error_description,omitempty" json:"error_description,omitempty"`
 }
 
+// ConfirmPortfolioInclusionParams defines parameters for ConfirmPortfolioInclusion.
+type ConfirmPortfolioInclusionParams struct {
+	XCSRFToken        string `json:"X-CSRF-Token"`
+	XInclusionVersion int64  `json:"X-Inclusion-Version"`
+	IdempotencyKey    string `json:"Idempotency-Key"`
+}
+
 // RetryPortfolioInventoryParams defines parameters for RetryPortfolioInventory.
 type RetryPortfolioInventoryParams struct {
 	XCSRFToken string `json:"X-CSRF-Token"`
@@ -290,6 +429,9 @@ type BeginSnapTradeAuthorizationJSONRequestBody = BeginAuthorizationRequest
 
 // BeginSnapTradeAuthorizationFormdataRequestBody defines body for BeginSnapTradeAuthorization for application/x-www-form-urlencoded ContentType.
 type BeginSnapTradeAuthorizationFormdataRequestBody = BeginAuthorizationRequest
+
+// ConfirmPortfolioInclusionJSONRequestBody defines body for ConfirmPortfolioInclusion for application/json ContentType.
+type ConfirmPortfolioInclusionJSONRequestBody = ConfirmInclusionRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -305,6 +447,12 @@ type ServerInterface interface {
 	// GetAuthorizationStatus Report categorical authorization availability and session state
 	// (GET /api/auth/status)
 	GetAuthorizationStatus(w http.ResponseWriter, r *http.Request)
+	// GetPortfolioInclusion Return the authenticated owner's committed and pending account inclusion
+	// (GET /api/portfolio/inclusion)
+	GetPortfolioInclusion(w http.ResponseWriter, r *http.Request)
+	// ConfirmPortfolioInclusion Confirm the authenticated owner's complete target account set
+	// (POST /api/portfolio/inclusion)
+	ConfirmPortfolioInclusion(w http.ResponseWriter, r *http.Request, params ConfirmPortfolioInclusionParams)
 	// GetPortfolioInventory Return or bootstrap the authenticated owner's masked inventory
 	// (GET /api/portfolio/inventory)
 	GetPortfolioInventory(w http.ResponseWriter, r *http.Request)
@@ -458,6 +606,111 @@ func (siw *ServerInterfaceWrapper) GetAuthorizationStatus(w http.ResponseWriter,
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetAuthorizationStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPortfolioInclusion operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioInclusion(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioInclusion(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmPortfolioInclusion operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmPortfolioInclusion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ConfirmPortfolioInclusionParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "X-Inclusion-Version" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-Inclusion-Version")]; found {
+		var XInclusionVersion int64
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-Inclusion-Version", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-Inclusion-Version", valueList[0], &XInclusionVersion, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "integer", Format: "int64"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-Inclusion-Version", Err: err})
+			return
+		}
+
+		params.XInclusionVersion = XInclusionVersion
+
+	} else {
+		err := fmt.Errorf("Header parameter X-Inclusion-Version is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-Inclusion-Version", Err: err})
+		return
+	}
+
+	// ------------- Required header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = IdempotencyKey
+
+	} else {
+		err := fmt.Errorf("Header parameter Idempotency-Key is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "Idempotency-Key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmPortfolioInclusion(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -648,12 +901,23 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/inventory", wrapper.GetPortfolioInventory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/portfolio/inventory/retry", wrapper.RetryPortfolioInventory)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/inclusion", wrapper.GetPortfolioInclusion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/portfolio/inclusion", wrapper.ConfirmPortfolioInclusion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.LogoutCurrentSession)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/status", wrapper.GetAuthorizationStatus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/snaptrade/authorize", wrapper.BeginSnapTradeAuthorization)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/snaptrade/callback", wrapper.CompleteSnapTradeAuthorization)
 
 	return m
+}
+
+type InclusionConflictResponseHeaders struct {
+	CacheControl string
+}
+type InclusionConflictJSONResponse struct {
+	Body Error
+
+	Headers InclusionConflictResponseHeaders
 }
 
 type InventoryForbiddenResponseHeaders struct {
@@ -909,6 +1173,160 @@ func (response GetAuthorizationStatus200JSONResponse) VisitGetAuthorizationStatu
 	return err
 }
 
+type GetPortfolioInclusionRequestObject struct {
+}
+
+type GetPortfolioInclusionResponseObject interface {
+	VisitGetPortfolioInclusionResponse(w http.ResponseWriter) error
+}
+
+type GetPortfolioInclusion200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetPortfolioInclusion200JSONResponse struct {
+	Body    PortfolioInclusion
+	Headers GetPortfolioInclusion200ResponseHeaders
+}
+
+func (response GetPortfolioInclusion200JSONResponse) VisitGetPortfolioInclusionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioInclusion401JSONResponse struct {
+	InventoryUnauthorizedJSONResponse
+}
+
+func (response GetPortfolioInclusion401JSONResponse) VisitGetPortfolioInclusionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioInclusion503JSONResponse struct{ SafeErrorJSONResponse }
+
+func (response GetPortfolioInclusion503JSONResponse) VisitGetPortfolioInclusionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmPortfolioInclusionRequestObject struct {
+	Params ConfirmPortfolioInclusionParams
+	Body   *ConfirmPortfolioInclusionJSONRequestBody
+}
+
+type ConfirmPortfolioInclusionResponseObject interface {
+	VisitConfirmPortfolioInclusionResponse(w http.ResponseWriter) error
+}
+
+type ConfirmPortfolioInclusion200ResponseHeaders struct {
+	CacheControl string
+}
+
+type ConfirmPortfolioInclusion200JSONResponse struct {
+	Body    PortfolioInclusion
+	Headers ConfirmPortfolioInclusion200ResponseHeaders
+}
+
+func (response ConfirmPortfolioInclusion200JSONResponse) VisitConfirmPortfolioInclusionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmPortfolioInclusion401JSONResponse struct {
+	InventoryUnauthorizedJSONResponse
+}
+
+func (response ConfirmPortfolioInclusion401JSONResponse) VisitConfirmPortfolioInclusionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmPortfolioInclusion403JSONResponse struct{ InventoryForbiddenJSONResponse }
+
+func (response ConfirmPortfolioInclusion403JSONResponse) VisitConfirmPortfolioInclusionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmPortfolioInclusion409JSONResponse struct{ InclusionConflictJSONResponse }
+
+func (response ConfirmPortfolioInclusion409JSONResponse) VisitConfirmPortfolioInclusionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfirmPortfolioInclusion503JSONResponse struct{ SafeErrorJSONResponse }
+
+func (response ConfirmPortfolioInclusion503JSONResponse) VisitConfirmPortfolioInclusionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPortfolioInventoryRequestObject struct {
 }
 
@@ -1061,6 +1479,12 @@ type StrictServerInterface interface {
 	// GetAuthorizationStatus Report categorical authorization availability and session state
 	// (GET /api/auth/status)
 	GetAuthorizationStatus(ctx context.Context, request GetAuthorizationStatusRequestObject) (GetAuthorizationStatusResponseObject, error)
+	// GetPortfolioInclusion Return the authenticated owner's committed and pending account inclusion
+	// (GET /api/portfolio/inclusion)
+	GetPortfolioInclusion(ctx context.Context, request GetPortfolioInclusionRequestObject) (GetPortfolioInclusionResponseObject, error)
+	// ConfirmPortfolioInclusion Confirm the authenticated owner's complete target account set
+	// (POST /api/portfolio/inclusion)
+	ConfirmPortfolioInclusion(ctx context.Context, request ConfirmPortfolioInclusionRequestObject) (ConfirmPortfolioInclusionResponseObject, error)
 	// GetPortfolioInventory Return or bootstrap the authenticated owner's masked inventory
 	// (GET /api/portfolio/inventory)
 	GetPortfolioInventory(ctx context.Context, request GetPortfolioInventoryRequestObject) (GetPortfolioInventoryResponseObject, error)
@@ -1233,6 +1657,63 @@ func (sh *strictHandler) GetAuthorizationStatus(w http.ResponseWriter, r *http.R
 	}
 }
 
+// GetPortfolioInclusion operation middleware
+func (sh *strictHandler) GetPortfolioInclusion(w http.ResponseWriter, r *http.Request) {
+	var request GetPortfolioInclusionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPortfolioInclusion(ctx, request.(GetPortfolioInclusionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPortfolioInclusion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPortfolioInclusionResponseObject); ok {
+		if err := validResponse.VisitGetPortfolioInclusionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfirmPortfolioInclusion operation middleware
+func (sh *strictHandler) ConfirmPortfolioInclusion(w http.ResponseWriter, r *http.Request, params ConfirmPortfolioInclusionParams) {
+	var request ConfirmPortfolioInclusionRequestObject
+
+	request.Params = params
+
+	var body ConfirmPortfolioInclusionJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfirmPortfolioInclusion(ctx, request.(ConfirmPortfolioInclusionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfirmPortfolioInclusion")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfirmPortfolioInclusionResponseObject); ok {
+		if err := validResponse.VisitConfirmPortfolioInclusionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetPortfolioInventory operation middleware
 func (sh *strictHandler) GetPortfolioInventory(w http.ResponseWriter, r *http.Request) {
 	var request GetPortfolioInventoryRequestObject
@@ -1288,34 +1769,42 @@ func (sh *strictHandler) RetryPortfolioInventory(w http.ResponseWriter, r *http.
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

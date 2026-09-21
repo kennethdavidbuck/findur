@@ -45,6 +45,62 @@ paths:
         '401': { $ref: '#/components/responses/InventoryUnauthorized' }
         '403': { $ref: '#/components/responses/InventoryForbidden' }
         '503': { $ref: '#/components/responses/SafeError' }
+  /api/portfolio/inclusion:
+    get:
+      operationId: getPortfolioInclusion
+      summary: Return the authenticated owner's committed and pending account inclusion
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Owner-private account inclusion state
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioInclusion' }
+        '401': { $ref: '#/components/responses/InventoryUnauthorized' }
+        '503': { $ref: '#/components/responses/SafeError' }
+    post:
+      operationId: confirmPortfolioInclusion
+      summary: Confirm the authenticated owner's complete target account set
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          required: true
+          schema: { type: string, minLength: 1 }
+        - in: header
+          name: X-Inclusion-Version
+          required: true
+          schema: { type: integer, format: int64, minimum: 0 }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 200 }
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmInclusionRequest'
+      responses:
+        '200':
+          description: The replayed, pending, failed, or committed inclusion result
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PortfolioInclusion' }
+        '401': { $ref: '#/components/responses/InventoryUnauthorized' }
+        '403': { $ref: '#/components/responses/InventoryForbidden' }
+        '409': { $ref: '#/components/responses/InclusionConflict' }
+        '503': { $ref: '#/components/responses/SafeError' }
   /api/auth/logout:
     post:
       operationId: logoutCurrentSession
@@ -164,7 +220,7 @@ components:
     InventoryAccount:
       type: object
       additionalProperties: false
-      required: [id, category, type, maskedLabel, available, eligible, syncState]
+      required: [id, category, type, maskedLabel, available, eligible, selectable, usabilityReason, syncState]
       properties:
         id: { type: string }
         category: { type: string, enum: [investment, deposit, credit, unknown] }
@@ -172,6 +228,10 @@ components:
         maskedLabel: { type: string }
         available: { type: boolean }
         eligible: { type: boolean }
+        selectable: { type: boolean }
+        usabilityReason:
+          type: string
+          enum: [ready, provisional_status, provisional_category, sync_pending, connection_disabled, connection_unavailable, account_closed, account_unavailable, unsupported_category, sync_unavailable]
         syncState: { type: string, enum: [complete, pending, unavailable, unknown] }
     InventoryConnection:
       type: object
@@ -199,6 +259,42 @@ components:
         connections:
           type: array
           items: { $ref: '#/components/schemas/InventoryConnection' }
+    InclusionChange:
+      type: object
+      additionalProperties: false
+      required: [id, status, additions, removals]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, committed, failed] }
+        additions:
+          type: array
+          items: { type: string }
+        removals:
+          type: array
+          items: { type: string }
+        failureReason:
+          type: string
+          enum: [authorization_required, rate_limited, provider_unavailable, unusable_data, stale_guard]
+    PortfolioInclusion:
+      type: object
+      additionalProperties: false
+      required: [version, committed]
+      properties:
+        version: { type: integer, format: int64, minimum: 0 }
+        committed:
+          type: array
+          items: { type: string }
+        change: { $ref: '#/components/schemas/InclusionChange' }
+    ConfirmInclusionRequest:
+      type: object
+      additionalProperties: false
+      required: [accountIds]
+      properties:
+        accountIds:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 128 }
     AuthorizationStatus:
       type: object
       additionalProperties: false
@@ -219,7 +315,7 @@ components:
       properties:
         code:
           type: string
-          enum: [invalid_request, authorization_unavailable, initialization_failed, restart_required, unauthenticated, forbidden]
+          enum: [invalid_request, authorization_unavailable, initialization_failed, restart_required, unauthenticated, forbidden, conflict, invalid_selection]
   responses:
     InventoryUnauthorized:
       description: The presented session is not active
@@ -232,6 +328,15 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     InventoryForbidden:
       description: A session request defense failed
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InclusionConflict:
+      description: Version, idempotency, or selection conflict with no account disclosure
       headers:
         Cache-Control:
           required: true

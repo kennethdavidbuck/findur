@@ -137,7 +137,12 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		pool.Close()
 		return errInvalidConfiguration
 	}
-	server := newServer(cfg.Address, httpapi.NewHandlerWithInventory(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, inventory, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
+	inclusion, err := buildInclusion(cfg, pool)
+	if err != nil {
+		pool.Close()
+		return errInvalidConfiguration
+	}
+	server := newServer(cfg.Address, httpapi.NewHandlerWithPortfolio(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, inventory, inclusion, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("http server starting", "address", cfg.Address)
@@ -162,6 +167,21 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		return errShutdown
 	}
 	return nil
+}
+
+func buildInclusion(cfg config.Config, pool *pgxpool.Pool) (*portfolio.InclusionService, error) {
+	if len(cfg.Session.HashKey) == 0 || len(cfg.Authorization.TokenKeys) == 0 || cfg.Authorization.ProviderBaseURL == nil {
+		return nil, nil
+	}
+	tokens, err := auth.NewTokenCipher(auth.SnapTradeProvider, cfg.Authorization.TokenKeys, cfg.Authorization.CurrentTokenKey, rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	providerClient, err := provider.NewInventoryClient(cfg.Authorization.ProviderBaseURL, &http.Client{Timeout: config.ProviderTimeout}, time.Now)
+	if err != nil {
+		return nil, err
+	}
+	return portfolio.NewInclusionService(postgresadapter.NewInclusionRepository(pool), providerClient, tokens, time.Now, config.ProviderTimeout)
 }
 
 func buildInventory(cfg config.Config, pool *pgxpool.Pool) (*portfolio.Service, error) {

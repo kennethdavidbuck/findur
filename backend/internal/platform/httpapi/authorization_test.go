@@ -36,6 +36,27 @@ type inventoryLifecycleStub struct {
 	retryCalls int
 }
 
+type inclusionLifecycleStub struct {
+	snapshot     portfolio.InclusionSnapshot
+	err          error
+	getCalls     int
+	confirmCalls int
+	expected     int64
+	key          string
+	accountIDs   []string
+}
+
+func (s *inclusionLifecycleStub) Get(context.Context, auth.Actor) (portfolio.InclusionSnapshot, error) {
+	s.getCalls++
+	return s.snapshot, s.err
+}
+
+func (s *inclusionLifecycleStub) Confirm(_ context.Context, _ auth.Actor, expected int64, key string, accountIDs []string) (portfolio.InclusionSnapshot, error) {
+	s.confirmCalls++
+	s.expected, s.key, s.accountIDs = expected, key, accountIDs
+	return s.snapshot, s.err
+}
+
 func (s *inventoryLifecycleStub) Get(context.Context, auth.Actor) (portfolio.Snapshot, error) {
 	s.getCalls++
 	return s.snapshot, nil
@@ -103,6 +124,75 @@ func inventoryHandler(sessions sessionLifecycle, inventory inventoryLifecycle, p
 	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
 	readiness.SetReady(true)
 	return NewHandlerWithInventory(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, nil, sessions, inventory, false, publicOrigin)
+}
+
+func portfolioHandler(sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, publicOrigin string) http.Handler {
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	return NewHandlerWithPortfolio(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, nil, sessions, inventory, inclusion, false, publicOrigin)
+}
+
+func TestInclusionGETIsOwnerPrivateAndStartsEmpty(t *testing.T) {
+	inclusion := &inclusionLifecycleStub{snapshot: portfolio.InclusionSnapshot{Version: 0, Committed: []string{}}}
+	request := httptest.NewRequest(http.MethodGet, "/api/portfolio/inclusion", nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "opaque-session"})
+	response := httptest.NewRecorder()
+	portfolioHandler(&sessionLifecycleStub{}, &inventoryLifecycleStub{}, inclusion, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Cache-Control") != privateNoStoreDirective || inclusion.getCalls != 1 || !strings.Contains(response.Body.String(), `"committed":[]`) {
+		t.Fatalf("status=%d headers=%v calls=%d body=%q", response.Code, response.Header(), inclusion.getCalls, response.Body.String())
+	}
+}
+
+func TestInclusionPOSTRequiresAllSessionDefensesBeforeMutation(t *testing.T) {
+	for _, test := range []struct {
+		name, origin, fetchSite, csrf string
+		want                          int
+	}{
+		{name: "accepted", origin: "https://findur.example", fetchSite: "same-origin", csrf: "csrf", want: http.StatusOK},
+		{name: "cross origin", origin: "https://evil.example", fetchSite: "same-origin", csrf: "csrf", want: http.StatusForbidden},
+		{name: "cross site", origin: "https://findur.example", fetchSite: "cross-site", csrf: "csrf", want: http.StatusForbidden},
+		{name: "missing csrf", origin: "https://findur.example", fetchSite: "same-origin", want: http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			inclusion := &inclusionLifecycleStub{snapshot: portfolio.InclusionSnapshot{Version: 1, Committed: []string{"account"}}}
+			request := httptest.NewRequest(http.MethodPost, "/api/portfolio/inclusion", strings.NewReader(`{"accountIds":["account"]}`))
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session"})
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", test.origin)
+			request.Header.Set("Sec-Fetch-Site", test.fetchSite)
+			request.Header.Set("X-CSRF-Token", test.csrf)
+			request.Header.Set("X-Inclusion-Version", "0")
+			request.Header.Set("Idempotency-Key", "key-1")
+			response := httptest.NewRecorder()
+			portfolioHandler(&sessionLifecycleStub{}, &inventoryLifecycleStub{}, inclusion, "https://findur.example").ServeHTTP(response, request)
+			if response.Code != test.want {
+				t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+			}
+			if test.want == http.StatusOK && (inclusion.confirmCalls != 1 || inclusion.expected != 0 || inclusion.key != "key-1" || len(inclusion.accountIDs) != 1) {
+				t.Fatalf("inclusion=%+v", inclusion)
+			}
+			if test.want != http.StatusOK && inclusion.confirmCalls != 0 {
+				t.Fatalf("unsafe calls=%d", inclusion.confirmCalls)
+			}
+		})
+	}
+}
+
+func TestInclusionPOSTReturnsSafeConflictWithoutMutationDetail(t *testing.T) {
+	inclusion := &inclusionLifecycleStub{err: portfolio.ErrInvalidAccountSelection}
+	request := httptest.NewRequest(http.MethodPost, "/api/portfolio/inclusion", strings.NewReader(`{"accountIds":["foreign-account"]}`))
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session"})
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "https://findur.example")
+	request.Header.Set("Sec-Fetch-Site", "same-origin")
+	request.Header.Set("X-CSRF-Token", "csrf")
+	request.Header.Set("X-Inclusion-Version", "0")
+	request.Header.Set("Idempotency-Key", "key-2")
+	response := httptest.NewRecorder()
+	portfolioHandler(&sessionLifecycleStub{}, &inventoryLifecycleStub{}, inclusion, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusConflict || strings.Contains(response.Body.String(), "foreign-account") || !strings.Contains(response.Body.String(), "invalid_selection") {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
 }
 
 func TestInventoryGETIsOwnerDerivedMinimizedAndPrivateNoStore(t *testing.T) {

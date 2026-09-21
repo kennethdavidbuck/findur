@@ -40,6 +40,11 @@ type inventoryLifecycle interface {
 	Retry(context.Context, auth.Actor) (portfolio.Snapshot, error)
 }
 
+type inclusionLifecycle interface {
+	Get(context.Context, auth.Actor) (portfolio.InclusionSnapshot, error)
+	Confirm(context.Context, auth.Actor, int64, string, []string) (portfolio.InclusionSnapshot, error)
+}
+
 type callbackCookies struct{ attempt, session string }
 type callbackCookieKey struct{}
 type httpRequestContextKey struct{}
@@ -60,6 +65,7 @@ const (
 	logoutPath                  = "/api/auth/logout"
 	portfolioInventoryPath      = "/api/portfolio/inventory"
 	portfolioInventoryRetryPath = "/api/portfolio/inventory/retry"
+	portfolioInclusionPath      = "/api/portfolio/inclusion"
 	callbackSucceededCategory   = "succeeded"
 	callbackRestartCategory     = "restart_required"
 	requestCanceledCategory     = "request_canceled"
@@ -71,6 +77,7 @@ const (
 	contentTypeHeader           = "Content-Type"
 	jsonMediaType               = "application/json"
 	formMediaType               = "application/x-www-form-urlencoded"
+	secFetchSameOrigin          = "same-origin"
 )
 
 type authorizationAPI struct {
@@ -80,12 +87,13 @@ type authorizationAPI struct {
 	status                 authorizationStatusProvider
 	sessions               sessionLifecycle
 	inventory              inventoryLifecycle
+	inclusion              inclusionLifecycle
 	authorizationAvailable bool
 	publicOrigin           string
 }
 
-func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, authorizationAvailable bool, publicOrigin string) {
-	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, inventory: inventory, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
+func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, authorizationAvailable bool, publicOrigin string) {
+	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, inventory: inventory, inclusion: inclusion, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
 	if provider, ok := completer.(authorizationStatusProvider); ok {
 		api.status = provider
 	}
@@ -145,13 +153,13 @@ func noStoreMiddleware(next http.Handler) http.Handler {
 }
 
 func missingRequiredCSRF(r *http.Request) bool {
-	unsafeSessionPath := r.URL.Path == logoutPath || r.URL.Path == portfolioInventoryRetryPath
+	unsafeSessionPath := r.URL.Path == logoutPath || r.URL.Path == portfolioInventoryRetryPath || r.URL.Path == portfolioInclusionPath
 	return r.Method == http.MethodPost && unsafeSessionPath && r.Header.Get(csrfHeaderName) == ""
 }
 
 func callbackContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == logoutPath || strings.HasPrefix(r.URL.Path, portfolioInventoryPath) {
+		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == logoutPath || strings.HasPrefix(r.URL.Path, portfolioInventoryPath) || r.URL.Path == portfolioInclusionPath {
 			cookies := callbackCookies{
 				attempt: cookieValue(r, attemptCookieName),
 				session: cookieValue(r, sessionCookieName),
@@ -185,7 +193,7 @@ func (a *authorizationAPI) RetryPortfolioInventory(ctx context.Context, request 
 		return generated.RetryPortfolioInventory401JSONResponse{InventoryUnauthorizedJSONResponse: inventoryUnauthorized()}, nil
 	}
 	httpRequest := requestFromContext(ctx)
-	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != "same-origin" {
+	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != secFetchSameOrigin {
 		return generated.RetryPortfolioInventory403JSONResponse{InventoryForbiddenJSONResponse: inventoryForbidden()}, nil
 	}
 	actor, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, request.Params.XCSRFToken)
@@ -205,9 +213,68 @@ func (a *authorizationAPI) RetryPortfolioInventory(ctx context.Context, request 
 	return generated.RetryPortfolioInventory200JSONResponse{Body: inventoryResponse(snapshot), Headers: generated.RetryPortfolioInventory200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
 }
 
-func (a *authorizationAPI) inventoryActor(ctx context.Context) (auth.Actor, error) {
+func (a *authorizationAPI) GetPortfolioInclusion(ctx context.Context, _ generated.GetPortfolioInclusionRequestObject) (generated.GetPortfolioInclusionResponseObject, error) {
+	actor, err := a.portfolioActor(ctx, a.inclusion != nil)
+	if errors.Is(err, auth.ErrUnauthenticated) {
+		return generated.GetPortfolioInclusion401JSONResponse{InventoryUnauthorizedJSONResponse: inventoryUnauthorized()}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	snapshot, err := a.inclusion.Get(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetPortfolioInclusion200JSONResponse{Body: inclusionResponse(snapshot), Headers: generated.GetPortfolioInclusion200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
+}
+
+func (a *authorizationAPI) ConfirmPortfolioInclusion(ctx context.Context, request generated.ConfirmPortfolioInclusionRequestObject) (generated.ConfirmPortfolioInclusionResponseObject, error) {
 	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
-	if a.sessions == nil || a.inventory == nil || cookies.session == "" {
+	if a.sessions == nil || a.inclusion == nil || cookies.session == "" {
+		return generated.ConfirmPortfolioInclusion401JSONResponse{InventoryUnauthorizedJSONResponse: inventoryUnauthorized()}, nil
+	}
+	httpRequest := requestFromContext(ctx)
+	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != secFetchSameOrigin {
+		return generated.ConfirmPortfolioInclusion403JSONResponse{InventoryForbiddenJSONResponse: inventoryForbidden()}, nil
+	}
+	actor, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, request.Params.XCSRFToken)
+	if err != nil {
+		if errors.Is(err, auth.ErrUnauthenticated) {
+			return generated.ConfirmPortfolioInclusion401JSONResponse{InventoryUnauthorizedJSONResponse: inventoryUnauthorized()}, nil
+		}
+		if errors.Is(err, auth.ErrForbidden) {
+			return generated.ConfirmPortfolioInclusion403JSONResponse{InventoryForbiddenJSONResponse: inventoryForbidden()}, nil
+		}
+		return nil, err
+	}
+	if request.Body == nil {
+		return inclusionConflict(generated.InvalidSelection), nil
+	}
+	snapshot, err := a.inclusion.Confirm(ctx, actor, request.Params.XInclusionVersion, request.Params.IdempotencyKey, request.Body.AccountIds)
+	if err != nil {
+		switch {
+		case errors.Is(err, portfolio.ErrInvalidAccountSelection):
+			return inclusionConflict(generated.InvalidSelection), nil
+		case errors.Is(err, portfolio.ErrInclusionConflict), errors.Is(err, portfolio.ErrIdempotencyConflict):
+			return inclusionConflict(generated.Conflict), nil
+		default:
+			return nil, err
+		}
+	}
+	return generated.ConfirmPortfolioInclusion200JSONResponse{Body: inclusionResponse(snapshot), Headers: generated.ConfirmPortfolioInclusion200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
+}
+
+func inclusionConflict(code generated.ErrorCode) generated.ConfirmPortfolioInclusionResponseObject {
+	return generated.ConfirmPortfolioInclusion409JSONResponse{InclusionConflictJSONResponse: generated.InclusionConflictJSONResponse{Body: generated.Error{Code: code}, Headers: generated.InclusionConflictResponseHeaders{CacheControl: privateNoStoreDirective}}}
+}
+
+func (a *authorizationAPI) inventoryActor(ctx context.Context) (auth.Actor, error) {
+	return a.portfolioActor(ctx, a.inventory != nil)
+}
+
+func (a *authorizationAPI) portfolioActor(ctx context.Context, available bool) (auth.Actor, error) {
+	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
+	if a.sessions == nil || !available || cookies.session == "" {
 		return auth.Actor{}, auth.ErrUnauthenticated
 	}
 	return a.sessions.Authenticate(ctx, cookies.session)
@@ -226,11 +293,33 @@ func inventoryResponse(snapshot portfolio.Snapshot) generated.PortfolioInventory
 	for _, connection := range snapshot.Connections {
 		accounts := make([]generated.InventoryAccount, 0, len(connection.Accounts))
 		for _, account := range connection.Accounts {
-			accounts = append(accounts, generated.InventoryAccount{Id: account.ID, Category: generated.InventoryAccountCategory(account.Category), Type: account.Type, MaskedLabel: account.MaskedLabel, Available: account.Available, Eligible: account.Eligible, SyncState: generated.InventoryAccountSyncState(account.SyncState)})
+			accounts = append(accounts, generated.InventoryAccount{Id: account.ID, Category: generated.InventoryAccountCategory(account.Category), Type: account.Type, MaskedLabel: account.MaskedLabel, Available: account.Available, Eligible: account.Eligible, Selectable: account.Selectable, UsabilityReason: generated.InventoryAccountUsabilityReason(account.UsabilityReason), SyncState: generated.InventoryAccountSyncState(account.SyncState)})
 		}
 		connections = append(connections, generated.InventoryConnection{Id: connection.ID, BrokerageLabel: connection.BrokerageLabel, Status: generated.InventoryConnectionStatus(connection.Status), SyncMode: generated.InventoryConnectionSyncMode(connection.SyncMode), Available: connection.Available, Eligible: connection.Eligible, Accounts: accounts})
 	}
 	return generated.PortfolioInventory{State: generated.InventoryState(snapshot.State), Generation: snapshot.Generation, RetryAt: snapshot.RetryAt, UpdatedAt: snapshot.UpdatedAt, Connections: connections}
+}
+
+func inclusionResponse(snapshot portfolio.InclusionSnapshot) generated.PortfolioInclusion {
+	result := generated.PortfolioInclusion{Version: snapshot.Version, Committed: snapshot.Committed}
+	if result.Committed == nil {
+		result.Committed = []string{}
+	}
+	if snapshot.Change != nil {
+		change := generated.InclusionChange{Id: snapshot.Change.ID, Status: generated.InclusionChangeStatus(snapshot.Change.Status), Additions: snapshot.Change.Additions, Removals: snapshot.Change.Removals}
+		if change.Additions == nil {
+			change.Additions = []string{}
+		}
+		if change.Removals == nil {
+			change.Removals = []string{}
+		}
+		if snapshot.Change.FailureReason != "" {
+			reason := generated.InclusionChangeFailureReason(snapshot.Change.FailureReason)
+			change.FailureReason = &reason
+		}
+		result.Change = &change
+	}
+	return result
 }
 
 func contentTypeMiddleware(next http.Handler) http.Handler {
@@ -296,7 +385,7 @@ func (a *authorizationAPI) LogoutCurrentSession(ctx context.Context, request gen
 		return logoutUnauthorized(), nil
 	}
 	httpRequest := requestFromContext(ctx)
-	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != "same-origin" {
+	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != secFetchSameOrigin {
 		return logoutForbidden(), nil
 	}
 	if _, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, request.Params.XCSRFToken); err != nil {

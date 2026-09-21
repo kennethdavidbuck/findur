@@ -159,6 +159,9 @@ func normalizeAccounts(connection portfolio.Connection, rawAccounts []providerge
 		}
 		connection.Accounts = append(connection.Accounts, account)
 	}
+	if partialErr != nil {
+		connection = unavailableConnection(connection)
+	}
 	return connection, partialErr
 }
 
@@ -172,6 +175,12 @@ func rememberUnique(seen map[string]struct{}, id string) bool {
 
 func unavailableConnection(connection portfolio.Connection) portfolio.Connection {
 	connection.Status, connection.Available, connection.Eligible = portfolio.ConnectionStatusUnavailable, false, false
+	for index := range connection.Accounts {
+		connection.Accounts[index].Available = false
+		connection.Accounts[index].Eligible = false
+		connection.Accounts[index].Selectable = false
+		connection.Accounts[index].UsabilityReason = portfolio.UsabilityConnectionUnavailable
+	}
 	return connection
 }
 
@@ -260,7 +269,7 @@ func normalizeAccount(raw providergenerated.Account, connectionID string) (portf
 	if raw.Id == uuid.Nil || raw.BrokerageAuthorization == uuid.Nil || raw.BrokerageAuthorization.String() != connectionID {
 		return portfolio.Account{}, false
 	}
-	result := portfolio.Account{ID: raw.Id.String(), Category: portfolio.AccountCategoryUnknown, Type: unknownValue, MaskedLabel: defaultAccountLabel, SyncState: portfolio.AccountSyncStateUnknown}
+	result := portfolio.Account{ID: raw.Id.String(), Category: portfolio.AccountCategoryUnknown, Type: unknownValue, MaskedLabel: defaultAccountLabel, SyncState: portfolio.AccountSyncStateUnknown, Available: true}
 	if raw.Name != nil {
 		result.MaskedLabel = safeAccountLabel(*raw.Name, raw.Number)
 	}
@@ -282,15 +291,15 @@ func normalizeAccount(raw providergenerated.Account, connectionID string) (portf
 	if raw.RawType != nil {
 		result.Type = portfolio.SafeLabel(*raw.RawType, unknownValue)
 	}
-	statusOpen := false
+	statusOpen, statusKnown := false, false
 	if raw.Status != nil {
 		switch *raw.Status {
 		case providergenerated.Open:
-			statusOpen, result.Available = true, true
+			statusOpen, statusKnown, result.Available = true, true, true
 		case providergenerated.Closed:
-			result.Available = true
+			statusKnown, result.Available = true, false
 		case providergenerated.Unavailable, providergenerated.Archived:
-			result.Available = false
+			statusKnown, result.Available = true, false
 		default:
 			return portfolio.Account{}, false
 		}
@@ -306,7 +315,26 @@ func normalizeAccount(raw providergenerated.Account, connectionID string) (portf
 			result.SyncState = portfolio.AccountSyncStatePending
 		}
 	}
-	result.Eligible = result.Available && statusOpen && result.Category == portfolio.AccountCategoryInvestment
+	result.Eligible = result.Available && statusOpen && result.Category == portfolio.AccountCategoryInvestment && result.SyncState == portfolio.AccountSyncStateComplete
+	result.Selectable = result.Available && (statusOpen || !statusKnown) && (result.Category == portfolio.AccountCategoryInvestment || result.Category == portfolio.AccountCategoryUnknown) && result.SyncState == portfolio.AccountSyncStateComplete
+	switch {
+	case !result.Available && statusKnown && raw.Status != nil && *raw.Status == providergenerated.Closed:
+		result.UsabilityReason = portfolio.UsabilityAccountClosed
+	case !result.Available:
+		result.UsabilityReason = portfolio.UsabilityAccountUnavailable
+	case result.SyncState == portfolio.AccountSyncStateUnavailable:
+		result.UsabilityReason = portfolio.UsabilitySyncUnavailable
+	case result.Category == portfolio.AccountCategoryDeposit || result.Category == portfolio.AccountCategoryCredit:
+		result.UsabilityReason = portfolio.UsabilityUnsupportedCategory
+	case !statusKnown:
+		result.UsabilityReason = portfolio.UsabilityProvisionalStatus
+	case result.Category == portfolio.AccountCategoryUnknown:
+		result.UsabilityReason = portfolio.UsabilityProvisionalCategory
+	case result.SyncState != portfolio.AccountSyncStateComplete:
+		result.UsabilityReason = portfolio.UsabilitySyncPending
+	default:
+		result.UsabilityReason = portfolio.UsabilityReady
+	}
 	return result, true
 }
 

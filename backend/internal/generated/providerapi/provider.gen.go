@@ -6,6 +6,7 @@ package providergenerated
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,6 +63,21 @@ func (e AccountStatus) Valid() bool {
 	}
 }
 
+// Defines values for AdrInstrumentKind.
+const (
+	Adr AdrInstrumentKind = "adr"
+)
+
+// Valid indicates whether the value is a known member of the AdrInstrumentKind enum.
+func (e AdrInstrumentKind) Valid() bool {
+	switch e {
+	case Adr:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for BrokerageAuthorizationDataFreshnessModeInstitution.
 const (
 	BrokerageAuthorizationDataFreshnessModeInstitutionDelayed  BrokerageAuthorizationDataFreshnessModeInstitution = "delayed"
@@ -98,6 +114,228 @@ func (e BrokerageAuthorizationDataFreshnessModeSnaptrade) Valid() bool {
 	}
 }
 
+// Defines values for CefInstrumentKind.
+const (
+	Cef CefInstrumentKind = "cef"
+)
+
+// Valid indicates whether the value is a known member of the CefInstrumentKind enum.
+func (e CefInstrumentKind) Valid() bool {
+	switch e {
+	case Cef:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CfdInstrumentKind.
+const (
+	Cfd CfdInstrumentKind = "cfd"
+)
+
+// Valid indicates whether the value is a known member of the CfdInstrumentKind enum.
+func (e CfdInstrumentKind) Valid() bool {
+	switch e {
+	case Cfd:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CryptoInstrumentKind.
+const (
+	Crypto CryptoInstrumentKind = "crypto"
+)
+
+// Valid indicates whether the value is a known member of the CryptoInstrumentKind enum.
+func (e CryptoInstrumentKind) Valid() bool {
+	switch e {
+	case Crypto:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EtfInstrumentKind.
+const (
+	Etf EtfInstrumentKind = "etf"
+)
+
+// Valid indicates whether the value is a known member of the EtfInstrumentKind enum.
+func (e EtfInstrumentKind) Valid() bool {
+	switch e {
+	case Etf:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FutureInstrumentKind.
+const (
+	Future FutureInstrumentKind = "future"
+)
+
+// Valid indicates whether the value is a known member of the FutureInstrumentKind enum.
+func (e FutureInstrumentKind) Valid() bool {
+	switch e {
+	case Future:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FutureOptionInstrumentKind.
+const (
+	FutureOption FutureOptionInstrumentKind = "future_option"
+)
+
+// Valid indicates whether the value is a known member of the FutureOptionInstrumentKind enum.
+func (e FutureOptionInstrumentKind) Valid() bool {
+	switch e {
+	case FutureOption:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FutureOptionInstrumentOptionType.
+const (
+	FutureOptionInstrumentOptionTypeCALL FutureOptionInstrumentOptionType = "CALL"
+	FutureOptionInstrumentOptionTypePUT  FutureOptionInstrumentOptionType = "PUT"
+)
+
+// Valid indicates whether the value is a known member of the FutureOptionInstrumentOptionType enum.
+func (e FutureOptionInstrumentOptionType) Valid() bool {
+	switch e {
+	case FutureOptionInstrumentOptionTypeCALL:
+		return true
+	case FutureOptionInstrumentOptionTypePUT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MutualFundInstrumentKind.
+const (
+	Mutualfund MutualFundInstrumentKind = "mutualfund"
+)
+
+// Valid indicates whether the value is a known member of the MutualFundInstrumentKind enum.
+func (e MutualFundInstrumentKind) Valid() bool {
+	switch e {
+	case Mutualfund:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OptionInstrumentKind.
+const (
+	Option OptionInstrumentKind = "option"
+)
+
+// Valid indicates whether the value is a known member of the OptionInstrumentKind enum.
+func (e OptionInstrumentKind) Valid() bool {
+	switch e {
+	case Option:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OptionInstrumentOptionType.
+const (
+	OptionInstrumentOptionTypeCALL OptionInstrumentOptionType = "CALL"
+	OptionInstrumentOptionTypePUT  OptionInstrumentOptionType = "PUT"
+)
+
+// Valid indicates whether the value is a known member of the OptionInstrumentOptionType enum.
+func (e OptionInstrumentOptionType) Valid() bool {
+	switch e {
+	case OptionInstrumentOptionTypeCALL:
+		return true
+	case OptionInstrumentOptionTypePUT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OptionsSymbolOptionType.
+const (
+	OptionsSymbolOptionTypeCALL OptionsSymbolOptionType = "CALL"
+	OptionsSymbolOptionTypePUT  OptionsSymbolOptionType = "PUT"
+)
+
+// Valid indicates whether the value is a known member of the OptionsSymbolOptionType enum.
+func (e OptionsSymbolOptionType) Valid() bool {
+	switch e {
+	case OptionsSymbolOptionTypeCALL:
+		return true
+	case OptionsSymbolOptionTypePUT:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OtherInstrumentKind.
+const (
+	Bond  OtherInstrumentKind = "bond"
+	Other OtherInstrumentKind = "other"
+)
+
+// Valid indicates whether the value is a known member of the OtherInstrumentKind enum.
+func (e OtherInstrumentKind) Valid() bool {
+	switch e {
+	case Bond:
+		return true
+	case Other:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StockInstrumentKind.
+const (
+	Stock StockInstrumentKind = "stock"
+)
+
+// Valid indicates whether the value is a known member of the StockInstrumentKind enum.
+func (e StockInstrumentKind) Valid() bool {
+	switch e {
+	case Stock:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TokenizedAssetInstrumentKind.
+const (
+	TokenizedAsset TokenizedAssetInstrumentKind = "tokenized_asset"
+)
+
+// Valid indicates whether the value is a known member of the TokenizedAssetInstrumentKind enum.
+func (e TokenizedAssetInstrumentKind) Valid() bool {
+	switch e {
+	case TokenizedAsset:
+		return true
+	default:
+		return false
+	}
+}
+
 // N401FailedRequestResponse Example for failed request response
 type N401FailedRequestResponse struct {
 	// DefaultCode Example: 1076
@@ -114,6 +352,30 @@ type N404FailedRequestResponse struct {
 
 	// DefaultDetail Example: The requested resource does not exist.
 	DefaultDetail interface{} `json:"default_detail,omitempty"`
+}
+
+// N429TooManyRequestsResponse Example for a rate-limited request response
+type N429TooManyRequestsResponse struct {
+	// Code Example: throttled
+	Code interface{} `json:"code,omitempty"`
+
+	// Detail Example: Connection refreshed too recently. Please try again later.
+	Detail interface{} `json:"detail,omitempty"`
+
+	// StatusCode Example: 429
+	StatusCode interface{} `json:"status_code,omitempty"`
+}
+
+// N503BrokerageRequestResponse Example for a response that failed because of an upstream brokerage API failure
+type N503BrokerageRequestResponse struct {
+	// Code Example: 3002
+	Code interface{} `json:"code,omitempty"`
+
+	// Detail Example: Unable to sync with brokerage account. Invalid response from Brokerage API.
+	Detail interface{} `json:"detail,omitempty"`
+
+	// StatusCode Example: 503
+	StatusCode interface{} `json:"status_code,omitempty"`
 }
 
 // Account A single account at a brokerage.
@@ -246,6 +508,40 @@ type AccountBalance struct {
 // Example: 917c8734-8470-4a3e-a18f-57c3f2ee6631
 type AccountID = openapi_types.UUID
 
+// AccountPosition Describes a single position.
+type AccountPosition struct {
+	// CashEquivalent Present for mutual fund positions and for other instrument kinds when true. A true value means the position is also counted in cash balance or buying power.
+	//
+	// Example: false
+	CashEquivalent *bool `json:"cash_equivalent,omitempty"`
+
+	// CostBasis Book price or average purchase price for the position. For options, this is per-share.
+	//
+	// Example: 118.2
+	CostBasis *string `json:"cost_basis,omitempty"`
+
+	// Currency ISO-4217 currency code for the position `price` and `cost_basis`.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Instrument Instrument metadata for a V2 position. Use `kind` to determine which schema is present.
+	Instrument Instrument `json:"instrument"`
+
+	// Price Last known market price _per share_. The freshness of this price depends on the brokerage. Some brokerages provide real-time prices, while others provide delayed prices. It is recommended that you rely on your own third-party market data provider for most up to date prices.
+	//
+	// Example: 123.45
+	Price *string `json:"price,omitempty"`
+
+	// TaxLots List of tax lots for the given position (disabled by default, only available on paid plans, contact support if needed)
+	TaxLots *[]TaxLot `json:"tax_lots,omitempty"`
+
+	// Units The number of units held in the position. Positive numbers indicate long positions and negative numbers indicate short positions.
+	//
+	// Example: 10.5
+	Units *string `json:"units,omitempty"`
+}
+
 // AccountSyncStatus Contains status update for the account sync process between SnapTrade and the brokerage.
 type AccountSyncStatus struct {
 	// Holdings Status of account holdings sync. SnapTrade syncs holdings from the brokerage under the following conditions:
@@ -259,6 +555,188 @@ type AccountSyncStatus struct {
 	// 2. Daily sync - Once a day SnapTrade syncs new transactions from the brokerage.
 	// 3. Manual sync - You can trigger an incremental sync of transactions with the [transactions sync](/reference/Experimental%20endpoints/Connections_syncBrokerageAuthorizationTransactions) endpoint.
 	Transactions *TransactionsStatus `json:"transactions,omitempty"`
+}
+
+// AccountUniversalActivity A transaction or activity from an institution
+type AccountUniversalActivity struct {
+	// Amount The amount of the transaction denominated in `currency`. This can be positive or negative. In general, transactions that positively affect the account balance (like sell, deposits, dividends, etc) will have a positive amount, while transactions that negatively affect the account balance (like buy, withdrawals, fees, etc) will have a negative amount.
+	//
+	// Example: 263.82
+	Amount *float32 `json:"amount,omitempty"`
+
+	// Currency The currency in which the transaction `price`, `amount`, and `fee` are denominated. This is `null` when those values are denominated in `currency_universal_symbol`.
+	Currency *Currency `json:"currency,omitempty"`
+
+	// CurrencyUniversalSymbol The quote security for the transaction when `price`, `amount`, and `fee` are denominated in a security instead of a fiat currency. This is most common for cryptocurrency trades. The field is `null` when the transaction is denominated in `currency`.
+	CurrencyUniversalSymbol *Symbol `json:"currency_universal_symbol,omitempty"`
+
+	// Description A human-readable description of the transaction. This is usually the brokerage's description of the transaction.
+	//
+	// Example: WALT DISNEY UNIT DIST ON 21 SHS REC 12/31/21 PAY 01/06/22
+	Description *string `json:"description,omitempty"`
+
+	// ExternalReferenceId Reference ID from brokerage used to identify related transactions. For example if an order comprises of several transactions (buy, fee, fx), they can be grouped if they share the same `external_reference_id`
+	//
+	// Example: 2f7dc9b3-5c33-4668-3440-2b31e056ebe6
+	ExternalReferenceId *string `json:"external_reference_id,omitempty"`
+
+	// Fee Any fee associated with the transaction if provided by the brokerage.
+	//
+	// Example: 0
+	Fee *float32 `json:"fee,omitempty"`
+
+	// FxRate The forex conversion rate involved in the transaction if provided by the brokerage. Used in cases where securities of one currency are purchased in a different currency, and the forex conversion is automatic. In those cases, price, amount and fee will be in the top level currency (activity -> currency)
+	//
+	// Example: 1.032
+	FxRate *float32 `json:"fx_rate,omitempty"`
+
+	// Id Unique identifier for the transaction. This is the ID used to reference the transaction in SnapTrade.
+	//
+	// Please note that this ID _can_ change if the transaction is deleted and re-added. Under normal circumstances, SnapTrade does not delete transactions. The only time this would happen is if SnapTrade re-fetches and reprocesses the data from the brokerage, which is rare. If you require a stable ID, please let us know and we can work with you to provide one.
+	//
+	//
+	// Example: 2f7dc9b3-5c33-4668-3440-2b31e056ebe6
+	Id *string `json:"id,omitempty"`
+
+	// Institution The institution that the transaction is associated with. This is usually the brokerage name.
+	//
+	// Example: Robinhood
+	Institution *string `json:"institution,omitempty"`
+
+	// OptionSymbol The option security for the transaction. The field is `null` if the transaction is not related to an option security (like a deposit, withdrawal, fee, etc). SnapTrade does a best effort to map the brokerage's option symbol. In cases where the brokerage option symbol is not recognized, the field will be set to `null`.
+	OptionSymbol *OptionsSymbol `json:"option_symbol,omitempty"`
+
+	// OptionType If an option `BUY` or `SELL` transaction, this further specifies the type of action. The possible values are:
+	// - BUY_TO_OPEN
+	// - BUY_TO_CLOSE
+	// - SELL_TO_OPEN
+	// - SELL_TO_CLOSE
+	//
+	//
+	// Example: BUY_TO_OPEN
+	OptionType *string `json:"option_type,omitempty"`
+
+	// Price The price of the security for the transaction. This is mostly applicable to `BUY`, `SELL`, and `DIVIDEND` transactions. For option transactions, this represents the price per share of the option contract.
+	//
+	// Example: 0.4
+	Price *float32 `json:"price,omitempty"`
+
+	// SettlementDate The date on which the transaction is settled.
+	//
+	// Example: 2024-03-26T00:00:00Z
+	SettlementDate *time.Time `json:"settlement_date,omitempty"`
+
+	// Symbol The security for the transaction. The field is `null` if the transaction is not related to a security (like a deposit, withdrawal, fee, etc). SnapTrade does a best effort to map the brokerage's symbol. In cases where the brokerage symbol is not recognized, the field will be set to `null`.
+	Symbol *Symbol `json:"symbol,omitempty"`
+
+	// TradeDate The recorded time for the transaction. The granularity of this timestamp depends on the brokerage. Some brokerages provide the exact time of the transaction, while others provide only the date. Please check the [integrations page](https://support.snaptrade.com/brokerages-table?v=6fab8012ade6441fa0c6d9af9c55ce3a) for the specific brokerage to see the granularity of the timestamps. Note that even though the field is named `trade_date`, it can represent any type of transaction, not just trades.
+	//
+	// Example: 2024-03-22T16:27:55Z
+	TradeDate *time.Time `json:"trade_date,omitempty"`
+
+	// Type A string representing the type of transaction. SnapTrade does a best effort to categorize the brokerage transaction types into a common set of values. Here are some of the most popular values:
+	//   - `BUY` - Asset bought.
+	//   - `SELL` - Asset sold.
+	//   - `DIVIDEND` - Dividend payout.
+	//   - `SUBSTITUTE_DIVIDEND` - Payment in lieu of a dividend.
+	//   - `CONTRIBUTION` - Cash contribution.
+	//   - `WITHDRAWAL` - Cash withdrawal.
+	//   - `REI` - Dividend reinvestment.
+	//   - `STOCK_DIVIDEND` - A type of dividend where a company distributes shares instead of cash
+	//   - `INTEREST` - Interest deposited into the account.
+	//   - `FEE` - Fee withdrawn from the account.
+	//   - `TAX` - A tax related fee.
+	//   - `OPTIONEXPIRATION` - Option expiration event.
+	//   - `OPTIONASSIGNMENT` - Option assignment event.
+	//   - `OPTIONEXERCISE` - Option exercise event.
+	//   - `TRANSFER` - Transfer of asset(s) from one account to another.
+	//   - `EXTERNAL_ASSET_TRANSFER_IN` - Incoming transfer of an asset from an external account to this account.
+	//   - `EXTERNAL_ASSET_TRANSFER_OUT` - Outgoing transfer of an asset from this account to an external account.
+	//   - `SPLIT` - A stock share split.
+	//   - `ADJUSTMENT` - A one time adjustment of the account's cash balance or shares of an asset
+	//
+	//
+	// Example: BUY
+	Type *string `json:"type,omitempty"`
+
+	// Units The number of units of the security for the transaction. This is mostly applicable to `BUY`, `SELL`, and `DIVIDEND` transactions.
+	//
+	// Example: 5.2
+	Units *float32 `json:"units,omitempty"`
+}
+
+// AdrInstrument Security instrument metadata for ADR positions.
+type AdrInstrument struct {
+	// Currency ISO-4217 currency code for the security listing.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable description of the security.
+	//
+	// Example: Alibaba Group Holding Ltd ADR
+	Description *string `json:"description,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the security.
+	//
+	// Example: XNYS
+	Exchange       *string         `json:"exchange,omitempty"`
+	FigiInstrument *FigiInstrument `json:"figi_instrument,omitempty"`
+
+	// Id Unique identifier for the instrument.
+	//
+	// Example: 1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: adr
+	Kind AdrInstrumentKind `json:"kind"`
+
+	// RawSymbol The raw symbol without any exchange suffix.
+	//
+	// Example: BABA
+	RawSymbol string `json:"raw_symbol"`
+
+	// Symbol The formatted trading symbol for the security.
+	//
+	// Example: BABA
+	Symbol string `json:"symbol"`
+}
+
+// AdrInstrumentKind Type of security instrument.
+//
+// Example: adr
+type AdrInstrumentKind string
+
+// AllAccountPositionsResponse Information about all account positions.
+type AllAccountPositionsResponse struct {
+	// DataFreshness Metadata describing freshness of the returned positions data.
+	DataFreshness struct {
+		// AsOf The time the returned positions data was fetched from the brokerage.
+		//
+		// Example: 2026-06-02T14:30:00Z
+		AsOf time.Time `json:"as_of"`
+	} `json:"data_freshness"`
+
+	// Results Positions returned for the request.
+	Results []AccountPosition `json:"results"`
+}
+
+// Balance Holds balance information for a single currency in an account.
+type Balance struct {
+	// BuyingPower Buying power only applies to margin accounts. For non-margin accounts, buying power should be the same as cash. Please note that this field is not always available for all brokerages.
+	//
+	// Example: 410.71
+	BuyingPower *float32 `json:"buying_power,omitempty"`
+
+	// Cash The amount of available cash in the account denominated in the currency of the `currency` field. This value can be negative in a margin account with a margin balance. Money market funds will be included in this field, and also returned in positions endpoints with `cash_equivalent` = true
+	//
+	// Example: 300.71
+	Cash *float32 `json:"cash,omitempty"`
+
+	// Currency The currency of the balance. This applies to both `cash` and `buying_power`.
+	Currency *Currency `json:"currency,omitempty"`
 }
 
 // Brokerage Describes a brokerage that SnapTrade supports.
@@ -457,6 +935,389 @@ type BrokerageType struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// CefInstrument Security instrument metadata for closed-end fund positions.
+type CefInstrument struct {
+	// Currency ISO-4217 currency code for the security listing.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable description of the security.
+	//
+	// Example: BlackRock Science and Technology Trust
+	Description *string `json:"description,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the security.
+	//
+	// Example: XNYS
+	Exchange       *string         `json:"exchange,omitempty"`
+	FigiInstrument *FigiInstrument `json:"figi_instrument,omitempty"`
+
+	// Id Unique identifier for the instrument.
+	//
+	// Example: 1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: cef
+	Kind CefInstrumentKind `json:"kind"`
+
+	// RawSymbol The raw symbol without any exchange suffix.
+	//
+	// Example: BST
+	RawSymbol string `json:"raw_symbol"`
+
+	// Symbol The formatted trading symbol for the security.
+	//
+	// Example: BST
+	Symbol string `json:"symbol"`
+}
+
+// CefInstrumentKind Type of security instrument.
+//
+// Example: cef
+type CefInstrumentKind string
+
+// CfdInstrument Canonical CFD wrapper instrument metadata for a V2 position.
+type CfdInstrument struct {
+	// Currency ISO-4217 currency code for the instrument underlying the CFD wrapper.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable description of the instrument underlying the CFD wrapper.
+	//
+	// Example: Apple Inc.
+	Description *string `json:"description,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the instrument underlying the CFD wrapper.
+	//
+	// Example: XNAS
+	Exchange *string `json:"exchange,omitempty"`
+
+	// Id Unique identifier for the canonical CFD instrument wrapper.
+	//
+	// Example: 1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: cfd
+	Kind CfdInstrumentKind `json:"kind"`
+
+	// RawSymbol Raw symbol of the instrument underlying the CFD wrapper.
+	//
+	// Example: AAPL
+	RawSymbol string `json:"raw_symbol"`
+
+	// Symbol Formatted symbol of the instrument underlying the CFD wrapper.
+	//
+	// Example: AAPL
+	Symbol string `json:"symbol"`
+
+	// UnderlyingInstrument The underlying instrument referenced by a CFD contract.
+	UnderlyingInstrument UnderlyingCfdInstrument `json:"underlying_instrument"`
+}
+
+// CfdInstrumentKind Type of security instrument.
+//
+// Example: cfd
+type CfdInstrumentKind string
+
+// CryptoInstrument Security instrument metadata for crypto positions.
+type CryptoInstrument struct {
+	// Currency ISO-4217 currency code for the security listing.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable description of the security.
+	//
+	// Example: Apple Inc.
+	Description *string `json:"description,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the security.
+	//
+	// Example: XNAS
+	Exchange       *string         `json:"exchange,omitempty"`
+	FigiInstrument *FigiInstrument `json:"figi_instrument,omitempty"`
+
+	// Id Unique identifier for the instrument.
+	//
+	// Example: 1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: crypto
+	Kind CryptoInstrumentKind `json:"kind"`
+
+	// RawSymbol The raw symbol without any exchange suffix.
+	//
+	// Example: AAPL
+	RawSymbol string `json:"raw_symbol"`
+
+	// Symbol The formatted trading symbol for the security.
+	//
+	// Example: AAPL
+	Symbol string `json:"symbol"`
+}
+
+// CryptoInstrumentKind Type of security instrument.
+//
+// Example: crypto
+type CryptoInstrumentKind string
+
+// Currency Describes a currency object.
+type Currency struct {
+	// Code The ISO-4217 currency code for the currency.
+	//
+	// Example: USD
+	Code *string `json:"code,omitempty"`
+
+	// Id Unique identifier for the currency. This is the UUID used to reference the currency in SnapTrade.
+	//
+	// Example: 87b24961-b51e-4db8-9226-f198f6518a89
+	Id *CurrencyID `json:"id,omitempty"`
+
+	// Name A human-friendly name of the currency.
+	//
+	// Example: US Dollar
+	Name *string `json:"name,omitempty"`
+}
+
+// CurrencyID Unique identifier for the currency. This is the UUID used to reference the currency in SnapTrade.
+//
+// Example: 87b24961-b51e-4db8-9226-f198f6518a89
+type CurrencyID = openapi_types.UUID
+
+// EtfInstrument Security instrument metadata for ETF positions.
+type EtfInstrument struct {
+	// Currency ISO-4217 currency code for the security listing.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable description of the security.
+	//
+	// Example: Apple Inc.
+	Description *string `json:"description,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the security.
+	//
+	// Example: XNAS
+	Exchange       *string         `json:"exchange,omitempty"`
+	FigiInstrument *FigiInstrument `json:"figi_instrument,omitempty"`
+
+	// Id Unique identifier for the instrument.
+	//
+	// Example: 1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: etf
+	Kind EtfInstrumentKind `json:"kind"`
+
+	// RawSymbol The raw symbol without any exchange suffix.
+	//
+	// Example: AAPL
+	RawSymbol string `json:"raw_symbol"`
+
+	// Symbol The formatted trading symbol for the security.
+	//
+	// Example: AAPL
+	Symbol string `json:"symbol"`
+}
+
+// EtfInstrumentKind Type of security instrument.
+//
+// Example: etf
+type EtfInstrumentKind string
+
+// Exchange Describes a single stock or crypto exchange.
+type Exchange struct {
+	// CloseTime The time when the exchange closes for trading.
+	//
+	// Example: 16:00:00
+	CloseTime *string `json:"close_time,omitempty"`
+
+	// Code A short name for the exchange. For standardized exchange code, please use the `mic_code` field.
+	//
+	// Example: TSX
+	Code *string `json:"code,omitempty"`
+
+	// Id Unique ID for the exchange in SnapTrade.
+	//
+	// Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+	Id *ExchangeID `json:"id,omitempty"`
+
+	// MicCode The [Market Identifier Code](https://en.wikipedia.org/wiki/Market_Identifier_Code) (MIC) for the exchange.
+	//
+	// Example: XTSE
+	MicCode *string `json:"mic_code,omitempty"`
+
+	// Name The full name of the exchange.
+	//
+	// Example: Toronto Stock Exchange
+	Name *string `json:"name,omitempty"`
+
+	// StartTime The time when the exchange opens for trading.
+	//
+	// Example: 09:30:00
+	StartTime *string `json:"start_time,omitempty"`
+
+	// Suffix The suffix to be appended to the symbol when trading on this exchange. For example, the suffix for the Toronto Stock Exchange is `.TO`. See `UniversalSymbol->symbol` and `UniversalSymbol->raw_symbol` for more detail.
+	//
+	// Example: .TO
+	Suffix *string `json:"suffix,omitempty"`
+
+	// Timezone The timezone for the trading hours (`start_time` and `close_time`) of the exchange.
+	//
+	// Example: America/New_York
+	Timezone *string `json:"timezone,omitempty"`
+}
+
+// ExchangeID Unique ID for the exchange in SnapTrade.
+//
+// Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+type ExchangeID = openapi_types.UUID
+
+// FigiInstrument Financial Instrument Global Identifier (FIGI) information for the security. See [OpenFIGI](https://www.openfigi.com/) for more information.
+type FigiInstrument struct {
+	// FigiCode This identifier is unique per security per trading venue. See section 1.4.1 of the [FIGI Standard](https://www.openfigi.com/assets/local/figi-allocation-rules.pdf) for more information.
+	//
+	// Example: BBG000B9Y5X2
+	FigiCode *string `json:"figi_code,omitempty"`
+
+	// FigiShareClass This enables users to link multiple FIGIs for the same security in order to obtain an aggregated view across all countries and all exchanges. For example, `AAPL` has a different FIGI for each exchange/trading venue it is traded on. The `figi_share_class` is the same for all of these FIGIs. See section 1.4.3 of the [FIGI Standard](https://www.openfigi.com/assets/local/figi-allocation-rules.pdf) for more information.
+	//
+	// Example: BBG001S5N8V8
+	FigiShareClass *string `json:"figi_share_class,omitempty"`
+}
+
+// FutureInstrument Future instrument metadata for a V2 position.
+type FutureInstrument struct {
+	// Currency ISO-4217 currency code for the contract.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the contract.
+	//
+	// Example: XCME
+	Exchange *string `json:"exchange,omitempty"`
+
+	// ExpirationCode Exchange expiration code for the contract.
+	//
+	// Example: M26
+	ExpirationCode string `json:"expiration_code"`
+
+	// ExpirationDate Expiration date of the contract.
+	//
+	// Example: 2024-09-20
+	ExpirationDate *openapi_types.Date `json:"expiration_date,omitempty"`
+
+	// Id Unique identifier for the future instrument.
+	//
+	// Example: 2fef6a3c-4d3f-4a0a-b1fe-8c45a9c7da7f
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: future
+	Kind FutureInstrumentKind `json:"kind"`
+
+	// Multiplier Multiplier for the future contract.
+	//
+	// Example: 50
+	Multiplier *string `json:"multiplier,omitempty"`
+
+	// RootSymbol Root symbol for the future contract.
+	//
+	// Example: ES
+	RootSymbol string `json:"root_symbol"`
+
+	// Symbol Display symbol for the future contract.
+	//
+	// Example: ESM26
+	Symbol string `json:"symbol"`
+}
+
+// FutureInstrumentKind Type of security instrument.
+//
+// Example: future
+type FutureInstrumentKind string
+
+// FutureOptionInstrument Future option (option on a futures contract) instrument metadata for a V2 position.
+//
+// **Beta:** currently returned only for tastytrade and Interactive Brokers connections, and only for partners it has been enabled for. This schema may change.
+type FutureOptionInstrument struct {
+	// Currency ISO-4217 currency code for the contract.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable description of the option contract.
+	//
+	// Example: 30 Year U.S. Treasury Bond Dec 2025 105 PUT
+	Description *string `json:"description,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the contract.
+	//
+	// Example: XCBT
+	Exchange *string `json:"exchange,omitempty"`
+
+	// ExpirationDate Expiration date of the option contract.
+	//
+	// Example: 2025-11-21
+	ExpirationDate openapi_types.Date `json:"expiration_date"`
+
+	// Id Unique identifier for the future option instrument.
+	//
+	// Example: 5f1c9a76-2c1e-4bfb-9d18-3a2f0f5b6c41
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: future_option
+	Kind FutureOptionInstrumentKind `json:"kind"`
+
+	// Multiplier Notional multiplier for the option contract.
+	//
+	// Example: 1000
+	Multiplier *string `json:"multiplier,omitempty"`
+
+	// OptionType Whether the contract is a call or put.
+	//
+	// Example: PUT
+	OptionType FutureOptionInstrumentOptionType `json:"option_type"`
+
+	// StrikePrice Strike price for the option contract.
+	//
+	// Example: 105
+	StrikePrice string `json:"strike_price"`
+
+	// Symbol Display symbol for the future option contract.
+	//
+	// Example: ZBZ25 P105
+	Symbol string `json:"symbol"`
+
+	// Underlying Future instrument metadata for a V2 position.
+	Underlying FutureInstrument `json:"underlying"`
+}
+
+// FutureOptionInstrumentKind Type of security instrument.
+//
+// Example: future_option
+type FutureOptionInstrumentKind string
+
+// FutureOptionInstrumentOptionType Whether the contract is a call or put.
+//
+// Example: PUT
+type FutureOptionInstrumentOptionType string
+
 // HoldingsStatus Status of account holdings sync. SnapTrade syncs holdings from the brokerage under the following conditions:
 // 1. Initial connection - SnapTrade syncs all holdings (positions, balances, recent orders, and transactions) immediately after the connection is established.
 // 2. Daily sync - Once a day SnapTrade refreshes all holdings from the brokerage.
@@ -490,6 +1351,227 @@ type HoldingsSyncStatusDate = time.Time
 // Id Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
 type Id = openapi_types.UUID
 
+// Instrument Instrument metadata for a V2 position. Use `kind` to determine which schema is present.
+type Instrument struct {
+	union json.RawMessage
+}
+
+// MutualFundInstrument Security instrument metadata for mutual fund positions.
+type MutualFundInstrument struct {
+	// Currency ISO-4217 currency code for the security listing.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable description of the security.
+	//
+	// Example: Vanguard 500 Index Fund Admiral Shares
+	Description *string `json:"description,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the security.
+	//
+	// Example: XNAS
+	Exchange       *string         `json:"exchange,omitempty"`
+	FigiInstrument *FigiInstrument `json:"figi_instrument,omitempty"`
+
+	// Id Unique identifier for the instrument.
+	//
+	// Example: 1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: mutualfund
+	Kind MutualFundInstrumentKind `json:"kind"`
+
+	// RawSymbol The raw symbol without any exchange suffix.
+	//
+	// Example: VFIAX
+	RawSymbol string `json:"raw_symbol"`
+
+	// Symbol The formatted trading symbol for the security.
+	//
+	// Example: VFIAX
+	Symbol string `json:"symbol"`
+}
+
+// MutualFundInstrumentKind Type of security instrument.
+//
+// Example: mutualfund
+type MutualFundInstrumentKind string
+
+// OptionInstrument Option instrument metadata for a V2 position.
+type OptionInstrument struct {
+	// Description Human-readable description of the option contract.
+	//
+	// Example: AAPL Dec 18 2026 240 CALL
+	Description *string `json:"description,omitempty"`
+
+	// ExpirationDate Expiration date of the option contract.
+	//
+	// Example: 2026-12-18
+	ExpirationDate openapi_types.Date `json:"expiration_date"`
+
+	// Id Unique identifier for the option instrument.
+	//
+	// Example: 899e2697-1d38-4c07-91ee-c16a2b1ce5c9
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: option
+	Kind OptionInstrumentKind `json:"kind"`
+
+	// Multiplier Number of underlying shares per contract. Standard options are 100, mini options are 10.
+	//
+	// Example: 100
+	Multiplier string `json:"multiplier"`
+
+	// OptionType Whether the contract is a call or put.
+	//
+	// Example: CALL
+	OptionType OptionInstrumentOptionType `json:"option_type"`
+
+	// StrikePrice Strike price for the option contract.
+	//
+	// Example: 240
+	StrikePrice string `json:"strike_price"`
+
+	// Symbol OCC symbol for the option contract.
+	//
+	// Example: AAPL  261218C00240000
+	Symbol string `json:"symbol"`
+
+	// Underlying The underlying instrument for an option.
+	Underlying UnderlyingOptionInstrument `json:"underlying"`
+}
+
+// OptionInstrumentKind Type of security instrument.
+//
+// Example: option
+type OptionInstrumentKind string
+
+// OptionInstrumentOptionType Whether the contract is a call or put.
+//
+// Example: CALL
+type OptionInstrumentOptionType string
+
+// OptionSymbolID Unique identifier for the option symbol within SnapTrade. This is the ID used to reference the symbol in SnapTrade API calls.
+//
+// Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+type OptionSymbolID = openapi_types.UUID
+
+// OptionsSymbol Uniquely describes an option security + exchange combination across all brokerages.
+type OptionsSymbol struct {
+	// ExpirationDate The option expiration date.
+	//
+	// Example: 2026-12-18
+	ExpirationDate openapi_types.Date `json:"expiration_date"`
+
+	// Id Unique identifier for the option symbol within SnapTrade. This is the ID used to reference the symbol in SnapTrade API calls.
+	//
+	// Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+	Id OptionSymbolID `json:"id"`
+
+	// IsMiniOption Whether the option is a mini option. Mini options have 10 underlying shares per contract instead of the standard 100.
+	//
+	// Example: false
+	IsMiniOption *bool `json:"is_mini_option,omitempty"`
+
+	// OptionType The type of option. Either "CALL" or "PUT".
+	//
+	// Example: CALL
+	OptionType OptionsSymbolOptionType `json:"option_type"`
+
+	// StrikePrice The option strike price.
+	//
+	// Example: 240
+	StrikePrice float32 `json:"strike_price"`
+
+	// Ticker The [OCC symbol](https://en.wikipedia.org/wiki/Option_symbol) for the option.
+	//
+	// Example: AAPL  261218C00240000
+	Ticker string `json:"ticker"`
+
+	// UnderlyingSymbol Symbol object for the underlying security of an option.
+	UnderlyingSymbol UnderlyingSymbol `json:"underlying_symbol"`
+}
+
+// OptionsSymbolOptionType The type of option. Either "CALL" or "PUT".
+//
+// Example: CALL
+type OptionsSymbolOptionType string
+
+// OtherInstrument Security instrument metadata for bonds and other mapped security positions.
+type OtherInstrument struct {
+	// Currency ISO-4217 currency code for the security listing.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable description of the security.
+	//
+	// Example: Apple Inc.
+	Description *string `json:"description,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the security.
+	//
+	// Example: XNAS
+	Exchange       *string         `json:"exchange,omitempty"`
+	FigiInstrument *FigiInstrument `json:"figi_instrument,omitempty"`
+
+	// Id Unique identifier for the instrument.
+	//
+	// Example: 1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: other
+	Kind OtherInstrumentKind `json:"kind"`
+
+	// RawSymbol The raw symbol without any exchange suffix.
+	//
+	// Example: AAPL
+	RawSymbol string `json:"raw_symbol"`
+
+	// Symbol The formatted trading symbol for the security.
+	//
+	// Example: AAPL
+	Symbol string `json:"symbol"`
+}
+
+// OtherInstrumentKind Type of security instrument.
+//
+// Example: other
+type OtherInstrumentKind string
+
+// PaginatedUniversalActivity A paginated list of UniversalActivity objects.
+type PaginatedUniversalActivity struct {
+	Data *[]AccountUniversalActivity `json:"data,omitempty"`
+
+	// Pagination Details about the pagination of the results.
+	Pagination *PaginationDetails `json:"pagination,omitempty"`
+}
+
+// PaginationDetails Details about the pagination of the results.
+type PaginationDetails struct {
+	// Limit The maximum number of items to return in the response.
+	//
+	// Example: 100
+	Limit *int `json:"limit,omitempty"`
+
+	// Offset The starting point of the paginated results.
+	//
+	// Example: 0
+	Offset *int `json:"offset,omitempty"`
+
+	// Total The total number of items available to be returned over the API.
+	//
+	// Example: 1000
+	Total *int `json:"total,omitempty"`
+}
+
 // PortfolioGroupID Portfolio Group ID. Portfolio Groups have been deprecated. Please contact support if you have a use case for it.
 //
 // Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
@@ -497,10 +1579,213 @@ type Id = openapi_types.UUID
 // Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 type PortfolioGroupID = openapi_types.UUID
 
+// ReportingDate Date used to specify timeframe for a reporting call (in YYYY-MM-DD format). These dates are inclusive.
+//
+// Example: 2022-01-24
+type ReportingDate = openapi_types.Date
+
+// SecurityType The type of security. For example, "Common Stock" or "ETF".
+type SecurityType struct {
+	// Code A short code representing the security type. For example, "cs" for Common Stock. Here are some common values:
+	//   - `ad` - ADR
+	//   - `bnd` - Bond
+	//   - `cs` - Common Stock
+	//   - `cef` - Closed End Fund
+	//   - `crypto` - Cryptocurrency
+	//   - `et` - ETF
+	//   - `oef` - Open Ended Fund
+	//   - `pm` - Precious Metals
+	//   - `ps` - Preferred Stock
+	//   - `rt` - Right
+	//   - `struct` - Structured Product
+	//   - `ut` - Unit
+	//   - `wi` - When Issued
+	//   - `wt` - Warrant
+	//
+	//
+	// Example: cs
+	Code *string `json:"code,omitempty"`
+
+	// Description A human-readable description of the security type. For example, "Common Stock" or "ETF".
+	//
+	// Example: Common Stock
+	Description *string `json:"description,omitempty"`
+
+	// Id Unique identifier for the security type within SnapTrade. This is the ID used to reference the security type in SnapTrade API calls.
+	//
+	// Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+	Id *SecurityTypeID `json:"id,omitempty"`
+
+	// IsSupported This field is deprecated and should not be used. Please reach out to SnapTrade support if you have a valid use case for this.
+	//
+	// Example: true
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	IsSupported *bool `json:"is_supported,omitempty"`
+}
+
+// SecurityTypeID Unique identifier for the security type within SnapTrade. This is the ID used to reference the security type in SnapTrade API calls.
+//
+// Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+type SecurityTypeID = openapi_types.UUID
+
+// StockInstrument Security instrument metadata for stock positions.
+type StockInstrument struct {
+	// Currency ISO-4217 currency code for the security listing.
+	//
+	// Example: USD
+	Currency *string `json:"currency,omitempty"`
+
+	// Description Human-readable description of the security.
+	//
+	// Example: Apple Inc.
+	Description *string `json:"description,omitempty"`
+
+	// Exchange Exchange MIC code or exchange code for the security.
+	//
+	// Example: XNAS
+	Exchange       *string         `json:"exchange,omitempty"`
+	FigiInstrument *FigiInstrument `json:"figi_instrument,omitempty"`
+
+	// Id Unique identifier for the instrument.
+	//
+	// Example: 1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: stock
+	Kind StockInstrumentKind `json:"kind"`
+
+	// RawSymbol The raw symbol without any exchange suffix.
+	//
+	// Example: AAPL
+	RawSymbol string `json:"raw_symbol"`
+
+	// Symbol The formatted trading symbol for the security.
+	//
+	// Example: AAPL
+	Symbol string `json:"symbol"`
+}
+
+// StockInstrumentKind Type of security instrument.
+//
+// Example: stock
+type StockInstrumentKind string
+
+// Symbol Uniquely describes a single security + exchange combination across all brokerages.
+type Symbol struct {
+	// Currency The currency in which the security is traded.
+	Currency *Currency `json:"currency,omitempty"`
+
+	// Description A human-readable description of the security. This is usually the company name or ETF name.
+	//
+	// Example: VANGUARD CDN AGGREGATE BOND INDEX ETF
+	Description *string `json:"description,omitempty"`
+
+	// Exchange The exchange on which the security is listed and traded.
+	Exchange *Exchange `json:"exchange,omitempty"`
+
+	// FigiCode This identifier is unique per security per trading venue. See section 1.4.1 of the [FIGI Standard](https://www.openfigi.com/assets/local/figi-allocation-rules.pdf) for more information. This value should be the same as the `figi_code` in the `figi_instrument` child property.
+	//
+	// Example: BBG000B9XRY4
+	FigiCode       *string         `json:"figi_code,omitempty"`
+	FigiInstrument *FigiInstrument `json:"figi_instrument,omitempty"`
+
+	// Id Unique identifier for the symbol within SnapTrade. This is the ID used to reference the symbol in SnapTrade API calls.
+	//
+	// Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+	Id *UniversalSymbolID `json:"id,omitempty"`
+
+	// RawSymbol The raw symbol is `symbol` with the exchange suffix removed. For example, if `symbol` is "VAB.TO", then `raw_symbol` is "VAB".
+	//
+	// Example: VAB
+	RawSymbol *string `json:"raw_symbol,omitempty"`
+
+	// Symbol The security's trading ticker symbol. For example "AAPL" for Apple Inc. We largely follow the [Yahoo Finance ticker format](https://help.yahoo.com/kb/SLN2310.html)(click on "Yahoo Finance Market Coverage and Data Delays"). For example, for securities traded on the Toronto Stock Exchange, the symbol has a '.TO' suffix. For securities traded on NASDAQ or NYSE, the symbol does not have a suffix. Share classes and preferred series use SnapTrade's canonical dotted form, for example `HBND.U.TO`, `FTN.PR.A.TO`, and `ECF.PRA`.
+	//
+	// Example: VAB.TO
+	Symbol *string `json:"symbol,omitempty"`
+
+	// Type The type of security. For example, "Common Stock" or "ETF".
+	Type *SecurityType `json:"type,omitempty"`
+}
+
 // SyncStatusDate Date in YYYY-MM-DD format or null
 //
 // Example: 2022-01-24
 type SyncStatusDate = openapi_types.Date
+
+// TaxLot Describes a single tax lot for a position.
+type TaxLot struct {
+	// CostBasis The cost basis of the entire lot.
+	//
+	// Example: 1005.00
+	CostBasis *string `json:"cost_basis,omitempty"`
+
+	// CurrentValue The current market value of the entire lot.
+	//
+	// Example: 1200.00
+	CurrentValue *string `json:"current_value,omitempty"`
+
+	// LotId The unique id for this specific tax lot
+	//
+	// Example: 12345678
+	LotId *string `json:"lot_id,omitempty"`
+
+	// OriginalPurchaseDate The date and time of the purchase.
+	//
+	// Example: 2022-01-15T10:30:00Z
+	OriginalPurchaseDate *time.Time `json:"original_purchase_date,omitempty"`
+
+	// PositionType The type of position for the tax lot (e.g., LONG, SHORT).
+	//
+	// Example: LONG
+	PositionType *string `json:"position_type,omitempty"`
+
+	// PurchasedPrice The purchase price per share for the tax lot.
+	//
+	// Example: 100.50
+	PurchasedPrice *string `json:"purchased_price,omitempty"`
+
+	// Quantity The number of shares in the tax lot. This can be fractional or integer units.
+	//
+	// Example: 10
+	Quantity *string `json:"quantity,omitempty"`
+}
+
+// TokenizedAssetInstrument Canonical tokenized asset wrapper for a V2 position. Symbol and description
+// duplicate the listed underlying's display metadata for convenience; they
+// are not token-specific identifiers or labels. Currency and exchange metadata
+// are provided only in underlying_instrument.
+type TokenizedAssetInstrument struct {
+	// Description Display name of the underlying stock or ETF, when available.
+	//
+	// Example: Robinhood Markets
+	Description *string `json:"description,omitempty"`
+
+	// Id Unique identifier for the canonical tokenized asset wrapper.
+	//
+	// Example: 1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of security instrument.
+	//
+	// Example: tokenized_asset
+	Kind TokenizedAssetInstrumentKind `json:"kind"`
+
+	// Symbol Display symbol of the underlying stock or ETF, not a token-specific ticker.
+	//
+	// Example: HOOD
+	Symbol string `json:"symbol"`
+
+	// UnderlyingInstrument The listed stock or ETF underlying a tokenized asset.
+	UnderlyingInstrument UnderlyingTokenizedAssetInstrument `json:"underlying_instrument"`
+}
+
+// TokenizedAssetInstrumentKind Type of security instrument.
+//
+// Example: tokenized_asset
+type TokenizedAssetInstrumentKind string
 
 // TransactionsStatus Status of account transaction sync. SnapTrade syncs transactions from the brokerage under the following conditions:
 // 1. Initial connection - SnapTrade syncs all transactions from the brokerage account as far back as the brokerage allows. Check [our integrations doc](https://support.snaptrade.com/brokerages-table?v=6fab8012ade6441fa0c6d9af9c55ce3a) for details on how far back we sync for each brokerage.
@@ -517,6 +1802,1057 @@ type TransactionsStatus struct {
 
 	// LastSuccessfulSync All transactions up to this date have been successfully synced. Please note that this is not the date of the last transaction, nor the last time SnapTrade attempted to sync transactions.
 	LastSuccessfulSync *SyncStatusDate `json:"last_successful_sync,omitempty"`
+}
+
+// USExchange US Stock Exchange
+type USExchange struct {
+	// AllowsCryptocurrencySymbols Example: false
+	AllowsCryptocurrencySymbols *bool `json:"allows_cryptocurrency_symbols,omitempty"`
+
+	// CloseTime Example: 16:00:00
+	CloseTime *string `json:"close_time,omitempty"`
+
+	// Code Example: ARCX
+	Code *string `json:"code,omitempty"`
+
+	// Id Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+	Id *Id `json:"id,omitempty"`
+
+	// MicCode Example: ARCA
+	MicCode *string `json:"mic_code,omitempty"`
+
+	// Name Example: NYSE ARCA
+	Name *string `json:"name,omitempty"`
+
+	// StartTime Example: 09:30:00
+	StartTime *string `json:"start_time,omitempty"`
+
+	// Suffix Example: None
+	Suffix *string `json:"suffix,omitempty"`
+
+	// Timezone Example: America/New_York
+	Timezone *string `json:"timezone,omitempty"`
+}
+
+// UnderlyingCfdInstrument The underlying instrument referenced by a CFD contract.
+type UnderlyingCfdInstrument struct {
+	union json.RawMessage
+}
+
+// UnderlyingOptionInstrument The underlying instrument for an option.
+type UnderlyingOptionInstrument struct {
+	union json.RawMessage
+}
+
+// UnderlyingSymbol Symbol object for the underlying security of an option.
+type UnderlyingSymbol struct {
+	// Currencies This field is deprecated and should not be used. Please reach out to SnapTrade support if you have a valid use case for this.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
+	Currencies *[]Currency `json:"currencies,omitempty"`
+
+	// Currency The currency in which the security is traded.
+	Currency *Currency `json:"currency,omitempty"`
+
+	// Description A human-readable description of the security. This is usually the company name or ETF name.
+	//
+	// Example: SPDR S&P 500 ETF Trust
+	Description *string `json:"description,omitempty"`
+
+	// Exchange The exchange on which the security is listed and traded.
+	Exchange *USExchange `json:"exchange,omitempty"`
+
+	// FigiCode This identifier is unique per security per trading venue. See section 1.4.1 of the [FIGI Standard](https://www.openfigi.com/assets/local/figi-allocation-rules.pdf) for more information. This value should be the same as the `figi_code` in the `figi_instrument` child property.
+	//
+	// Example: BBG000B9XRY4
+	FigiCode       *string         `json:"figi_code,omitempty"`
+	FigiInstrument *FigiInstrument `json:"figi_instrument,omitempty"`
+
+	// Id Unique identifier for the symbol within SnapTrade. This is the ID used to reference the symbol in SnapTrade API calls.
+	//
+	// Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+	Id *UniversalSymbolID `json:"id,omitempty"`
+
+	// RawSymbol The raw symbol is `symbol` with the exchange suffix removed. For example, if `symbol` is "VAB.TO", then `raw_symbol` is "VAB".
+	//
+	// Example: VAB
+	RawSymbol *string `json:"raw_symbol,omitempty"`
+
+	// Symbol The security's trading ticker symbol. For example "AAPL" for Apple Inc. We largely follow the [Yahoo Finance ticker format](https://help.yahoo.com/kb/SLN2310.html)(click on "Yahoo Finance Market Coverage and Data Delays"). For example, for securities traded on the Toronto Stock Exchange, the symbol has a '.TO' suffix. For securities traded on NASDAQ or NYSE, the symbol does not have a suffix.
+	//
+	// Example: SPY
+	Symbol *string `json:"symbol,omitempty"`
+
+	// Type The type of security. For example, "Common Stock" or "ETF".
+	Type *SecurityType `json:"type,omitempty"`
+}
+
+// UnderlyingTokenizedAssetInstrument The listed stock or ETF underlying a tokenized asset.
+type UnderlyingTokenizedAssetInstrument struct {
+	union json.RawMessage
+}
+
+// UniversalSymbolID Unique identifier for the symbol within SnapTrade. This is the ID used to reference the symbol in SnapTrade API calls.
+//
+// Example: 2bcd7cc3-e922-4976-bce1-9858296801c3
+type UniversalSymbolID = openapi_types.UUID
+
+// TooManyRequests Example for a rate-limited request response
+type TooManyRequests = N429TooManyRequestsResponse
+
+// AccountInformationGetAccountActivitiesParams defines parameters for AccountInformationGetAccountActivities.
+type AccountInformationGetAccountActivitiesParams struct {
+	// StartDate The start date (inclusive) of the transaction history to retrieve. If not provided, the default is the first transaction known to SnapTrade based on `trade_date`.
+	StartDate *ReportingDate `form:"startDate,omitempty" json:"startDate,omitempty"`
+
+	// EndDate The end date (inclusive) of the transaction history to retrieve. If not provided, the default is the last transaction known to SnapTrade based on `trade_date`.
+	EndDate *ReportingDate `form:"endDate,omitempty" json:"endDate,omitempty"`
+
+	// Offset An integer that specifies the starting point of the paginated results. Default is 0.
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// Limit An integer that specifies the maximum number of transactions to return. Default of 1000.
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Type Optional comma separated list of transaction types to filter by. SnapTrade does a best effort to categorize brokerage transaction types into a common set of values. Here are some of the most popular values:
+	//   - `BUY` - Asset bought.
+	//   - `SELL` - Asset sold.
+	//   - `DIVIDEND` - Dividend payout.
+	//   - `SUBSTITUTE_DIVIDEND` - Payment in lieu of a dividend.
+	//   - `CONTRIBUTION` - Cash contribution.
+	//   - `WITHDRAWAL` - Cash withdrawal.
+	//   - `REI` - Dividend reinvestment.
+	//   - `STOCK_DIVIDEND` - A type of dividend where a company distributes shares instead of cash
+	//   - `INTEREST` - Interest deposited into the account.
+	//   - `FEE` - Fee withdrawn from the account.
+	//   - `TAX` - A tax related fee.
+	//   - `OPTIONEXPIRATION` - Option expiration event.
+	//   - `OPTIONASSIGNMENT` - Option assignment event.
+	//   - `OPTIONEXERCISE` - Option exercise event.
+	//   - `TRANSFER` - Transfer of assets from one account to another.
+	//   - `SPLIT` - A stock share split.
+	Type *string `form:"type,omitempty" json:"type,omitempty"`
+}
+
+// AsStockInstrument returns the union data inside the Instrument as a StockInstrument
+func (t Instrument) AsStockInstrument() (StockInstrument, error) {
+	var body StockInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromStockInstrument overwrites any union data inside the Instrument as the provided StockInstrument
+func (t *Instrument) FromStockInstrument(v StockInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeStockInstrument performs a merge with any union data inside the Instrument, using the provided StockInstrument
+func (t *Instrument) MergeStockInstrument(v StockInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsOptionInstrument returns the union data inside the Instrument as a OptionInstrument
+func (t Instrument) AsOptionInstrument() (OptionInstrument, error) {
+	var body OptionInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOptionInstrument overwrites any union data inside the Instrument as the provided OptionInstrument
+func (t *Instrument) FromOptionInstrument(v OptionInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOptionInstrument performs a merge with any union data inside the Instrument, using the provided OptionInstrument
+func (t *Instrument) MergeOptionInstrument(v OptionInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCryptoInstrument returns the union data inside the Instrument as a CryptoInstrument
+func (t Instrument) AsCryptoInstrument() (CryptoInstrument, error) {
+	var body CryptoInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCryptoInstrument overwrites any union data inside the Instrument as the provided CryptoInstrument
+func (t *Instrument) FromCryptoInstrument(v CryptoInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCryptoInstrument performs a merge with any union data inside the Instrument, using the provided CryptoInstrument
+func (t *Instrument) MergeCryptoInstrument(v CryptoInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsFutureInstrument returns the union data inside the Instrument as a FutureInstrument
+func (t Instrument) AsFutureInstrument() (FutureInstrument, error) {
+	var body FutureInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFutureInstrument overwrites any union data inside the Instrument as the provided FutureInstrument
+func (t *Instrument) FromFutureInstrument(v FutureInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeFutureInstrument performs a merge with any union data inside the Instrument, using the provided FutureInstrument
+func (t *Instrument) MergeFutureInstrument(v FutureInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsFutureOptionInstrument returns the union data inside the Instrument as a FutureOptionInstrument
+func (t Instrument) AsFutureOptionInstrument() (FutureOptionInstrument, error) {
+	var body FutureOptionInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromFutureOptionInstrument overwrites any union data inside the Instrument as the provided FutureOptionInstrument
+func (t *Instrument) FromFutureOptionInstrument(v FutureOptionInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeFutureOptionInstrument performs a merge with any union data inside the Instrument, using the provided FutureOptionInstrument
+func (t *Instrument) MergeFutureOptionInstrument(v FutureOptionInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsEtfInstrument returns the union data inside the Instrument as a EtfInstrument
+func (t Instrument) AsEtfInstrument() (EtfInstrument, error) {
+	var body EtfInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromEtfInstrument overwrites any union data inside the Instrument as the provided EtfInstrument
+func (t *Instrument) FromEtfInstrument(v EtfInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeEtfInstrument performs a merge with any union data inside the Instrument, using the provided EtfInstrument
+func (t *Instrument) MergeEtfInstrument(v EtfInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMutualFundInstrument returns the union data inside the Instrument as a MutualFundInstrument
+func (t Instrument) AsMutualFundInstrument() (MutualFundInstrument, error) {
+	var body MutualFundInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMutualFundInstrument overwrites any union data inside the Instrument as the provided MutualFundInstrument
+func (t *Instrument) FromMutualFundInstrument(v MutualFundInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMutualFundInstrument performs a merge with any union data inside the Instrument, using the provided MutualFundInstrument
+func (t *Instrument) MergeMutualFundInstrument(v MutualFundInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCefInstrument returns the union data inside the Instrument as a CefInstrument
+func (t Instrument) AsCefInstrument() (CefInstrument, error) {
+	var body CefInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCefInstrument overwrites any union data inside the Instrument as the provided CefInstrument
+func (t *Instrument) FromCefInstrument(v CefInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCefInstrument performs a merge with any union data inside the Instrument, using the provided CefInstrument
+func (t *Instrument) MergeCefInstrument(v CefInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAdrInstrument returns the union data inside the Instrument as a AdrInstrument
+func (t Instrument) AsAdrInstrument() (AdrInstrument, error) {
+	var body AdrInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAdrInstrument overwrites any union data inside the Instrument as the provided AdrInstrument
+func (t *Instrument) FromAdrInstrument(v AdrInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAdrInstrument performs a merge with any union data inside the Instrument, using the provided AdrInstrument
+func (t *Instrument) MergeAdrInstrument(v AdrInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCfdInstrument returns the union data inside the Instrument as a CfdInstrument
+func (t Instrument) AsCfdInstrument() (CfdInstrument, error) {
+	var body CfdInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCfdInstrument overwrites any union data inside the Instrument as the provided CfdInstrument
+func (t *Instrument) FromCfdInstrument(v CfdInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCfdInstrument performs a merge with any union data inside the Instrument, using the provided CfdInstrument
+func (t *Instrument) MergeCfdInstrument(v CfdInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsOtherInstrument returns the union data inside the Instrument as a OtherInstrument
+func (t Instrument) AsOtherInstrument() (OtherInstrument, error) {
+	var body OtherInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOtherInstrument overwrites any union data inside the Instrument as the provided OtherInstrument
+func (t *Instrument) FromOtherInstrument(v OtherInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOtherInstrument performs a merge with any union data inside the Instrument, using the provided OtherInstrument
+func (t *Instrument) MergeOtherInstrument(v OtherInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsTokenizedAssetInstrument returns the union data inside the Instrument as a TokenizedAssetInstrument
+func (t Instrument) AsTokenizedAssetInstrument() (TokenizedAssetInstrument, error) {
+	var body TokenizedAssetInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTokenizedAssetInstrument overwrites any union data inside the Instrument as the provided TokenizedAssetInstrument
+func (t *Instrument) FromTokenizedAssetInstrument(v TokenizedAssetInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTokenizedAssetInstrument performs a merge with any union data inside the Instrument, using the provided TokenizedAssetInstrument
+func (t *Instrument) MergeTokenizedAssetInstrument(v TokenizedAssetInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t Instrument) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t Instrument) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "adr":
+		return t.AsAdrInstrument()
+	case "bond":
+		return t.AsOtherInstrument()
+	case "cef":
+		return t.AsCefInstrument()
+	case "cfd":
+		return t.AsCfdInstrument()
+	case "crypto":
+		return t.AsCryptoInstrument()
+	case "etf":
+		return t.AsEtfInstrument()
+	case "future":
+		return t.AsFutureInstrument()
+	case "future_option":
+		return t.AsFutureOptionInstrument()
+	case "mutualfund":
+		return t.AsMutualFundInstrument()
+	case "option":
+		return t.AsOptionInstrument()
+	case "other":
+		return t.AsOtherInstrument()
+	case "stock":
+		return t.AsStockInstrument()
+	case "tokenized_asset":
+		return t.AsTokenizedAssetInstrument()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t Instrument) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *Instrument) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsStockInstrument returns the union data inside the UnderlyingCfdInstrument as a StockInstrument
+func (t UnderlyingCfdInstrument) AsStockInstrument() (StockInstrument, error) {
+	var body StockInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromStockInstrument overwrites any union data inside the UnderlyingCfdInstrument as the provided StockInstrument
+func (t *UnderlyingCfdInstrument) FromStockInstrument(v StockInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeStockInstrument performs a merge with any union data inside the UnderlyingCfdInstrument, using the provided StockInstrument
+func (t *UnderlyingCfdInstrument) MergeStockInstrument(v StockInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCryptoInstrument returns the union data inside the UnderlyingCfdInstrument as a CryptoInstrument
+func (t UnderlyingCfdInstrument) AsCryptoInstrument() (CryptoInstrument, error) {
+	var body CryptoInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCryptoInstrument overwrites any union data inside the UnderlyingCfdInstrument as the provided CryptoInstrument
+func (t *UnderlyingCfdInstrument) FromCryptoInstrument(v CryptoInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCryptoInstrument performs a merge with any union data inside the UnderlyingCfdInstrument, using the provided CryptoInstrument
+func (t *UnderlyingCfdInstrument) MergeCryptoInstrument(v CryptoInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsEtfInstrument returns the union data inside the UnderlyingCfdInstrument as a EtfInstrument
+func (t UnderlyingCfdInstrument) AsEtfInstrument() (EtfInstrument, error) {
+	var body EtfInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromEtfInstrument overwrites any union data inside the UnderlyingCfdInstrument as the provided EtfInstrument
+func (t *UnderlyingCfdInstrument) FromEtfInstrument(v EtfInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeEtfInstrument performs a merge with any union data inside the UnderlyingCfdInstrument, using the provided EtfInstrument
+func (t *UnderlyingCfdInstrument) MergeEtfInstrument(v EtfInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMutualFundInstrument returns the union data inside the UnderlyingCfdInstrument as a MutualFundInstrument
+func (t UnderlyingCfdInstrument) AsMutualFundInstrument() (MutualFundInstrument, error) {
+	var body MutualFundInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMutualFundInstrument overwrites any union data inside the UnderlyingCfdInstrument as the provided MutualFundInstrument
+func (t *UnderlyingCfdInstrument) FromMutualFundInstrument(v MutualFundInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMutualFundInstrument performs a merge with any union data inside the UnderlyingCfdInstrument, using the provided MutualFundInstrument
+func (t *UnderlyingCfdInstrument) MergeMutualFundInstrument(v MutualFundInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCefInstrument returns the union data inside the UnderlyingCfdInstrument as a CefInstrument
+func (t UnderlyingCfdInstrument) AsCefInstrument() (CefInstrument, error) {
+	var body CefInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCefInstrument overwrites any union data inside the UnderlyingCfdInstrument as the provided CefInstrument
+func (t *UnderlyingCfdInstrument) FromCefInstrument(v CefInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCefInstrument performs a merge with any union data inside the UnderlyingCfdInstrument, using the provided CefInstrument
+func (t *UnderlyingCfdInstrument) MergeCefInstrument(v CefInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAdrInstrument returns the union data inside the UnderlyingCfdInstrument as a AdrInstrument
+func (t UnderlyingCfdInstrument) AsAdrInstrument() (AdrInstrument, error) {
+	var body AdrInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAdrInstrument overwrites any union data inside the UnderlyingCfdInstrument as the provided AdrInstrument
+func (t *UnderlyingCfdInstrument) FromAdrInstrument(v AdrInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAdrInstrument performs a merge with any union data inside the UnderlyingCfdInstrument, using the provided AdrInstrument
+func (t *UnderlyingCfdInstrument) MergeAdrInstrument(v AdrInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsOtherInstrument returns the union data inside the UnderlyingCfdInstrument as a OtherInstrument
+func (t UnderlyingCfdInstrument) AsOtherInstrument() (OtherInstrument, error) {
+	var body OtherInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOtherInstrument overwrites any union data inside the UnderlyingCfdInstrument as the provided OtherInstrument
+func (t *UnderlyingCfdInstrument) FromOtherInstrument(v OtherInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOtherInstrument performs a merge with any union data inside the UnderlyingCfdInstrument, using the provided OtherInstrument
+func (t *UnderlyingCfdInstrument) MergeOtherInstrument(v OtherInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t UnderlyingCfdInstrument) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t UnderlyingCfdInstrument) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "adr":
+		return t.AsAdrInstrument()
+	case "bond":
+		return t.AsOtherInstrument()
+	case "cef":
+		return t.AsCefInstrument()
+	case "crypto":
+		return t.AsCryptoInstrument()
+	case "etf":
+		return t.AsEtfInstrument()
+	case "mutualfund":
+		return t.AsMutualFundInstrument()
+	case "other":
+		return t.AsOtherInstrument()
+	case "stock":
+		return t.AsStockInstrument()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t UnderlyingCfdInstrument) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *UnderlyingCfdInstrument) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsStockInstrument returns the union data inside the UnderlyingOptionInstrument as a StockInstrument
+func (t UnderlyingOptionInstrument) AsStockInstrument() (StockInstrument, error) {
+	var body StockInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromStockInstrument overwrites any union data inside the UnderlyingOptionInstrument as the provided StockInstrument
+func (t *UnderlyingOptionInstrument) FromStockInstrument(v StockInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeStockInstrument performs a merge with any union data inside the UnderlyingOptionInstrument, using the provided StockInstrument
+func (t *UnderlyingOptionInstrument) MergeStockInstrument(v StockInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCryptoInstrument returns the union data inside the UnderlyingOptionInstrument as a CryptoInstrument
+func (t UnderlyingOptionInstrument) AsCryptoInstrument() (CryptoInstrument, error) {
+	var body CryptoInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCryptoInstrument overwrites any union data inside the UnderlyingOptionInstrument as the provided CryptoInstrument
+func (t *UnderlyingOptionInstrument) FromCryptoInstrument(v CryptoInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCryptoInstrument performs a merge with any union data inside the UnderlyingOptionInstrument, using the provided CryptoInstrument
+func (t *UnderlyingOptionInstrument) MergeCryptoInstrument(v CryptoInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsEtfInstrument returns the union data inside the UnderlyingOptionInstrument as a EtfInstrument
+func (t UnderlyingOptionInstrument) AsEtfInstrument() (EtfInstrument, error) {
+	var body EtfInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromEtfInstrument overwrites any union data inside the UnderlyingOptionInstrument as the provided EtfInstrument
+func (t *UnderlyingOptionInstrument) FromEtfInstrument(v EtfInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeEtfInstrument performs a merge with any union data inside the UnderlyingOptionInstrument, using the provided EtfInstrument
+func (t *UnderlyingOptionInstrument) MergeEtfInstrument(v EtfInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsMutualFundInstrument returns the union data inside the UnderlyingOptionInstrument as a MutualFundInstrument
+func (t UnderlyingOptionInstrument) AsMutualFundInstrument() (MutualFundInstrument, error) {
+	var body MutualFundInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromMutualFundInstrument overwrites any union data inside the UnderlyingOptionInstrument as the provided MutualFundInstrument
+func (t *UnderlyingOptionInstrument) FromMutualFundInstrument(v MutualFundInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeMutualFundInstrument performs a merge with any union data inside the UnderlyingOptionInstrument, using the provided MutualFundInstrument
+func (t *UnderlyingOptionInstrument) MergeMutualFundInstrument(v MutualFundInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsCefInstrument returns the union data inside the UnderlyingOptionInstrument as a CefInstrument
+func (t UnderlyingOptionInstrument) AsCefInstrument() (CefInstrument, error) {
+	var body CefInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromCefInstrument overwrites any union data inside the UnderlyingOptionInstrument as the provided CefInstrument
+func (t *UnderlyingOptionInstrument) FromCefInstrument(v CefInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeCefInstrument performs a merge with any union data inside the UnderlyingOptionInstrument, using the provided CefInstrument
+func (t *UnderlyingOptionInstrument) MergeCefInstrument(v CefInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAdrInstrument returns the union data inside the UnderlyingOptionInstrument as a AdrInstrument
+func (t UnderlyingOptionInstrument) AsAdrInstrument() (AdrInstrument, error) {
+	var body AdrInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAdrInstrument overwrites any union data inside the UnderlyingOptionInstrument as the provided AdrInstrument
+func (t *UnderlyingOptionInstrument) FromAdrInstrument(v AdrInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAdrInstrument performs a merge with any union data inside the UnderlyingOptionInstrument, using the provided AdrInstrument
+func (t *UnderlyingOptionInstrument) MergeAdrInstrument(v AdrInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsOtherInstrument returns the union data inside the UnderlyingOptionInstrument as a OtherInstrument
+func (t UnderlyingOptionInstrument) AsOtherInstrument() (OtherInstrument, error) {
+	var body OtherInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromOtherInstrument overwrites any union data inside the UnderlyingOptionInstrument as the provided OtherInstrument
+func (t *UnderlyingOptionInstrument) FromOtherInstrument(v OtherInstrument) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeOtherInstrument performs a merge with any union data inside the UnderlyingOptionInstrument, using the provided OtherInstrument
+func (t *UnderlyingOptionInstrument) MergeOtherInstrument(v OtherInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t UnderlyingOptionInstrument) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t UnderlyingOptionInstrument) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "adr":
+		return t.AsAdrInstrument()
+	case "bond":
+		return t.AsOtherInstrument()
+	case "cef":
+		return t.AsCefInstrument()
+	case "crypto":
+		return t.AsCryptoInstrument()
+	case "etf":
+		return t.AsEtfInstrument()
+	case "mutualfund":
+		return t.AsMutualFundInstrument()
+	case "other":
+		return t.AsOtherInstrument()
+	case "stock":
+		return t.AsStockInstrument()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t UnderlyingOptionInstrument) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *UnderlyingOptionInstrument) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsStockInstrument returns the union data inside the UnderlyingTokenizedAssetInstrument as a StockInstrument
+func (t UnderlyingTokenizedAssetInstrument) AsStockInstrument() (StockInstrument, error) {
+	var body StockInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromStockInstrument overwrites any union data inside the UnderlyingTokenizedAssetInstrument as the provided StockInstrument
+func (t *UnderlyingTokenizedAssetInstrument) FromStockInstrument(v StockInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"stock"}`))
+	t.union = b
+	return err
+}
+
+// MergeStockInstrument performs a merge with any union data inside the UnderlyingTokenizedAssetInstrument, using the provided StockInstrument
+func (t *UnderlyingTokenizedAssetInstrument) MergeStockInstrument(v StockInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"stock"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsEtfInstrument returns the union data inside the UnderlyingTokenizedAssetInstrument as a EtfInstrument
+func (t UnderlyingTokenizedAssetInstrument) AsEtfInstrument() (EtfInstrument, error) {
+	var body EtfInstrument
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromEtfInstrument overwrites any union data inside the UnderlyingTokenizedAssetInstrument as the provided EtfInstrument
+func (t *UnderlyingTokenizedAssetInstrument) FromEtfInstrument(v EtfInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"etf"}`))
+	t.union = b
+	return err
+}
+
+// MergeEtfInstrument performs a merge with any union data inside the UnderlyingTokenizedAssetInstrument, using the provided EtfInstrument
+func (t *UnderlyingTokenizedAssetInstrument) MergeEtfInstrument(v EtfInstrument) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	b, err = runtime.JSONMerge(b, []byte(`{"kind":"etf"}`))
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t UnderlyingTokenizedAssetInstrument) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"kind"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t UnderlyingTokenizedAssetInstrument) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "etf":
+		return t.AsEtfInstrument()
+	case "stock":
+		return t.AsStockInstrument()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t UnderlyingTokenizedAssetInstrument) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *UnderlyingTokenizedAssetInstrument) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
 }
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
@@ -593,6 +2929,51 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// AccountInformationGetAccountActivities List account activities
+	//
+	// This endpoint is not deprecated and has no planned sunset. Responses to requests using the legacy `/api/v1` path prefix include `Deprecation: @1781222400` (June 12, 2026); that header applies only to the path prefix. Use the canonical root path `/accounts/{accountId}/activities`.
+	//
+	// Returns all historical transactions for the specified account.
+	//
+	// This endpoint is paginated with a default page size of 1000. The endpoint will return a maximum of 1000 transactions per request. See the query parameters for pagination options.
+	//
+	// Transaction are returned in reverse chronological order, using the `trade_date` field.
+	//
+	// This endpoint returns Daily data. Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage.
+	//
+	// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+	//
+	// Corresponds with GET /accounts/{accountId}/activities (the `AccountInformationGetAccountActivities` operationId).
+	AccountInformationGetAccountActivities(ctx context.Context, accountId AccountID, params *AccountInformationGetAccountActivitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AccountInformationGetUserAccountBalance List account balances
+	//
+	// Returns a list of balances for the account. Each element of the list has a distinct currency. Some brokerages like Questrade [allows holding multiple currencies in the same account](https://www.questrade.com/learning/questrade-basics/balances-and-reports/understanding-your-account-balances).
+	//
+	// Check your API key on the [Customer Dashboard billing page](https://dashboard.snaptrade.com/settings/billing) to see if you have real-time data access:
+	//   - If you do, this endpoint returns real-time data.
+	//   - If you don't, Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage. If you need real-time, use the [manual refresh](/reference/Connections/Connections_refreshBrokerageAuthorization) endpoint.
+	//
+	// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+	//
+	// Corresponds with GET /accounts/{accountId}/balances (the `AccountInformationGetUserAccountBalance` operationId).
+	AccountInformationGetUserAccountBalance(ctx context.Context, accountId AccountID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AccountInformationGetAllAccountPositions List all account positions
+	//
+	// Returns a list of all positions in the specified account.
+	//
+	// The `results` list can contain multiple instrument types in the same response, including stocks, ADRs, ETFs, mutual funds, closed-end funds, bonds, crypto, futures, option positions, future option positions, CFD positions, and tokenized asset positions. Use the `instrument.kind` discriminator to determine the schema for each position's `instrument`.
+	//
+	// **Beta:** future option positions (`instrument.kind: future_option`) are in beta. They are currently returned only for tastytrade and Interactive Brokers connections, and only for partners they have been enabled for — please contact the SnapTrade team to enable them. The `FutureOptionInstrument` schema may change.
+	//
+	// Positions counted in account cash balance or buying power include `cash_equivalent: true`. `stock`, `adr`, `etf`, `mutualfund`, and `crypto` positions may include `tax_lots` when tax lot data is enabled for the account. To see which institutions support tax lot data, please see our [supported institutions doc](https://support.snaptrade.com/brokerages).
+	//
+	// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+	//
+	// Corresponds with GET /accounts/{accountId}/positions/all (the `AccountInformationGetAllAccountPositions` operationId).
+	AccountInformationGetAllAccountPositions(ctx context.Context, accountId AccountID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ConnectionsListBrokerageAuthorizations List all connections
 	//
 	// Returns a list of all connections for the specified user. Note that `Connection` and `Brokerage Authorization` are interchangeable, but the term `Connection` is preferred and used in the doc for consistency.
@@ -616,6 +2997,81 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /authorizations/{authorizationId}/accounts (the `ConnectionsListBrokerageAuthorizationAccounts` operationId).
 	ConnectionsListBrokerageAuthorizationAccounts(ctx context.Context, authorizationId BrokerageAuthID, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+// AccountInformationGetAccountActivities List account activities
+//
+// This endpoint is not deprecated and has no planned sunset. Responses to requests using the legacy `/api/v1` path prefix include `Deprecation: @1781222400` (June 12, 2026); that header applies only to the path prefix. Use the canonical root path `/accounts/{accountId}/activities`.
+//
+// Returns all historical transactions for the specified account.
+//
+// This endpoint is paginated with a default page size of 1000. The endpoint will return a maximum of 1000 transactions per request. See the query parameters for pagination options.
+//
+// Transaction are returned in reverse chronological order, using the `trade_date` field.
+//
+// This endpoint returns Daily data. Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage.
+//
+// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+//
+// Corresponds with GET /accounts/{accountId}/activities (the `AccountInformationGetAccountActivities` operationId).
+func (c *Client) AccountInformationGetAccountActivities(ctx context.Context, accountId AccountID, params *AccountInformationGetAccountActivitiesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAccountInformationGetAccountActivitiesRequest(c.Server, accountId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AccountInformationGetUserAccountBalance List account balances
+//
+// Returns a list of balances for the account. Each element of the list has a distinct currency. Some brokerages like Questrade [allows holding multiple currencies in the same account](https://www.questrade.com/learning/questrade-basics/balances-and-reports/understanding-your-account-balances).
+//
+// Check your API key on the [Customer Dashboard billing page](https://dashboard.snaptrade.com/settings/billing) to see if you have real-time data access:
+//   - If you do, this endpoint returns real-time data.
+//   - If you don't, Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage. If you need real-time, use the [manual refresh](/reference/Connections/Connections_refreshBrokerageAuthorization) endpoint.
+//
+// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+//
+// Corresponds with GET /accounts/{accountId}/balances (the `AccountInformationGetUserAccountBalance` operationId).
+func (c *Client) AccountInformationGetUserAccountBalance(ctx context.Context, accountId AccountID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAccountInformationGetUserAccountBalanceRequest(c.Server, accountId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AccountInformationGetAllAccountPositions List all account positions
+//
+// Returns a list of all positions in the specified account.
+//
+// The `results` list can contain multiple instrument types in the same response, including stocks, ADRs, ETFs, mutual funds, closed-end funds, bonds, crypto, futures, option positions, future option positions, CFD positions, and tokenized asset positions. Use the `instrument.kind` discriminator to determine the schema for each position's `instrument`.
+//
+// **Beta:** future option positions (`instrument.kind: future_option`) are in beta. They are currently returned only for tastytrade and Interactive Brokers connections, and only for partners they have been enabled for — please contact the SnapTrade team to enable them. The `FutureOptionInstrument` schema may change.
+//
+// Positions counted in account cash balance or buying power include `cash_equivalent: true`. `stock`, `adr`, `etf`, `mutualfund`, and `crypto` positions may include `tax_lots` when tax lot data is enabled for the account. To see which institutions support tax lot data, please see our [supported institutions doc](https://support.snaptrade.com/brokerages).
+//
+// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+//
+// Corresponds with GET /accounts/{accountId}/positions/all (the `AccountInformationGetAllAccountPositions` operationId).
+func (c *Client) AccountInformationGetAllAccountPositions(ctx context.Context, accountId AccountID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAccountInformationGetAllAccountPositionsRequest(c.Server, accountId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // ConnectionsListBrokerageAuthorizations List all connections
@@ -660,6 +3116,183 @@ func (c *Client) ConnectionsListBrokerageAuthorizationAccounts(ctx context.Conte
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewAccountInformationGetAccountActivitiesRequest constructs an http.Request for the AccountInformationGetAccountActivities method
+func NewAccountInformationGetAccountActivitiesRequest(server string, accountId AccountID, params *AccountInformationGetAccountActivitiesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "accountId", accountId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/accounts/%s/activities", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.StartDate != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "startDate", *params.StartDate, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.EndDate != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "endDate", *params.EndDate, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: "date"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Type != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "type", *params.Type, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAccountInformationGetUserAccountBalanceRequest constructs an http.Request for the AccountInformationGetUserAccountBalance method
+func NewAccountInformationGetUserAccountBalanceRequest(server string, accountId AccountID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "accountId", accountId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/accounts/%s/balances", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewAccountInformationGetAllAccountPositionsRequest constructs an http.Request for the AccountInformationGetAllAccountPositions method
+func NewAccountInformationGetAllAccountPositionsRequest(server string, accountId AccountID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "accountId", accountId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/accounts/%s/positions/all", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewConnectionsListBrokerageAuthorizationsRequest constructs an http.Request for the ConnectionsListBrokerageAuthorizations method
@@ -767,6 +3400,57 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
+	// AccountInformationGetAccountActivitiesWithResponse List account activities
+	//
+	// This endpoint is not deprecated and has no planned sunset. Responses to requests using the legacy `/api/v1` path prefix include `Deprecation: @1781222400` (June 12, 2026); that header applies only to the path prefix. Use the canonical root path `/accounts/{accountId}/activities`.
+	//
+	// Returns all historical transactions for the specified account.
+	//
+	// This endpoint is paginated with a default page size of 1000. The endpoint will return a maximum of 1000 transactions per request. See the query parameters for pagination options.
+	//
+	// Transaction are returned in reverse chronological order, using the `trade_date` field.
+	//
+	// This endpoint returns Daily data. Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage.
+	//
+	// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /accounts/{accountId}/activities (the `AccountInformationGetAccountActivities` operationId).
+	AccountInformationGetAccountActivitiesWithResponse(ctx context.Context, accountId AccountID, params *AccountInformationGetAccountActivitiesParams, reqEditors ...RequestEditorFn) (*AccountInformationGetAccountActivitiesResponse, error)
+
+	// AccountInformationGetUserAccountBalanceWithResponse List account balances
+	//
+	// Returns a list of balances for the account. Each element of the list has a distinct currency. Some brokerages like Questrade [allows holding multiple currencies in the same account](https://www.questrade.com/learning/questrade-basics/balances-and-reports/understanding-your-account-balances).
+	//
+	// Check your API key on the [Customer Dashboard billing page](https://dashboard.snaptrade.com/settings/billing) to see if you have real-time data access:
+	//   - If you do, this endpoint returns real-time data.
+	//   - If you don't, Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage. If you need real-time, use the [manual refresh](/reference/Connections/Connections_refreshBrokerageAuthorization) endpoint.
+	//
+	// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /accounts/{accountId}/balances (the `AccountInformationGetUserAccountBalance` operationId).
+	AccountInformationGetUserAccountBalanceWithResponse(ctx context.Context, accountId AccountID, reqEditors ...RequestEditorFn) (*AccountInformationGetUserAccountBalanceResponse, error)
+
+	// AccountInformationGetAllAccountPositionsWithResponse List all account positions
+	//
+	// Returns a list of all positions in the specified account.
+	//
+	// The `results` list can contain multiple instrument types in the same response, including stocks, ADRs, ETFs, mutual funds, closed-end funds, bonds, crypto, futures, option positions, future option positions, CFD positions, and tokenized asset positions. Use the `instrument.kind` discriminator to determine the schema for each position's `instrument`.
+	//
+	// **Beta:** future option positions (`instrument.kind: future_option`) are in beta. They are currently returned only for tastytrade and Interactive Brokers connections, and only for partners they have been enabled for — please contact the SnapTrade team to enable them. The `FutureOptionInstrument` schema may change.
+	//
+	// Positions counted in account cash balance or buying power include `cash_equivalent: true`. `stock`, `adr`, `etf`, `mutualfund`, and `crypto` positions may include `tax_lots` when tax lot data is enabled for the account. To see which institutions support tax lot data, please see our [supported institutions doc](https://support.snaptrade.com/brokerages).
+	//
+	// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /accounts/{accountId}/positions/all (the `AccountInformationGetAllAccountPositions` operationId).
+	AccountInformationGetAllAccountPositionsWithResponse(ctx context.Context, accountId AccountID, reqEditors ...RequestEditorFn) (*AccountInformationGetAllAccountPositionsResponse, error)
+
 	// ConnectionsListBrokerageAuthorizationsWithResponse List all connections
 	//
 	// Returns a list of all connections for the specified user. Note that `Connection` and `Brokerage Authorization` are interchangeable, but the term `Connection` is preferred and used in the doc for consistency.
@@ -794,6 +3478,203 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /authorizations/{authorizationId}/accounts (the `ConnectionsListBrokerageAuthorizationAccounts` operationId).
 	ConnectionsListBrokerageAuthorizationAccountsWithResponse(ctx context.Context, authorizationId BrokerageAuthID, reqEditors ...RequestEditorFn) (*ConnectionsListBrokerageAuthorizationAccountsResponse, error)
+}
+
+// AccountInformationGetAccountActivitiesResponse429Headers the declared response headers of an HTTP 429 response for AccountInformationGetAccountActivities
+type AccountInformationGetAccountActivitiesResponse429Headers struct {
+	RetryAfter                 *int
+	XRateLimitAccountLimit     *int
+	XRateLimitAccountRemaining *int
+	XRateLimitAccountReset     *int
+	XRateLimitLimit            *int
+	XRateLimitRemaining        *int
+	XRateLimitReset            *int
+}
+
+type AccountInformationGetAccountActivitiesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PaginatedUniversalActivity
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *AccountInformationGetAccountActivitiesResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AccountInformationGetAccountActivitiesResponse) GetJSON200() *PaginatedUniversalActivity {
+	return r.JSON200
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r AccountInformationGetAccountActivitiesResponse) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetBody returns the raw response body bytes
+func (r AccountInformationGetAccountActivitiesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AccountInformationGetAccountActivitiesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AccountInformationGetAccountActivitiesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AccountInformationGetAccountActivitiesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// AccountInformationGetUserAccountBalanceResponse429Headers the declared response headers of an HTTP 429 response for AccountInformationGetUserAccountBalance
+type AccountInformationGetUserAccountBalanceResponse429Headers struct {
+	RetryAfter                 *int
+	XRateLimitAccountLimit     *int
+	XRateLimitAccountRemaining *int
+	XRateLimitAccountReset     *int
+	XRateLimitLimit            *int
+	XRateLimitRemaining        *int
+	XRateLimitReset            *int
+}
+
+type AccountInformationGetUserAccountBalanceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Balance
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *N503BrokerageRequestResponse
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *AccountInformationGetUserAccountBalanceResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AccountInformationGetUserAccountBalanceResponse) GetJSON200() *[]Balance {
+	return r.JSON200
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r AccountInformationGetUserAccountBalanceResponse) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r AccountInformationGetUserAccountBalanceResponse) GetJSON503() *N503BrokerageRequestResponse {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r AccountInformationGetUserAccountBalanceResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AccountInformationGetUserAccountBalanceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AccountInformationGetUserAccountBalanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AccountInformationGetUserAccountBalanceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// AccountInformationGetAllAccountPositionsResponse429Headers the declared response headers of an HTTP 429 response for AccountInformationGetAllAccountPositions
+type AccountInformationGetAllAccountPositionsResponse429Headers struct {
+	RetryAfter                 *int
+	XRateLimitAccountLimit     *int
+	XRateLimitAccountRemaining *int
+	XRateLimitAccountReset     *int
+	XRateLimitLimit            *int
+	XRateLimitRemaining        *int
+	XRateLimitReset            *int
+}
+
+type AccountInformationGetAllAccountPositionsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AllAccountPositionsResponse
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *TooManyRequests
+	// JSON503 the response for an HTTP 503 `application/json` response
+	JSON503 *N503BrokerageRequestResponse
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *AccountInformationGetAllAccountPositionsResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AccountInformationGetAllAccountPositionsResponse) GetJSON200() *AllAccountPositionsResponse {
+	return r.JSON200
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r AccountInformationGetAllAccountPositionsResponse) GetJSON429() *TooManyRequests {
+	return r.JSON429
+}
+
+// GetJSON503 returns the response for an HTTP 503 `application/json` response
+func (r AccountInformationGetAllAccountPositionsResponse) GetJSON503() *N503BrokerageRequestResponse {
+	return r.JSON503
+}
+
+// GetBody returns the raw response body bytes
+func (r AccountInformationGetAllAccountPositionsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AccountInformationGetAllAccountPositionsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AccountInformationGetAllAccountPositionsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AccountInformationGetAllAccountPositionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type ConnectionsListBrokerageAuthorizationsResponse struct {
@@ -892,6 +3773,75 @@ func (r ConnectionsListBrokerageAuthorizationAccountsResponse) ContentType() str
 	return ""
 }
 
+// AccountInformationGetAccountActivitiesWithResponse List account activities
+//
+// This endpoint is not deprecated and has no planned sunset. Responses to requests using the legacy `/api/v1` path prefix include `Deprecation: @1781222400` (June 12, 2026); that header applies only to the path prefix. Use the canonical root path `/accounts/{accountId}/activities`.
+//
+// Returns all historical transactions for the specified account.
+//
+// This endpoint is paginated with a default page size of 1000. The endpoint will return a maximum of 1000 transactions per request. See the query parameters for pagination options.
+//
+// Transaction are returned in reverse chronological order, using the `trade_date` field.
+//
+// This endpoint returns Daily data. Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage.
+//
+// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /accounts/{accountId}/activities (the `AccountInformationGetAccountActivities` operationId).
+func (c *ClientWithResponses) AccountInformationGetAccountActivitiesWithResponse(ctx context.Context, accountId AccountID, params *AccountInformationGetAccountActivitiesParams, reqEditors ...RequestEditorFn) (*AccountInformationGetAccountActivitiesResponse, error) {
+	rsp, err := c.AccountInformationGetAccountActivities(ctx, accountId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAccountInformationGetAccountActivitiesResponse(rsp)
+}
+
+// AccountInformationGetUserAccountBalanceWithResponse List account balances
+//
+// Returns a list of balances for the account. Each element of the list has a distinct currency. Some brokerages like Questrade [allows holding multiple currencies in the same account](https://www.questrade.com/learning/questrade-basics/balances-and-reports/understanding-your-account-balances).
+//
+// Check your API key on the [Customer Dashboard billing page](https://dashboard.snaptrade.com/settings/billing) to see if you have real-time data access:
+//   - If you do, this endpoint returns real-time data.
+//   - If you don't, Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage. If you need real-time, use the [manual refresh](/reference/Connections/Connections_refreshBrokerageAuthorization) endpoint.
+//
+// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /accounts/{accountId}/balances (the `AccountInformationGetUserAccountBalance` operationId).
+func (c *ClientWithResponses) AccountInformationGetUserAccountBalanceWithResponse(ctx context.Context, accountId AccountID, reqEditors ...RequestEditorFn) (*AccountInformationGetUserAccountBalanceResponse, error) {
+	rsp, err := c.AccountInformationGetUserAccountBalance(ctx, accountId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAccountInformationGetUserAccountBalanceResponse(rsp)
+}
+
+// AccountInformationGetAllAccountPositionsWithResponse List all account positions
+//
+// Returns a list of all positions in the specified account.
+//
+// The `results` list can contain multiple instrument types in the same response, including stocks, ADRs, ETFs, mutual funds, closed-end funds, bonds, crypto, futures, option positions, future option positions, CFD positions, and tokenized asset positions. Use the `instrument.kind` discriminator to determine the schema for each position's `instrument`.
+//
+// **Beta:** future option positions (`instrument.kind: future_option`) are in beta. They are currently returned only for tastytrade and Interactive Brokers connections, and only for partners they have been enabled for — please contact the SnapTrade team to enable them. The `FutureOptionInstrument` schema may change.
+//
+// Positions counted in account cash balance or buying power include `cash_equivalent: true`. `stock`, `adr`, `etf`, `mutualfund`, and `crypto` positions may include `tax_lots` when tax lot data is enabled for the account. To see which institutions support tax lot data, please see our [supported institutions doc](https://support.snaptrade.com/brokerages).
+//
+// If the connection has become disabled, it can no longer access the latest data from the brokerage, but will continue to return the last available cached state. Please see [this guide](/docs/fix-broken-connections) on how to fix a disabled connection.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /accounts/{accountId}/positions/all (the `AccountInformationGetAllAccountPositions` operationId).
+func (c *ClientWithResponses) AccountInformationGetAllAccountPositionsWithResponse(ctx context.Context, accountId AccountID, reqEditors ...RequestEditorFn) (*AccountInformationGetAllAccountPositionsResponse, error) {
+	rsp, err := c.AccountInformationGetAllAccountPositions(ctx, accountId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAccountInformationGetAllAccountPositionsResponse(rsp)
+}
+
 // ConnectionsListBrokerageAuthorizationsWithResponse List all connections
 //
 // Returns a list of all connections for the specified user. Note that `Connection` and `Brokerage Authorization` are interchangeable, but the term `Connection` is preferred and used in the doc for consistency.
@@ -930,6 +3880,284 @@ func (c *ClientWithResponses) ConnectionsListBrokerageAuthorizationAccountsWithR
 		return nil, err
 	}
 	return ParseConnectionsListBrokerageAuthorizationAccountsResponse(rsp)
+}
+
+// ParseAccountInformationGetAccountActivitiesResponse parses an HTTP response from a AccountInformationGetAccountActivitiesWithResponse call
+func ParseAccountInformationGetAccountActivitiesResponse(rsp *http.Response) (*AccountInformationGetAccountActivitiesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AccountInformationGetAccountActivitiesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PaginatedUniversalActivity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers AccountInformationGetAccountActivitiesResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Account-Limit"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Account-Limit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitAccountLimit = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Account-Remaining"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Account-Remaining", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitAccountRemaining = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Account-Reset"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Account-Reset", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitAccountReset = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Limit"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Limit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitLimit = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Remaining"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Remaining", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitRemaining = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Reset"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Reset", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitReset = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseAccountInformationGetUserAccountBalanceResponse parses an HTTP response from a AccountInformationGetUserAccountBalanceWithResponse call
+func ParseAccountInformationGetUserAccountBalanceResponse(rsp *http.Response) (*AccountInformationGetUserAccountBalanceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AccountInformationGetUserAccountBalanceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Balance
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest N503BrokerageRequestResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers AccountInformationGetUserAccountBalanceResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Account-Limit"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Account-Limit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitAccountLimit = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Account-Remaining"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Account-Remaining", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitAccountRemaining = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Account-Reset"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Account-Reset", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitAccountReset = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Limit"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Limit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitLimit = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Remaining"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Remaining", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitRemaining = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Reset"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Reset", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitReset = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseAccountInformationGetAllAccountPositionsResponse parses an HTTP response from a AccountInformationGetAllAccountPositionsWithResponse call
+func ParseAccountInformationGetAllAccountPositionsResponse(rsp *http.Response) (*AccountInformationGetAllAccountPositionsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AccountInformationGetAllAccountPositionsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AllAccountPositionsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest TooManyRequests
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
+		var dest N503BrokerageRequestResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON503 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers AccountInformationGetAllAccountPositionsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Account-Limit"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Account-Limit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitAccountLimit = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Account-Remaining"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Account-Remaining", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitAccountRemaining = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Account-Reset"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Account-Reset", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitAccountReset = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Limit"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Limit", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitLimit = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Remaining"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Remaining", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitRemaining = &value
+		}
+		if values := rsp.Header.Values("X-RateLimit-Reset"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-RateLimit-Reset", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRateLimitReset = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
 }
 
 // ParseConnectionsListBrokerageAuthorizationsResponse parses an HTTP response from a ConnectionsListBrokerageAuthorizationsWithResponse call

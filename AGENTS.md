@@ -13,6 +13,10 @@ Findur is an early-stage application. Planning artifacts live in `_bmad-output/p
 
 <!-- /bmad:context -->
 
+## Verification
+
+- Run `cd backend && golangci-lint run` as a mandatory part of verification for every code change. Do not omit it, and report the exact command and result in the handoff.
+
 ## Pull requests
 
 - Use `.github/pull_request_template.md` for every pull request. Complete every section, remove placeholder text, report only verification that actually ran, and write `Not applicable` where a section does not apply.

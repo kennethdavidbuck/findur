@@ -1,0 +1,14 @@
+DROP TABLE IF EXISTS portfolio_activity_rows;
+DROP TABLE IF EXISTS portfolio_activity_heads;
+DROP TABLE IF EXISTS portfolio_activity_versions;
+DROP TABLE IF EXISTS portfolio_position_rows;
+DROP TABLE IF EXISTS portfolio_position_heads;
+DROP TABLE IF EXISTS portfolio_position_versions;
+DROP TABLE IF EXISTS portfolio_balance_rows;
+DROP TABLE IF EXISTS portfolio_balance_heads;
+DROP TABLE IF EXISTS portfolio_balance_versions;
+DROP TABLE IF EXISTS portfolio_included_accounts;
+DROP TABLE IF EXISTS portfolio_inclusion_changes;
+DROP TABLE IF EXISTS portfolio_inclusion_state;
+DROP TABLE IF EXISTS portfolio_account_identities;
+ALTER TABLE portfolio_inventory_accounts DROP COLUMN IF EXISTS usability_reason, DROP COLUMN IF EXISTS selectable;
