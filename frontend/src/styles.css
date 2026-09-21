@@ -402,7 +402,7 @@ p { line-height: 1.65; }
 .node--foundation { width: 7rem; height: 7rem; top: 34%; left: 18%; color: var(--secondary); }
 .node--curiosity { width: 5.7rem; height: 5.7rem; top: 15%; right: 20%; }
 .node--patience { width: 4.8rem; height: 4.8rem; right: 15%; bottom: 18%; color: var(--warning); }
-.node--perspective { width: 4.25rem; height: 4.25rem; bottom: 15%; left: 24%; color: var(--accent); }
+.node--perspective { width: 5rem; height: 5rem; bottom: 15%; left: 24%; color: var(--accent); font-size: 0.58rem; letter-spacing: -0.02em; }
 
 .constellation figcaption {
   display: flex;

@@ -28,7 +28,7 @@ const copy = {
       about: {
         title: 'About Findur',
         description:
-          'Learn why Findur explores portfolio context, deliberate disclosure, and progressive identity reveal.',
+          'Learn how Findur uses investing patterns as conversation starters without treating wealth as compatibility.',
       },
       connect: {
         title: 'Log in to Findur',
@@ -80,29 +80,29 @@ const copy = {
       boundaryLink: 'Learn more about Findur',
     },
     about: {
-      eyebrow: 'About Findur',
-      titleBefore: 'Compatibility can begin with',
-      titleAccent: 'how we choose.',
+      eyebrow: 'Why Findur',
+      titleBefore: 'There’s more to investing than',
+      titleAccent: 'the balance.',
       intro:
-        'Findur is an exploration of portfolio-informed dating: a way to notice patience, curiosity, and decision patterns without turning money into a measure of human worth.',
-      thesisLabel: 'The premise',
-      thesisTitle: 'Context before appearance.',
+        'A portfolio can hint at patience, curiosity, concentration, and an appetite for change. Findur uses those patterns as conversation starters—not as proof of compatibility or worth.',
+      thesisLabel: 'What changes',
+      thesisTitle: 'The portfolio becomes the first impression.',
       thesisBody:
-        'Most dating products lead with a face and compress everything else into a short biography. Findur tests a different sequence: begin with an intentionally limited financial pattern, explain why an introduction appears, and reveal identity only after mutual interest.',
-      principlesEyebrow: 'Principles · not promises',
-      principlesTitle: 'The boundaries shape the product.',
+        'Findur looks at the mix of holdings, diversification, recent activity, and account coverage a person chooses to include. Those signals help shape synthetic introductions. Exact detail stays limited by that person’s disclosure choice, and photos appear only after mutual interest.',
+      principlesEyebrow: 'How it stays human',
+      principlesTitle: 'The numbers never get the last word.',
       principles: [
         {
-          title: 'Consent stays specific',
-          body: 'Connecting a source is separate from selecting accounts, deriving patterns, and choosing what another person may see.',
+          title: 'Patterns, not wealth',
+          body: 'Findur notices composition, concentration, diversification, and activity—not who has more money or who is more desirable.',
         },
         {
-          title: 'Compatibility is not worth',
-          body: 'No wealth leaderboard, universal financial score, or guarantee can describe a person or predict a relationship.',
+          title: 'Your portfolio, your boundaries',
+          body: 'You choose the accounts Findur may use, preview what your profile could show, and save a disclosure level only when it feels right.',
         },
         {
-          title: 'Disclosure remains legible',
-          body: 'People should understand what is private, what is derived, and what may become visible before they make a choice.',
+          title: 'One mutual reveal',
+          body: 'Both people make one initial choice from the same portfolio-first experience. Mutual interest reveals the photos—there is no second appearance ranking.',
         },
       ],
       statusEyebrow: 'Available today',
@@ -275,7 +275,7 @@ const copy = {
       about: {
         title: 'À propos de Findur',
         description:
-          'Découvrez pourquoi Findur explore le contexte du portefeuille, un partage délibéré et une identité révélée progressivement.',
+          'Découvrez comment Findur transforme les habitudes d’investissement en sujets de conversation sans confondre richesse et compatibilité.',
       },
       connect: {
         title: 'Connectez-vous à Findur',
@@ -327,29 +327,29 @@ const copy = {
       boundaryLink: 'En savoir plus sur Findur',
     },
     about: {
-      eyebrow: 'À propos de Findur',
-      titleBefore: 'La compatibilité peut commencer par',
-      titleAccent: 'nos choix.',
+      eyebrow: 'Pourquoi Findur',
+      titleBefore: 'Investir, c’est bien plus que',
+      titleAccent: 'le solde.',
       intro:
-        'Findur explore les rencontres éclairées par le portefeuille : une façon de remarquer la patience, la curiosité et les habitudes de décision sans faire de l’argent une mesure de la valeur humaine.',
-      thesisLabel: 'Le principe',
-      thesisTitle: 'Le contexte avant l’apparence.',
+        'Un portefeuille peut suggérer la patience, la curiosité, la concentration et le goût du changement. Findur transforme ces tendances en sujets de conversation, jamais en preuve de compatibilité ou de valeur.',
+      thesisLabel: 'Ce qui change',
+      thesisTitle: 'Le portefeuille devient la première impression.',
       thesisBody:
-        'La plupart des produits de rencontres commencent par un visage et condensent le reste dans une courte biographie. Findur teste un autre ordre : commencer par un motif financier volontairement limité, expliquer pourquoi une rencontre apparaît et révéler l’identité seulement après un intérêt mutuel.',
-      principlesEyebrow: 'Des principes · pas des promesses',
-      principlesTitle: 'Les limites façonnent le produit.',
+        'Findur observe la composition des placements, la diversification, l’activité récente et la couverture des comptes qu’une personne choisit d’inclure. Ces signaux orientent les rencontres synthétiques. Le niveau de partage choisi limite les détails exacts, et les photos apparaissent seulement après un intérêt mutuel.',
+      principlesEyebrow: 'Pour garder l’humain au centre',
+      principlesTitle: 'Les chiffres n’ont jamais le dernier mot.',
       principles: [
         {
-          title: 'Le consentement reste précis',
-          body: 'Connecter une source est distinct de la sélection des comptes, de la création de tendances et du choix de ce qu’une autre personne peut voir.',
+          title: 'Des tendances, pas la richesse',
+          body: 'Findur remarque la composition, la concentration, la diversification et l’activité, jamais qui a le plus d’argent ni qui est plus désirable.',
         },
         {
-          title: 'La compatibilité n’est pas la valeur',
-          body: 'Aucun classement de richesse, score financier universel ou garantie ne peut décrire une personne ni prédire une relation.',
+          title: 'Votre portefeuille, vos limites',
+          body: 'Vous choisissez les comptes que Findur peut utiliser, prévisualisez votre profil et enregistrez un niveau de partage seulement lorsqu’il vous convient.',
         },
         {
-          title: 'Le partage reste lisible',
-          body: 'Chacun devrait comprendre ce qui est privé, ce qui est dérivé et ce qui peut devenir visible avant de faire un choix.',
+          title: 'Un seul dévoilement mutuel',
+          body: 'Chaque personne fait un premier choix dans la même expérience axée sur le portefeuille. L’intérêt mutuel dévoile les photos, sans second classement fondé sur l’apparence.',
         },
       ],
       statusEyebrow: 'Disponible aujourd’hui',

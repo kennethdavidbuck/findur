@@ -28,6 +28,7 @@ context:
 - Reused the existing theme tokens, Constellation hero, action primitives, and responsive breakpoints; fixed the plain login link's keyboard focus selector and retained 48px primary mobile actions.
 - Updated public-flow tests and visually inspected landing/login renders at 320×800, 360×800, and 1440×1000. Frontend tests, typecheck, lint, and build pass; lint retains two pre-existing Fast Refresh warnings. The mandated `cd backend && golangci-lint run` command could not start because `golangci-lint` is not installed in the environment.
 - Review restored the architecture-approved isolated test-viewer model and the exact staged consent, credential, included-account, downstream-use, and complete-disconnect boundaries without changing the streamlined page hierarchy.
+- Follow-up visual feedback enlarged and tightened the Perspective constellation node so its label stays contained, and gave About a distinct explanatory role covering portfolio signals, user boundaries, and mutual photo reveal.
 
 ## Review Triage Log
 

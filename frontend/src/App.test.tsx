@@ -99,14 +99,16 @@ describe('public site', () => {
 
     fireEvent.click(screen.getByRole('link', { name: /how findur works/i }))
 
-    const heading = screen.getByRole('heading', { level: 1, name: /compatibility can begin/i })
+    const heading = screen.getByRole('heading', { level: 1, name: /more to investing/i })
     await waitFor(() => expect(heading).toHaveFocus())
     expect(window.location.pathname).toBe('/about')
     expect(document.title).toBe('About Findur')
     expect(document.querySelector('meta[name="description"]')).toHaveAttribute(
       'content',
-      expect.stringContaining('deliberate disclosure'),
+      expect.stringContaining('conversation starters'),
     )
+    expect(screen.getByText(/mix of holdings, diversification, recent activity, and account coverage/)).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'The numbers never get the last word.' })).toBeVisible()
     expect(screen.getAllByRole('link', { name: 'About' })[0]).toHaveAttribute('aria-current', 'page')
   })
 
@@ -126,14 +128,14 @@ describe('public site', () => {
     fireEvent.click(screen.getAllByRole('link', { name: 'À propos' })[0])
     expect(window.location.pathname).toBe('/about')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'La compatibilité peut commencer par nos choix.',
+      'Investir, c’est bien plus que le solde.',
     )
     expect(screen.getAllByRole('navigation')).toHaveLength(1)
 
     unmount()
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'La compatibilité peut commencer par nos choix.',
+      'Investir, c’est bien plus que le solde.',
     )
   })
 
@@ -188,7 +190,7 @@ describe('public site', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Compatibility can begin with how we choose.',
+      'There’s more to investing than the balance.',
     )
 
     window.history.pushState(null, '', '/')
