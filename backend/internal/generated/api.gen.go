@@ -25,6 +25,30 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for DatasetContextFreshness.
+const (
+	DatasetContextFreshnessCurrent     DatasetContextFreshness = "current"
+	DatasetContextFreshnessExpired     DatasetContextFreshness = "expired"
+	DatasetContextFreshnessStaleUsable DatasetContextFreshness = "stale_usable"
+	DatasetContextFreshnessUnavailable DatasetContextFreshness = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the DatasetContextFreshness enum.
+func (e DatasetContextFreshness) Valid() bool {
+	switch e {
+	case DatasetContextFreshnessCurrent:
+		return true
+	case DatasetContextFreshnessExpired:
+		return true
+	case DatasetContextFreshnessStaleUsable:
+		return true
+	case DatasetContextFreshnessUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	AuthorizationUnavailable ErrorCode = "authorization_unavailable"
@@ -277,6 +301,27 @@ func (e InventoryState) Valid() bool {
 	}
 }
 
+// Defines values for ShowcaseAccountSyncMode.
+const (
+	ShowcaseAccountSyncModeDelayed  ShowcaseAccountSyncMode = "delayed"
+	ShowcaseAccountSyncModeRealtime ShowcaseAccountSyncMode = "realtime"
+	ShowcaseAccountSyncModeUnknown  ShowcaseAccountSyncMode = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ShowcaseAccountSyncMode enum.
+func (e ShowcaseAccountSyncMode) Valid() bool {
+	switch e {
+	case ShowcaseAccountSyncModeDelayed:
+		return true
+	case ShowcaseAccountSyncModeRealtime:
+		return true
+	case ShowcaseAccountSyncModeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // AuthorizationStatus defines model for AuthorizationStatus.
 type AuthorizationStatus struct {
 	Authenticated          bool `json:"authenticated"`
@@ -292,6 +337,20 @@ type BeginAuthorizationRequest struct {
 type ConfirmInclusionRequest struct {
 	AccountIds []string `json:"accountIds"`
 }
+
+// DatasetContext defines model for DatasetContext.
+type DatasetContext struct {
+	Coverage    string                  `json:"coverage"`
+	Currency    string                  `json:"currency"`
+	Freshness   DatasetContextFreshness `json:"freshness"`
+	ObservedAt  *time.Time              `json:"observedAt,omitempty"`
+	PublishedAt *time.Time              `json:"publishedAt,omitempty"`
+	RetrievedAt *time.Time              `json:"retrievedAt,omitempty"`
+	Source      string                  `json:"source"`
+}
+
+// DatasetContextFreshness defines model for DatasetContext.Freshness.
+type DatasetContextFreshness string
 
 // Error defines model for Error.
 type Error struct {
@@ -372,6 +431,60 @@ type PortfolioInventory struct {
 	RetryAt     *time.Time            `json:"retryAt,omitempty"`
 	State       InventoryState        `json:"state"`
 	UpdatedAt   time.Time             `json:"updatedAt"`
+}
+
+// PortfolioShowcase defines model for PortfolioShowcase.
+type PortfolioShowcase struct {
+	Accounts []ShowcaseAccount `json:"accounts"`
+}
+
+// ShowcaseAccount defines model for ShowcaseAccount.
+type ShowcaseAccount struct {
+	Activities ShowcaseDataset         `json:"activities"`
+	Balances   ShowcaseDataset         `json:"balances"`
+	Brokerage  string                  `json:"brokerage"`
+	Label      string                  `json:"label"`
+	Positions  ShowcaseDataset         `json:"positions"`
+	SyncMode   ShowcaseAccountSyncMode `json:"syncMode"`
+}
+
+// ShowcaseAccountSyncMode defines model for ShowcaseAccount.SyncMode.
+type ShowcaseAccountSyncMode string
+
+// ShowcaseActivity defines model for ShowcaseActivity.
+type ShowcaseActivity struct {
+	Amount    *string    `json:"amount,omitempty"`
+	Currency  string     `json:"currency"`
+	Fee       *string    `json:"fee,omitempty"`
+	Price     *string    `json:"price,omitempty"`
+	TradeDate *time.Time `json:"tradeDate,omitempty"`
+	Type      string     `json:"type"`
+	Units     *string    `json:"units,omitempty"`
+}
+
+// ShowcaseBalance defines model for ShowcaseBalance.
+type ShowcaseBalance struct {
+	BuyingPower *string `json:"buyingPower,omitempty"`
+	Cash        *string `json:"cash,omitempty"`
+	Currency    string  `json:"currency"`
+}
+
+// ShowcaseDataset defines model for ShowcaseDataset.
+type ShowcaseDataset struct {
+	Activities []ShowcaseActivity `json:"activities"`
+	Balances   []ShowcaseBalance  `json:"balances"`
+	Context    DatasetContext     `json:"context"`
+	Positions  []ShowcasePosition `json:"positions"`
+}
+
+// ShowcasePosition defines model for ShowcasePosition.
+type ShowcasePosition struct {
+	CostBasis *string `json:"costBasis,omitempty"`
+	Currency  string  `json:"currency"`
+	Kind      string  `json:"kind"`
+	Price     *string `json:"price,omitempty"`
+	Symbol    string  `json:"symbol"`
+	Units     *string `json:"units,omitempty"`
 }
 
 // InclusionConflict defines model for InclusionConflict.
@@ -459,6 +572,9 @@ type ServerInterface interface {
 	// RetryPortfolioInventory Explicitly retry the authenticated owner's inventory bootstrap
 	// (POST /api/portfolio/inventory/retry)
 	RetryPortfolioInventory(w http.ResponseWriter, r *http.Request, params RetryPortfolioInventoryParams)
+	// GetPortfolioShowcase Return the authenticated owner's persisted portfolio showcase
+	// (GET /api/portfolio/showcase)
+	GetPortfolioShowcase(w http.ResponseWriter, r *http.Request)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -779,6 +895,20 @@ func (siw *ServerInterfaceWrapper) RetryPortfolioInventory(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// GetPortfolioShowcase operation middleware
+func (siw *ServerInterfaceWrapper) GetPortfolioShowcase(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPortfolioShowcase(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -899,6 +1029,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/showcase", wrapper.GetPortfolioShowcase)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/inventory", wrapper.GetPortfolioInventory)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/portfolio/inventory/retry", wrapper.RetryPortfolioInventory)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/inclusion", wrapper.GetPortfolioInclusion)
@@ -1465,6 +1596,67 @@ func (response RetryPortfolioInventory503JSONResponse) VisitRetryPortfolioInvent
 	return err
 }
 
+type GetPortfolioShowcaseRequestObject struct {
+}
+
+type GetPortfolioShowcaseResponseObject interface {
+	VisitGetPortfolioShowcaseResponse(w http.ResponseWriter) error
+}
+
+type GetPortfolioShowcase200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetPortfolioShowcase200JSONResponse struct {
+	Body    PortfolioShowcase
+	Headers GetPortfolioShowcase200ResponseHeaders
+}
+
+func (response GetPortfolioShowcase200JSONResponse) VisitGetPortfolioShowcaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioShowcase401JSONResponse struct {
+	InventoryUnauthorizedJSONResponse
+}
+
+func (response GetPortfolioShowcase401JSONResponse) VisitGetPortfolioShowcaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPortfolioShowcase503JSONResponse struct{ SafeErrorJSONResponse }
+
+func (response GetPortfolioShowcase503JSONResponse) VisitGetPortfolioShowcaseResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// LogoutCurrentSession Revoke the authenticated browser session
@@ -1491,6 +1683,9 @@ type StrictServerInterface interface {
 	// RetryPortfolioInventory Explicitly retry the authenticated owner's inventory bootstrap
 	// (POST /api/portfolio/inventory/retry)
 	RetryPortfolioInventory(ctx context.Context, request RetryPortfolioInventoryRequestObject) (RetryPortfolioInventoryResponseObject, error)
+	// GetPortfolioShowcase Return the authenticated owner's persisted portfolio showcase
+	// (GET /api/portfolio/showcase)
+	GetPortfolioShowcase(ctx context.Context, request GetPortfolioShowcaseRequestObject) (GetPortfolioShowcaseResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1764,47 +1959,77 @@ func (sh *strictHandler) RetryPortfolioInventory(w http.ResponseWriter, r *http.
 	}
 }
 
+// GetPortfolioShowcase operation middleware
+func (sh *strictHandler) GetPortfolioShowcase(w http.ResponseWriter, r *http.Request) {
+	var request GetPortfolioShowcaseRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPortfolioShowcase(ctx, request.(GetPortfolioShowcaseRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPortfolioShowcase")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPortfolioShowcaseResponseObject); ok {
+		if err := validResponse.VisitGetPortfolioShowcaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

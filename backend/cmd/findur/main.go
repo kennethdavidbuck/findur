@@ -142,7 +142,12 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		pool.Close()
 		return errInvalidConfiguration
 	}
-	server := newServer(cfg.Address, httpapi.NewHandlerWithPortfolio(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, inventory, inclusion, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
+	showcaseService, err := portfolio.NewShowcaseService(postgresadapter.NewShowcaseRepository(pool, time.Now), time.Now)
+	if err != nil {
+		pool.Close()
+		return errInvalidConfiguration
+	}
+	server := newServer(cfg.Address, httpapi.NewHandlerWithShowcase(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, inventory, inclusion, showcaseService, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("http server starting", "address", cfg.Address)

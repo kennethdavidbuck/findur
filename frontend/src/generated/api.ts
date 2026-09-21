@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/portfolio/showcase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the authenticated owner's persisted portfolio showcase */
+        get: operations["getPortfolioShowcase"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portfolio/inventory": {
         parameters: {
             query?: never;
@@ -165,6 +182,60 @@ export interface components {
             updatedAt: string;
             connections: components["schemas"]["InventoryConnection"][];
         };
+        DatasetContext: {
+            source: string;
+            coverage: string;
+            currency: string;
+            /** Format: date-time */
+            observedAt?: string;
+            /** Format: date-time */
+            retrievedAt?: string;
+            /** Format: date-time */
+            publishedAt?: string;
+            /** @enum {string} */
+            freshness: "current" | "stale_usable" | "expired" | "unavailable";
+        };
+        ShowcaseBalance: {
+            currency: string;
+            cash?: string;
+            buyingPower?: string;
+        };
+        ShowcasePosition: {
+            symbol: string;
+            kind: string;
+            currency: string;
+            units?: string;
+            price?: string;
+            costBasis?: string;
+        };
+        ShowcaseActivity: {
+            type: string;
+            currency: string;
+            /** Format: date-time */
+            tradeDate?: string;
+            amount?: string;
+            fee?: string;
+            price?: string;
+            units?: string;
+        };
+        ShowcaseDataset: {
+            context: components["schemas"]["DatasetContext"];
+            balances: components["schemas"]["ShowcaseBalance"][];
+            positions: components["schemas"]["ShowcasePosition"][];
+            activities: components["schemas"]["ShowcaseActivity"][];
+        };
+        ShowcaseAccount: {
+            label: string;
+            brokerage: string;
+            /** @enum {string} */
+            syncMode: "realtime" | "delayed" | "unknown";
+            balances: components["schemas"]["ShowcaseDataset"];
+            positions: components["schemas"]["ShowcaseDataset"];
+            activities: components["schemas"]["ShowcaseDataset"];
+        };
+        PortfolioShowcase: {
+            accounts: components["schemas"]["ShowcaseAccount"][];
+        };
         InclusionChange: {
             /** Format: uuid */
             id: string;
@@ -266,6 +337,29 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getPortfolioShowcase: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owner-private committed dataset heads without provider reads */
+            200: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioShowcase"];
+                };
+            };
+            401: components["responses"]["InventoryUnauthorized"];
+            503: components["responses"]["SafeError"];
+        };
+    };
     getPortfolioInventory: {
         parameters: {
             query?: never;

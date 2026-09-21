@@ -44,6 +44,9 @@ type inclusionLifecycle interface {
 	Get(context.Context, auth.Actor) (portfolio.InclusionSnapshot, error)
 	Confirm(context.Context, auth.Actor, int64, string, []string) (portfolio.InclusionSnapshot, error)
 }
+type showcaseLifecycle interface {
+	Get(context.Context, auth.Actor) (portfolio.Showcase, error)
+}
 
 type callbackCookies struct{ attempt, session string }
 type callbackCookieKey struct{}
@@ -66,6 +69,7 @@ const (
 	portfolioInventoryPath      = "/api/portfolio/inventory"
 	portfolioInventoryRetryPath = "/api/portfolio/inventory/retry"
 	portfolioInclusionPath      = "/api/portfolio/inclusion"
+	portfolioShowcasePath       = "/api/portfolio/showcase"
 	callbackSucceededCategory   = "succeeded"
 	callbackRestartCategory     = "restart_required"
 	requestCanceledCategory     = "request_canceled"
@@ -88,12 +92,13 @@ type authorizationAPI struct {
 	sessions               sessionLifecycle
 	inventory              inventoryLifecycle
 	inclusion              inclusionLifecycle
+	showcase               showcaseLifecycle
 	authorizationAvailable bool
 	publicOrigin           string
 }
 
-func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, authorizationAvailable bool, publicOrigin string) {
-	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, inventory: inventory, inclusion: inclusion, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
+func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, authorizationAvailable bool, publicOrigin string) {
+	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, inventory: inventory, inclusion: inclusion, showcase: showcase, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
 	if provider, ok := completer.(authorizationStatusProvider); ok {
 		api.status = provider
 	}
@@ -159,7 +164,7 @@ func missingRequiredCSRF(r *http.Request) bool {
 
 func callbackContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == logoutPath || strings.HasPrefix(r.URL.Path, portfolioInventoryPath) || r.URL.Path == portfolioInclusionPath {
+		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == logoutPath || strings.HasPrefix(r.URL.Path, portfolioInventoryPath) || r.URL.Path == portfolioInclusionPath || r.URL.Path == portfolioShowcasePath {
 			cookies := callbackCookies{
 				attempt: cookieValue(r, attemptCookieName),
 				session: cookieValue(r, sessionCookieName),
@@ -226,6 +231,21 @@ func (a *authorizationAPI) GetPortfolioInclusion(ctx context.Context, _ generate
 		return nil, err
 	}
 	return generated.GetPortfolioInclusion200JSONResponse{Body: inclusionResponse(snapshot), Headers: generated.GetPortfolioInclusion200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
+}
+
+func (a *authorizationAPI) GetPortfolioShowcase(ctx context.Context, _ generated.GetPortfolioShowcaseRequestObject) (generated.GetPortfolioShowcaseResponseObject, error) {
+	actor, err := a.portfolioActor(ctx, a.showcase != nil)
+	if errors.Is(err, auth.ErrUnauthenticated) {
+		return generated.GetPortfolioShowcase401JSONResponse{InventoryUnauthorizedJSONResponse: inventoryUnauthorized()}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	showcase, err := a.showcase.Get(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetPortfolioShowcase200JSONResponse{Body: showcaseResponse(showcase), Headers: generated.GetPortfolioShowcase200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
 }
 
 func (a *authorizationAPI) ConfirmPortfolioInclusion(ctx context.Context, request generated.ConfirmPortfolioInclusionRequestObject) (generated.ConfirmPortfolioInclusionResponseObject, error) {
@@ -318,6 +338,27 @@ func inclusionResponse(snapshot portfolio.InclusionSnapshot) generated.Portfolio
 			change.FailureReason = &reason
 		}
 		result.Change = &change
+	}
+	return result
+}
+
+func showcaseResponse(value portfolio.Showcase) generated.PortfolioShowcase {
+	result := generated.PortfolioShowcase{Accounts: make([]generated.ShowcaseAccount, 0, len(value.Accounts))}
+	for _, account := range value.Accounts {
+		result.Accounts = append(result.Accounts, generated.ShowcaseAccount{Label: account.Label, Brokerage: account.Brokerage, SyncMode: generated.ShowcaseAccountSyncMode(account.SyncMode), Balances: showcaseDataset(account.Balances), Positions: showcaseDataset(account.Positions), Activities: showcaseDataset(account.Activities)})
+	}
+	return result
+}
+func showcaseDataset(value portfolio.ShowcaseDataset) generated.ShowcaseDataset {
+	result := generated.ShowcaseDataset{Context: generated.DatasetContext{Source: value.Context.Source, Coverage: value.Context.Coverage, Currency: value.Context.Currency, Freshness: generated.DatasetContextFreshness(value.Context.Freshness), ObservedAt: value.Context.ObservedAt, RetrievedAt: value.Context.RetrievedAt, PublishedAt: value.Context.PublishedAt}, Balances: []generated.ShowcaseBalance{}, Positions: []generated.ShowcasePosition{}, Activities: []generated.ShowcaseActivity{}}
+	for _, row := range value.Balances {
+		result.Balances = append(result.Balances, generated.ShowcaseBalance{Currency: row.Currency, Cash: row.Cash, BuyingPower: row.BuyingPower})
+	}
+	for _, row := range value.Positions {
+		result.Positions = append(result.Positions, generated.ShowcasePosition{Symbol: row.Symbol, Kind: row.Kind, Currency: row.Currency, Units: row.Units, Price: row.Price, CostBasis: row.CostBasis})
+	}
+	for _, row := range value.Activities {
+		result.Activities = append(result.Activities, generated.ShowcaseActivity{Type: row.Type, Currency: row.Currency, TradeDate: row.TradeDate, Amount: row.Amount, Fee: row.Fee, Price: row.Price, Units: row.Units})
 	}
 	return result
 }

@@ -14,8 +14,7 @@ type Props = {
   onLogout: () => void
 }
 
-const destinations: Array<{ route: ProtectedRoute; key: 'discovery' | 'portfolio' | 'profile' }> = [
-  { route: '/discovery', key: 'discovery' },
+const destinations: Array<{ route: ProtectedRoute; key: 'portfolio' | 'profile' }> = [
   { route: '/portfolio', key: 'portfolio' },
   { route: '/profile', key: 'profile' },
 ]

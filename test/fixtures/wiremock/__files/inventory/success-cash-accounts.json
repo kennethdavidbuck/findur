@@ -1,0 +1,26 @@
+[
+  {
+    "id": "50bb0405-5efd-473f-a742-78a82bb1db53",
+    "brokerage_authorization": "12fe591b-344d-4e8c-96e6-98a692f94054",
+    "portfolio_group": "e18ff2d3-b3b7-4a26-9795-c89f0bfbb342",
+    "name": "Cash Account",
+    "number": "SANDBOX-CASH",
+    "institution_account_id": "SANDBOX-CASH",
+    "institution_name": "sandbox",
+    "meta": { "currency": "USD", "institution_name": "sandbox" },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:43:14.957948Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": { "last_successful_sync": "2026-09-21T17:43:15.209868+00:00", "initial_sync_completed": true },
+      "transactions": { "last_successful_sync": "2026-09-20", "first_transaction_date": "2026-09-14", "initial_sync_completed": true }
+    },
+    "balance": { "total": { "amount": 5000, "currency": "USD" } },
+    "raw_data": null,
+    "raw_type": "Individual",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  }
+]

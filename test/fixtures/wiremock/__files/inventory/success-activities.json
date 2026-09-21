@@ -1,6 +1,6 @@
 {
   "data": [
-    { "id": "activity-1", "type": "BUY", "trade_date": "2026-09-19T16:27:55Z", "currency": { "code": "CAD" }, "amount": -123.45, "units": 1 }
+    { "id": "activity-1", "type": "BUY", "trade_date": "2026-09-19T16:27:55Z", "currency": { "code": "USD" }, "amount": -123.45, "units": 1 }
   ],
   "pagination": { "limit": 500, "offset": 0, "total": 1 }
 }

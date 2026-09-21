@@ -7,5 +7,6 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 docker compose build
+docker compose up --no-build --wait --force-recreate wiremock
 docker compose up --no-build --wait
 docker compose --profile test run --rm integration
