@@ -92,6 +92,7 @@ func ClassifyFreshness(mode SyncMode, activities bool, observed, retrieved *time
 	if mode != SyncModeRealtime && mode != SyncModeDelayed {
 		return FreshnessUnavailable
 	}
+
 	at := observed
 	if at == nil {
 		at = retrieved
@@ -99,19 +100,13 @@ func ClassifyFreshness(mode SyncMode, activities bool, observed, retrieved *time
 	if at == nil {
 		return FreshnessUnavailable
 	}
+	if activities {
+		return activityFreshness(*at, now)
+	}
+
 	age := now.Sub(*at)
 	if age < 0 {
 		age = 0
-	}
-	if activities {
-		days := calendarDaysBetween(*at, now)
-		if days <= 2 {
-			return FreshnessCurrent
-		}
-		if days <= 7 {
-			return FreshnessStale
-		}
-		return FreshnessExpired
 	}
 	current := 36 * time.Hour
 	if mode == SyncModeRealtime {
@@ -122,6 +117,17 @@ func ClassifyFreshness(mode SyncMode, activities bool, observed, retrieved *time
 		return FreshnessCurrent
 	}
 	if age <= stale {
+		return FreshnessStale
+	}
+	return FreshnessExpired
+}
+
+func activityFreshness(at, now time.Time) Freshness {
+	days := calendarDaysBetween(at, now)
+	if days <= 2 {
+		return FreshnessCurrent
+	}
+	if days <= 7 {
 		return FreshnessStale
 	}
 	return FreshnessExpired

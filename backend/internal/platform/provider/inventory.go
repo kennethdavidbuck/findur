@@ -248,7 +248,14 @@ func normalizeConnection(raw providergenerated.BrokerageAuthorization) (portfoli
 			label = portfolio.SafeLabel(*raw.Brokerage.Name, label)
 		}
 	}
-	result := portfolio.Connection{ID: raw.Id.String(), BrokerageLabel: label, Status: portfolio.ConnectionStatusActive, SyncMode: portfolio.SyncModeUnknown, Available: true, Eligible: true}
+	result := portfolio.Connection{
+		ID:             raw.Id.String(),
+		BrokerageLabel: label,
+		Status:         portfolio.ConnectionStatusActive,
+		SyncMode:       portfolio.SyncModeUnknown,
+		Available:      true,
+		Eligible:       true,
+	}
 	if *raw.Disabled {
 		result.Status, result.Available, result.Eligible = portfolio.ConnectionStatusDisabled, false, false
 	}
@@ -269,28 +276,8 @@ func normalizeAccount(raw providergenerated.Account, connectionID string) (portf
 	if raw.Id == uuid.Nil || raw.BrokerageAuthorization == uuid.Nil || raw.BrokerageAuthorization.String() != connectionID {
 		return portfolio.Account{}, false
 	}
-	result := portfolio.Account{ID: raw.Id.String(), Category: portfolio.AccountCategoryUnknown, Type: unknownValue, MaskedLabel: defaultAccountLabel, SyncState: portfolio.AccountSyncStateUnknown, Available: true}
-	if raw.Name != nil {
-		result.MaskedLabel = safeAccountLabel(*raw.Name, raw.Number)
-	}
-	if raw.Number != "" {
-		if suffix := maskedSuffix(raw.Number); suffix != "" {
-			result.MaskedLabel += " (•••• " + suffix + ")"
-		}
-	}
-	if raw.AccountCategory != nil {
-		switch *raw.AccountCategory {
-		case providergenerated.INVESTMENT:
-			result.Category = portfolio.AccountCategoryInvestment
-		case providergenerated.DEPOSIT:
-			result.Category = portfolio.AccountCategoryDeposit
-		case providergenerated.LOC:
-			result.Category = portfolio.AccountCategoryCredit
-		}
-	}
-	if raw.RawType != nil {
-		result.Type = portfolio.SafeLabel(*raw.RawType, unknownValue)
-	}
+
+	result := initialAccount(raw)
 	statusOpen, statusKnown := false, false
 	if raw.Status != nil {
 		switch *raw.Status {
@@ -315,27 +302,71 @@ func normalizeAccount(raw providergenerated.Account, connectionID string) (portf
 			result.SyncState = portfolio.AccountSyncStatePending
 		}
 	}
-	result.Eligible = result.Available && statusOpen && result.Category == portfolio.AccountCategoryInvestment && result.SyncState == portfolio.AccountSyncStateComplete
-	result.Selectable = result.Available && (statusOpen || !statusKnown) && (result.Category == portfolio.AccountCategoryInvestment || result.Category == portfolio.AccountCategoryUnknown) && result.SyncState == portfolio.AccountSyncStateComplete
-	switch {
-	case !result.Available && statusKnown && raw.Status != nil && *raw.Status == providergenerated.Closed:
-		result.UsabilityReason = portfolio.UsabilityAccountClosed
-	case !result.Available:
-		result.UsabilityReason = portfolio.UsabilityAccountUnavailable
-	case result.SyncState == portfolio.AccountSyncStateUnavailable:
-		result.UsabilityReason = portfolio.UsabilitySyncUnavailable
-	case result.Category == portfolio.AccountCategoryDeposit || result.Category == portfolio.AccountCategoryCredit:
-		result.UsabilityReason = portfolio.UsabilityUnsupportedCategory
-	case !statusKnown:
-		result.UsabilityReason = portfolio.UsabilityProvisionalStatus
-	case result.Category == portfolio.AccountCategoryUnknown:
-		result.UsabilityReason = portfolio.UsabilityProvisionalCategory
-	case result.SyncState != portfolio.AccountSyncStateComplete:
-		result.UsabilityReason = portfolio.UsabilitySyncPending
-	default:
-		result.UsabilityReason = portfolio.UsabilityReady
-	}
+
+	result.Eligible = result.Available && statusOpen &&
+		result.Category == portfolio.AccountCategoryInvestment && result.SyncState == portfolio.AccountSyncStateComplete
+	result.Selectable = result.Available && (statusOpen || !statusKnown) &&
+		(result.Category == portfolio.AccountCategoryInvestment || result.Category == portfolio.AccountCategoryUnknown) &&
+		result.SyncState == portfolio.AccountSyncStateComplete
+	closed := raw.Status != nil && *raw.Status == providergenerated.Closed
+	result.UsabilityReason = accountUsabilityReason(result, statusKnown, closed)
 	return result, true
+}
+
+func initialAccount(raw providergenerated.Account) portfolio.Account {
+	result := portfolio.Account{
+		ID:          raw.Id.String(),
+		Category:    portfolio.AccountCategoryUnknown,
+		Type:        unknownValue,
+		MaskedLabel: defaultAccountLabel,
+		SyncState:   portfolio.AccountSyncStateUnknown,
+		Available:   true,
+	}
+	if raw.Name != nil {
+		result.MaskedLabel = safeAccountLabel(*raw.Name, raw.Number)
+	}
+	if raw.Number != "" {
+		if suffix := maskedSuffix(raw.Number); suffix != "" {
+			result.MaskedLabel += " (•••• " + suffix + ")"
+		}
+	}
+	if raw.AccountCategory != nil {
+		switch *raw.AccountCategory {
+		case providergenerated.INVESTMENT:
+			result.Category = portfolio.AccountCategoryInvestment
+		case providergenerated.DEPOSIT:
+			result.Category = portfolio.AccountCategoryDeposit
+		case providergenerated.LOC:
+			result.Category = portfolio.AccountCategoryCredit
+		}
+	}
+	if raw.RawType != nil {
+		result.Type = portfolio.SafeLabel(*raw.RawType, unknownValue)
+	}
+	return result
+}
+
+func accountUsabilityReason(account portfolio.Account, statusKnown, closed bool) portfolio.UsabilityReason {
+	// Account closure and unavailability take precedence over sync and category
+	// reasons, including when unavailable holdings made the account unavailable.
+	switch {
+	case !account.Available && statusKnown && closed:
+		return portfolio.UsabilityAccountClosed
+	case !account.Available:
+		return portfolio.UsabilityAccountUnavailable
+	case account.SyncState == portfolio.AccountSyncStateUnavailable:
+		return portfolio.UsabilitySyncUnavailable
+	case account.Category == portfolio.AccountCategoryDeposit || account.Category == portfolio.AccountCategoryCredit:
+		return portfolio.UsabilityUnsupportedCategory
+	case !statusKnown:
+		return portfolio.UsabilityProvisionalStatus
+	case account.Category == portfolio.AccountCategoryUnknown:
+		return portfolio.UsabilityProvisionalCategory
+	case account.SyncState != portfolio.AccountSyncStateComplete:
+		return portfolio.UsabilitySyncPending
+	default:
+		return portfolio.UsabilityReady
+	}
 }
 
 func maskedSuffix(value string) string {

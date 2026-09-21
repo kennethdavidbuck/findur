@@ -28,6 +28,7 @@ func (r *InclusionRepository) GetInclusion(ctx context.Context, owner uuid.UUID)
 		return portfolio.InclusionSnapshot{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
 	snapshot, err := loadInclusionSnapshot(ctx, tx, owner, false)
 	if err != nil {
 		return portfolio.InclusionSnapshot{}, err
@@ -43,6 +44,7 @@ func (r *InclusionRepository) PrepareInclusion(ctx context.Context, owner uuid.U
 	if idempotencyKey == "" || len(idempotencyKey) > 200 || expectedVersion < 0 {
 		return portfolio.InclusionPreparation{}, portfolio.ErrInvalidAccountSelection
 	}
+
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return portfolio.InclusionPreparation{}, err
@@ -80,6 +82,7 @@ func (r *InclusionRepository) PrepareInclusion(ctx context.Context, owner uuid.U
 	if version != expectedVersion {
 		return portfolio.InclusionPreparation{}, portfolio.ErrInclusionConflict
 	}
+
 	var inventoryGeneration int64
 	var inventoryHead *int64
 	if err := tx.QueryRow(ctx, `SELECT current_generation,head_generation FROM portfolio_inventory_state WHERE user_id=$1 FOR UPDATE`, owner).Scan(&inventoryGeneration, &inventoryHead); err != nil || inventoryHead == nil {
@@ -95,6 +98,20 @@ func (r *InclusionRepository) PrepareInclusion(ctx context.Context, owner uuid.U
 	if err := validateSelection(ctx, tx, owner, *inventoryHead, targets, committed); err != nil {
 		return portfolio.InclusionPreparation{}, err
 	}
+
+	preparation, err := prepareInclusionChange(ctx, tx, owner, idempotencyKey, targets, committed, version, inventoryGeneration, lifecycleGeneration, now)
+	if err != nil {
+		return portfolio.InclusionPreparation{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return portfolio.InclusionPreparation{}, err
+	}
+	return preparation, nil
+}
+
+// prepareInclusionChange requires the caller to hold the owner, inclusion, and
+// inventory locks and to have validated the expected version and target accounts.
+func prepareInclusionChange(ctx context.Context, tx pgx.Tx, owner uuid.UUID, idempotencyKey string, targets, committed []string, version, inventoryGeneration, lifecycleGeneration int64, now time.Time) (portfolio.InclusionPreparation, error) {
 	additions, removals := difference(targets, committed), difference(committed, targets)
 	changeID := uuid.New()
 	resultVersion := version
@@ -112,35 +129,54 @@ func (r *InclusionRepository) PrepareInclusion(ctx context.Context, owner uuid.U
 			return portfolio.InclusionPreparation{}, err
 		}
 		if len(removals) > 0 {
-			if _, err := tx.Exec(ctx, `DELETE FROM portfolio_included_accounts WHERE user_id=$1 AND account_id=ANY($2)`, owner, removals); err != nil {
-				return portfolio.InclusionPreparation{}, err
-			}
-			if _, err := tx.Exec(ctx, `DELETE FROM portfolio_balance_versions WHERE user_id=$1 AND account_id=ANY($2)`, owner, removals); err != nil {
-				return portfolio.InclusionPreparation{}, err
-			}
-			if _, err := tx.Exec(ctx, `DELETE FROM portfolio_position_versions WHERE user_id=$1 AND account_id=ANY($2)`, owner, removals); err != nil {
-				return portfolio.InclusionPreparation{}, err
-			}
-			if _, err := tx.Exec(ctx, `DELETE FROM portfolio_activity_versions WHERE user_id=$1 AND account_id=ANY($2)`, owner, removals); err != nil {
+			if err := purgeExcludedAccounts(ctx, tx, owner, removals); err != nil {
 				return portfolio.InclusionPreparation{}, err
 			}
 		}
 	}
+
 	if _, err := tx.Exec(ctx, `INSERT INTO portfolio_inclusion_changes
 		(id,user_id,idempotency_key,expected_version,result_version,inventory_generation,lifecycle_generation,target_account_ids,addition_account_ids,removal_account_ids,status,created_at,updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)`, changeID, owner, idempotencyKey, expectedVersion, resultVersion, inventoryGeneration, lifecycleGeneration, targets, additions, removals, status, now); err != nil {
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)`, changeID, owner, idempotencyKey, version, resultVersion, inventoryGeneration, lifecycleGeneration, targets, additions, removals, status, now); err != nil {
 		return portfolio.InclusionPreparation{}, err
 	}
-	preparation := portfolio.InclusionPreparation{InclusionSnapshot: portfolio.InclusionSnapshot{Version: resultVersion, Committed: difference(committed, removals), Change: &portfolio.InclusionChange{ID: changeID, Status: status, Additions: additions, Removals: removals}}, Claimed: len(additions) > 0, ChangeID: changeID, InventoryGeneration: inventoryGeneration, LifecycleGeneration: lifecycleGeneration, Additions: additions}
+	preparation := portfolio.InclusionPreparation{
+		InclusionSnapshot: portfolio.InclusionSnapshot{
+			Version:   resultVersion,
+			Committed: difference(committed, removals),
+			Change: &portfolio.InclusionChange{
+				ID:        changeID,
+				Status:    status,
+				Additions: additions,
+				Removals:  removals,
+			},
+		},
+		Claimed:             len(additions) > 0,
+		ChangeID:            changeID,
+		InventoryGeneration: inventoryGeneration,
+		LifecycleGeneration: lifecycleGeneration,
+		Additions:           additions,
+	}
 	if preparation.Claimed {
 		if err := tx.QueryRow(ctx, `SELECT access_token_encrypted,envelope_version FROM provider_authorizations WHERE user_id=$1 AND provider=$2`, owner, auth.SnapTradeProvider).Scan(&preparation.EncryptedToken, &preparation.TokenVersion); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return portfolio.InclusionPreparation{}, err
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return portfolio.InclusionPreparation{}, err
-	}
 	return preparation, nil
+}
+
+func purgeExcludedAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, removals []string) error {
+	if _, err := tx.Exec(ctx, `DELETE FROM portfolio_included_accounts WHERE user_id=$1 AND account_id=ANY($2)`, owner, removals); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM portfolio_balance_versions WHERE user_id=$1 AND account_id=ANY($2)`, owner, removals); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM portfolio_position_versions WHERE user_id=$1 AND account_id=ANY($2)`, owner, removals); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx, `DELETE FROM portfolio_activity_versions WHERE user_id=$1 AND account_id=ANY($2)`, owner, removals)
+	return err
 }
 
 // FinalizeInclusion atomically publishes complete guarded additions or records failure.
@@ -153,6 +189,7 @@ func (r *InclusionRepository) FinalizeInclusion(ctx context.Context, owner uuid.
 	if err := lockActiveOwner(ctx, tx, owner); err != nil {
 		return portfolio.InclusionSnapshot{}, false, err
 	}
+
 	var status portfolio.InclusionChangeStatus
 	var additions []string
 	var changeInventory, changeLifecycle, resultVersion int64
@@ -166,6 +203,7 @@ func (r *InclusionRepository) FinalizeInclusion(ctx context.Context, owner uuid.
 		}
 		return snapshot, false, err
 	}
+
 	var currentVersion, currentLifecycle, currentInventory int64
 	var inventoryHead *int64
 	guardErr := tx.QueryRow(ctx, `SELECT version,lifecycle_generation FROM portfolio_inclusion_state WHERE user_id=$1 FOR UPDATE`, owner).Scan(&currentVersion, &currentLifecycle)
@@ -175,7 +213,10 @@ func (r *InclusionRepository) FinalizeInclusion(ctx context.Context, owner uuid.
 	if guardErr != nil && !errors.Is(guardErr, pgx.ErrNoRows) {
 		return portfolio.InclusionSnapshot{}, false, guardErr
 	}
-	guarded := guardErr == nil && currentVersion == inclusionVersion && resultVersion == inclusionVersion && currentLifecycle == lifecycleGeneration && changeLifecycle == lifecycleGeneration && currentInventory == inventoryGeneration && changeInventory == inventoryGeneration && inventoryHead != nil
+	guarded := guardErr == nil && inventoryHead != nil &&
+		currentVersion == inclusionVersion && resultVersion == inclusionVersion &&
+		currentLifecycle == lifecycleGeneration && changeLifecycle == lifecycleGeneration &&
+		currentInventory == inventoryGeneration && changeInventory == inventoryGeneration
 	if guarded {
 		guarded = validateSelection(ctx, tx, owner, *inventoryHead, additions, nil) == nil
 	}
@@ -185,6 +226,7 @@ func (r *InclusionRepository) FinalizeInclusion(ctx context.Context, owner uuid.
 	if failure == "" && !completeAccountData(additions, data) {
 		failure = "unusable_data"
 	}
+
 	if failure != "" {
 		if _, err := tx.Exec(ctx, `UPDATE portfolio_inclusion_changes SET status='failed',failure_reason=$3,updated_at=$4 WHERE id=$1 AND user_id=$2`, changeID, owner, failure, now); err != nil {
 			return portfolio.InclusionSnapshot{}, false, err
@@ -194,6 +236,7 @@ func (r *InclusionRepository) FinalizeInclusion(ctx context.Context, owner uuid.
 	} else if _, err := tx.Exec(ctx, `UPDATE portfolio_inclusion_changes SET status='committed',failure_reason=NULL,updated_at=$3 WHERE id=$1 AND user_id=$2`, changeID, owner, now); err != nil {
 		return portfolio.InclusionSnapshot{}, false, err
 	}
+
 	snapshot, err := loadInclusionSnapshot(ctx, tx, owner, false)
 	if err != nil {
 		return portfolio.InclusionSnapshot{}, false, err
@@ -233,7 +276,13 @@ func loadReplay(ctx context.Context, tx pgx.Tx, owner uuid.UUID, key string, exp
 		return portfolio.InclusionPreparation{}, false, portfolio.ErrIdempotencyConflict
 	}
 	committed, err := loadCommittedAccountIDs(ctx, tx, owner)
-	return portfolio.InclusionPreparation{InclusionSnapshot: portfolio.InclusionSnapshot{Version: version, Committed: committed, Change: &change}}, true, err
+	return portfolio.InclusionPreparation{
+		InclusionSnapshot: portfolio.InclusionSnapshot{
+			Version:   version,
+			Committed: committed,
+			Change:    &change,
+		},
+	}, true, err
 }
 
 func loadInclusionSnapshot(ctx context.Context, tx pgx.Tx, owner uuid.UUID, lock bool) (portfolio.InclusionSnapshot, error) {
@@ -321,7 +370,16 @@ func completeAccountData(additions []string, data map[string]portfolio.AccountDa
 	}
 	for _, id := range additions {
 		value, ok := data[id]
-		if !ok || value.Balances.RetrievedAt.IsZero() || value.Balances.Rows == nil || value.Positions.ObservedAt.IsZero() || value.Positions.RetrievedAt.IsZero() || value.Positions.Rows == nil || value.Activities.RetrievedAt.IsZero() || value.Activities.Rows == nil {
+		if !ok {
+			return false
+		}
+		if value.Balances.RetrievedAt.IsZero() || value.Balances.Rows == nil {
+			return false
+		}
+		if value.Positions.ObservedAt.IsZero() || value.Positions.RetrievedAt.IsZero() || value.Positions.Rows == nil {
+			return false
+		}
+		if value.Activities.RetrievedAt.IsZero() || value.Activities.Rows == nil {
 			return false
 		}
 	}
@@ -331,47 +389,75 @@ func completeAccountData(additions []string, data map[string]portfolio.AccountDa
 func publishAccountData(ctx context.Context, tx pgx.Tx, owner uuid.UUID, inclusionVersion int64, additions []string, data map[string]portfolio.AccountData, now time.Time) error {
 	for _, accountID := range additions {
 		value := data[accountID]
-		balanceVersionID := uuid.New()
-		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_balance_versions (id,user_id,account_id,inclusion_version,observed_at,retrieved_at,published_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`, balanceVersionID, owner, accountID, inclusionVersion, value.Balances.ObservedAt, value.Balances.RetrievedAt, now); err != nil {
+		if err := publishBalances(ctx, tx, owner, accountID, inclusionVersion, value.Balances, now); err != nil {
 			return err
 		}
-		for index, row := range value.Balances.Rows {
-			if _, err := tx.Exec(ctx, `INSERT INTO portfolio_balance_rows (version_id,row_number,currency,cash,buying_power) VALUES ($1,$2,$3,$4,$5)`, balanceVersionID, index, row.Currency, row.Cash, row.BuyingPower); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_balance_heads (user_id,account_id,version_id) VALUES ($1,$2,$3) ON CONFLICT (user_id,account_id) DO UPDATE SET version_id=EXCLUDED.version_id`, owner, accountID, balanceVersionID); err != nil {
+		if err := publishPositions(ctx, tx, owner, accountID, inclusionVersion, value.Positions, now); err != nil {
 			return err
 		}
-
-		positionVersionID := uuid.New()
-		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_position_versions (id,user_id,account_id,inclusion_version,observed_at,retrieved_at,published_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`, positionVersionID, owner, accountID, inclusionVersion, value.Positions.ObservedAt, value.Positions.RetrievedAt, now); err != nil {
+		if err := publishActivities(ctx, tx, owner, accountID, inclusionVersion, value.Activities, now); err != nil {
 			return err
 		}
-		for index, row := range value.Positions.Rows {
-			if _, err := tx.Exec(ctx, `INSERT INTO portfolio_position_rows (version_id,row_number,instrument_id,symbol,kind,currency,units,price,cost_basis) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, positionVersionID, index, row.InstrumentID, row.Symbol, row.Kind, row.Currency, row.Units, row.Price, row.CostBasis); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_position_heads (user_id,account_id,version_id) VALUES ($1,$2,$3) ON CONFLICT (user_id,account_id) DO UPDATE SET version_id=EXCLUDED.version_id`, owner, accountID, positionVersionID); err != nil {
-			return err
-		}
-
-		activityVersionID := uuid.New()
-		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_activity_versions (id,user_id,account_id,inclusion_version,observed_at,retrieved_at,published_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`, activityVersionID, owner, accountID, inclusionVersion, value.Activities.ObservedAt, value.Activities.RetrievedAt, now); err != nil {
-			return err
-		}
-		for index, row := range value.Activities.Rows {
-			if _, err := tx.Exec(ctx, `INSERT INTO portfolio_activity_rows (version_id,row_number,activity_id,activity_type,trade_date,currency,amount,fee,price,units) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, activityVersionID, index, row.ID, row.Type, row.TradeDate, row.Currency, row.Amount, row.Fee, row.Price, row.Units); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_activity_heads (user_id,account_id,version_id) VALUES ($1,$2,$3) ON CONFLICT (user_id,account_id) DO UPDATE SET version_id=EXCLUDED.version_id`, owner, accountID, activityVersionID); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_included_accounts (user_id,account_id,inclusion_version,included_at) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id,account_id) DO UPDATE SET inclusion_version=EXCLUDED.inclusion_version,included_at=EXCLUDED.included_at`, owner, accountID, inclusionVersion, now); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_included_accounts (user_id,account_id,inclusion_version,included_at)
+			VALUES ($1,$2,$3,$4)
+			ON CONFLICT (user_id,account_id) DO UPDATE
+			SET inclusion_version=EXCLUDED.inclusion_version,included_at=EXCLUDED.included_at`, owner, accountID, inclusionVersion, now); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func publishBalances(ctx context.Context, tx pgx.Tx, owner uuid.UUID, accountID string, inclusionVersion int64, data portfolio.BalanceDataset, now time.Time) error {
+	versionID := uuid.New()
+	if _, err := tx.Exec(ctx, `INSERT INTO portfolio_balance_versions (id,user_id,account_id,inclusion_version,observed_at,retrieved_at,published_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`, versionID, owner, accountID, inclusionVersion, data.ObservedAt, data.RetrievedAt, now); err != nil {
+		return err
+	}
+	for index, row := range data.Rows {
+		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_balance_rows (version_id,row_number,currency,cash,buying_power)
+			VALUES ($1,$2,$3,$4,$5)`, versionID, index, row.Currency, row.Cash, row.BuyingPower); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO portfolio_balance_heads (user_id,account_id,version_id)
+		VALUES ($1,$2,$3)
+		ON CONFLICT (user_id,account_id) DO UPDATE SET version_id=EXCLUDED.version_id`, owner, accountID, versionID)
+	return err
+}
+
+func publishPositions(ctx context.Context, tx pgx.Tx, owner uuid.UUID, accountID string, inclusionVersion int64, data portfolio.PositionDataset, now time.Time) error {
+	versionID := uuid.New()
+	if _, err := tx.Exec(ctx, `INSERT INTO portfolio_position_versions (id,user_id,account_id,inclusion_version,observed_at,retrieved_at,published_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`, versionID, owner, accountID, inclusionVersion, data.ObservedAt, data.RetrievedAt, now); err != nil {
+		return err
+	}
+	for index, row := range data.Rows {
+		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_position_rows (version_id,row_number,instrument_id,symbol,kind,currency,units,price,cost_basis)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`, versionID, index, row.InstrumentID, row.Symbol, row.Kind, row.Currency, row.Units, row.Price, row.CostBasis); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO portfolio_position_heads (user_id,account_id,version_id)
+		VALUES ($1,$2,$3)
+		ON CONFLICT (user_id,account_id) DO UPDATE SET version_id=EXCLUDED.version_id`, owner, accountID, versionID)
+	return err
+}
+
+func publishActivities(ctx context.Context, tx pgx.Tx, owner uuid.UUID, accountID string, inclusionVersion int64, data portfolio.ActivityDataset, now time.Time) error {
+	versionID := uuid.New()
+	if _, err := tx.Exec(ctx, `INSERT INTO portfolio_activity_versions (id,user_id,account_id,inclusion_version,observed_at,retrieved_at,published_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`, versionID, owner, accountID, inclusionVersion, data.ObservedAt, data.RetrievedAt, now); err != nil {
+		return err
+	}
+	for index, row := range data.Rows {
+		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_activity_rows (version_id,row_number,activity_id,activity_type,trade_date,currency,amount,fee,price,units)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, versionID, index, row.ID, row.Type, row.TradeDate, row.Currency, row.Amount, row.Fee, row.Price, row.Units); err != nil {
+			return err
+		}
+	}
+	_, err := tx.Exec(ctx, `INSERT INTO portfolio_activity_heads (user_id,account_id,version_id)
+		VALUES ($1,$2,$3)
+		ON CONFLICT (user_id,account_id) DO UPDATE SET version_id=EXCLUDED.version_id`, owner, accountID, versionID)
+	return err
 }

@@ -470,11 +470,35 @@ func inventoryResponse(snapshot portfolio.Snapshot) generated.PortfolioInventory
 	for _, connection := range snapshot.Connections {
 		accounts := make([]generated.InventoryAccount, 0, len(connection.Accounts))
 		for _, account := range connection.Accounts {
-			accounts = append(accounts, generated.InventoryAccount{Id: account.ID, Category: generated.InventoryAccountCategory(account.Category), Type: account.Type, MaskedLabel: account.MaskedLabel, Available: account.Available, Eligible: account.Eligible, Selectable: account.Selectable, UsabilityReason: generated.InventoryAccountUsabilityReason(account.UsabilityReason), SyncState: generated.InventoryAccountSyncState(account.SyncState)})
+			accounts = append(accounts, generated.InventoryAccount{
+				Id:              account.ID,
+				Category:        generated.InventoryAccountCategory(account.Category),
+				Type:            account.Type,
+				MaskedLabel:     account.MaskedLabel,
+				Available:       account.Available,
+				Eligible:        account.Eligible,
+				Selectable:      account.Selectable,
+				UsabilityReason: generated.InventoryAccountUsabilityReason(account.UsabilityReason),
+				SyncState:       generated.InventoryAccountSyncState(account.SyncState),
+			})
 		}
-		connections = append(connections, generated.InventoryConnection{Id: connection.ID, BrokerageLabel: connection.BrokerageLabel, Status: generated.InventoryConnectionStatus(connection.Status), SyncMode: generated.InventoryConnectionSyncMode(connection.SyncMode), Available: connection.Available, Eligible: connection.Eligible, Accounts: accounts})
+		connections = append(connections, generated.InventoryConnection{
+			Id:             connection.ID,
+			BrokerageLabel: connection.BrokerageLabel,
+			Status:         generated.InventoryConnectionStatus(connection.Status),
+			SyncMode:       generated.InventoryConnectionSyncMode(connection.SyncMode),
+			Available:      connection.Available,
+			Eligible:       connection.Eligible,
+			Accounts:       accounts,
+		})
 	}
-	return generated.PortfolioInventory{State: generated.InventoryState(snapshot.State), Generation: snapshot.Generation, RetryAt: snapshot.RetryAt, UpdatedAt: snapshot.UpdatedAt, Connections: connections}
+	return generated.PortfolioInventory{
+		State:       generated.InventoryState(snapshot.State),
+		Generation:  snapshot.Generation,
+		RetryAt:     snapshot.RetryAt,
+		UpdatedAt:   snapshot.UpdatedAt,
+		Connections: connections,
+	}
 }
 
 func inclusionResponse(snapshot portfolio.InclusionSnapshot) generated.PortfolioInclusion {
@@ -483,7 +507,12 @@ func inclusionResponse(snapshot portfolio.InclusionSnapshot) generated.Portfolio
 		result.Committed = []string{}
 	}
 	if snapshot.Change != nil {
-		change := generated.InclusionChange{Id: snapshot.Change.ID, Status: generated.InclusionChangeStatus(snapshot.Change.Status), Additions: snapshot.Change.Additions, Removals: snapshot.Change.Removals}
+		change := generated.InclusionChange{
+			Id:        snapshot.Change.ID,
+			Status:    generated.InclusionChangeStatus(snapshot.Change.Status),
+			Additions: snapshot.Change.Additions,
+			Removals:  snapshot.Change.Removals,
+		}
 		if change.Additions == nil {
 			change.Additions = []string{}
 		}
@@ -502,20 +531,56 @@ func inclusionResponse(snapshot portfolio.InclusionSnapshot) generated.Portfolio
 func showcaseResponse(value portfolio.Showcase) generated.PortfolioShowcase {
 	result := generated.PortfolioShowcase{Accounts: make([]generated.ShowcaseAccount, 0, len(value.Accounts))}
 	for _, account := range value.Accounts {
-		result.Accounts = append(result.Accounts, generated.ShowcaseAccount{Label: account.Label, Brokerage: account.Brokerage, SyncMode: generated.ShowcaseAccountSyncMode(account.SyncMode), Balances: showcaseDataset(account.Balances), Positions: showcaseDataset(account.Positions), Activities: showcaseDataset(account.Activities)})
+		result.Accounts = append(result.Accounts, generated.ShowcaseAccount{
+			Label:      account.Label,
+			Brokerage:  account.Brokerage,
+			SyncMode:   generated.ShowcaseAccountSyncMode(account.SyncMode),
+			Balances:   showcaseDataset(account.Balances),
+			Positions:  showcaseDataset(account.Positions),
+			Activities: showcaseDataset(account.Activities),
+		})
 	}
 	return result
 }
+
 func showcaseDataset(value portfolio.ShowcaseDataset) generated.ShowcaseDataset {
-	result := generated.ShowcaseDataset{Context: generated.DatasetContext{Source: value.Context.Source, Coverage: value.Context.Coverage, Currency: value.Context.Currency, Freshness: generated.DatasetContextFreshness(value.Context.Freshness), ObservedAt: value.Context.ObservedAt, RetrievedAt: value.Context.RetrievedAt, PublishedAt: value.Context.PublishedAt}, Balances: []generated.ShowcaseBalance{}, Positions: []generated.ShowcasePosition{}, Activities: []generated.ShowcaseActivity{}}
+	result := generated.ShowcaseDataset{
+		Context: generated.DatasetContext{
+			Source:      value.Context.Source,
+			Coverage:    value.Context.Coverage,
+			Currency:    value.Context.Currency,
+			Freshness:   generated.DatasetContextFreshness(value.Context.Freshness),
+			ObservedAt:  value.Context.ObservedAt,
+			RetrievedAt: value.Context.RetrievedAt,
+			PublishedAt: value.Context.PublishedAt,
+		},
+		Balances:   []generated.ShowcaseBalance{},
+		Positions:  []generated.ShowcasePosition{},
+		Activities: []generated.ShowcaseActivity{},
+	}
 	for _, row := range value.Balances {
 		result.Balances = append(result.Balances, generated.ShowcaseBalance{Currency: row.Currency, Cash: row.Cash, BuyingPower: row.BuyingPower})
 	}
 	for _, row := range value.Positions {
-		result.Positions = append(result.Positions, generated.ShowcasePosition{Symbol: row.Symbol, Kind: row.Kind, Currency: row.Currency, Units: row.Units, Price: row.Price, CostBasis: row.CostBasis})
+		result.Positions = append(result.Positions, generated.ShowcasePosition{
+			Symbol:    row.Symbol,
+			Kind:      row.Kind,
+			Currency:  row.Currency,
+			Units:     row.Units,
+			Price:     row.Price,
+			CostBasis: row.CostBasis,
+		})
 	}
 	for _, row := range value.Activities {
-		result.Activities = append(result.Activities, generated.ShowcaseActivity{Type: row.Type, Currency: row.Currency, TradeDate: row.TradeDate, Amount: row.Amount, Fee: row.Fee, Price: row.Price, Units: row.Units})
+		result.Activities = append(result.Activities, generated.ShowcaseActivity{
+			Type:      row.Type,
+			Currency:  row.Currency,
+			TradeDate: row.TradeDate,
+			Amount:    row.Amount,
+			Fee:       row.Fee,
+			Price:     row.Price,
+			Units:     row.Units,
+		})
 	}
 	return result
 }
