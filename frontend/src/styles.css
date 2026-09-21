@@ -576,7 +576,7 @@ p { line-height: 1.65; }
 .profile-intro > p:last-of-type { max-width: 34rem; margin-bottom: 0; color: var(--text-muted); font-size: 0.82rem; line-height: 1.55; }
 .profile-route { display: flex; align-items: center; gap: 0.65rem; margin: 0; color: var(--secondary); font: 700 0.75rem/1.4 var(--font-mono); letter-spacing: 0.07em; }
 .profile-route span { width: 1.5rem; height: 1.5rem; display: grid; place-items: center; border: 1px solid var(--secondary); font-size: 0.625rem; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
-.profile-visibility-key { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; margin: 1.5rem 0 0; border: 1px solid var(--border-strong); background: var(--surface); }
+.profile-visibility-key { width: min(100%, var(--reading-max)); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; margin: 1.5rem 0 0; border: 1px solid var(--border-strong); background: var(--surface); }
 .profile-visibility-key div { min-width: 0; padding: 1rem; }
 .profile-visibility-key div + div { border-left: 1px solid var(--border-strong); }
 .profile-visibility-key :is(dt, dd) { margin: 0; }
