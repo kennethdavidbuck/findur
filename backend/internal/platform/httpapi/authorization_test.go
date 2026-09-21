@@ -14,6 +14,7 @@ import (
 
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
+	"github.com/kennethdavidbuck/findur/backend/internal/profile"
 )
 
 type beginFunc func(context.Context, string) (auth.BeginResult, error)
@@ -53,6 +54,21 @@ type showcaseLifecycleStub struct {
 func (s *showcaseLifecycleStub) Get(context.Context, auth.Actor) (portfolio.Showcase, error) {
 	s.calls++
 	return s.snapshot, nil
+}
+
+type profileLifecycleStub struct {
+	snapshot profile.Snapshot
+	saved    profile.Input
+	saves    int
+	err      error
+}
+
+func (s *profileLifecycleStub) Get(context.Context, auth.Actor) (profile.Snapshot, error) {
+	return s.snapshot, s.err
+}
+func (s *profileLifecycleStub) Save(_ context.Context, _ auth.Actor, input profile.Input) (profile.Profile, error) {
+	s.saved, s.saves = input, s.saves+1
+	return profile.Profile{DisplayName: input.DisplayName, AdultAttestedAt: time.Now(), LocationKey: input.LocationKey, RelationshipIntent: input.RelationshipIntent, Biography: input.Biography, AvatarKey: input.AvatarKey, Locale: input.Locale, Theme: input.Theme, Version: input.ExpectedVersion + 1}, s.err
 }
 
 func (s *inclusionLifecycleStub) Get(context.Context, auth.Actor) (portfolio.InclusionSnapshot, error) {
@@ -166,6 +182,143 @@ func TestShowcaseGETRequiresSessionAndSerializesOnlySafeFields(t *testing.T) {
 	}
 }
 func stringPtr(value string) *string { return &value }
+
+func profileHandler(sessions sessionLifecycle, profiles profileLifecycle, publicOrigin string) http.Handler {
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	return NewHandlerWithProfile(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, nil, sessions, nil, nil, nil, profiles, false, publicOrigin)
+}
+
+func TestProfileGETIsPrivateAndOmitsCatalogueCoordinates(t *testing.T) {
+	profiles := &profileLifecycleStub{snapshot: profile.Snapshot{Locations: []profile.Location{{Key: "halifax-ns", CityEN: "Halifax", CityFR: "Halifax", ProvinceEN: "Nova Scotia", ProvinceFR: "Nouvelle-Écosse"}}}}
+	request := httptest.NewRequest(http.MethodGet, profilePath, nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+	response := httptest.NewRecorder()
+	profileHandler(&sessionLifecycleStub{}, profiles, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get(cacheControlHeader) != privateNoStoreDirective {
+		t.Fatalf("status=%d cache=%q", response.Code, response.Header().Get(cacheControlHeader))
+	}
+	if strings.Contains(response.Body.String(), "latitude") || strings.Contains(response.Body.String(), "longitude") {
+		t.Fatalf("coordinates leaked: %s", response.Body.String())
+	}
+}
+
+func TestProfilePUTRejectsCrossOriginBeforePersistence(t *testing.T) {
+	profiles := &profileLifecycleStub{}
+	request := httptest.NewRequest(http.MethodPut, profilePath, strings.NewReader(`{"displayName":"Alex","adultAttested":true,"locationKey":"halifax-ns","relationshipIntent":"long-term","biography":"Hello","avatarKey":"aurora","locale":"en","theme":"system","expectedVersion":0}`))
+	request.Header.Set(contentTypeHeader, jsonMediaType)
+	request.Header.Set(csrfHeaderName, "csrf")
+	request.Header.Set("Origin", "https://evil.example")
+	request.Header.Set("Sec-Fetch-Site", secFetchSameOrigin)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+	response := httptest.NewRecorder()
+	profileHandler(&sessionLifecycleStub{}, profiles, "https://findur.example").ServeHTTP(response, request)
+	if response.Code != http.StatusForbidden || profiles.saves != 0 {
+		t.Fatalf("status=%d saves=%d", response.Code, profiles.saves)
+	}
+}
+
+func TestProfilePUTMapsCreateValidationConflictAndSessionFailures(t *testing.T) {
+	validation := &profile.ValidationError{Fields: []string{"displayName", "biography"}}
+	for _, test := range []struct {
+		name         string
+		profileErr   error
+		authorizeErr error
+		withSession  bool
+		wantStatus   int
+		wantSaves    int
+		wantBody     string
+	}{
+		{name: "create", withSession: true, wantStatus: http.StatusOK, wantSaves: 1, wantBody: `"version":1`},
+		{name: "validation", profileErr: validation, withSession: true, wantStatus: http.StatusBadRequest, wantSaves: 1, wantBody: `"fields":["displayName","biography"]`},
+		{name: "conflict", profileErr: profile.ErrConflict, withSession: true, wantStatus: http.StatusConflict, wantSaves: 1, wantBody: `"code":"conflict"`},
+		{name: "invalid csrf", authorizeErr: auth.ErrForbidden, withSession: true, wantStatus: http.StatusForbidden, wantBody: `"code":"forbidden"`},
+		{name: "missing session", wantStatus: http.StatusUnauthorized, wantBody: `"code":"unauthenticated"`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			profiles := &profileLifecycleStub{err: test.profileErr}
+			sessions := &sessionLifecycleStub{authorizeErr: test.authorizeErr}
+			request := httptest.NewRequest(http.MethodPut, profilePath, strings.NewReader(`{"displayName":"Alex","adultAttested":true,"locationKey":"halifax-ns","relationshipIntent":"long-term","biography":"Hello","avatarKey":"aurora","locale":"en","theme":"system","expectedVersion":0}`))
+			request.Header.Set(contentTypeHeader, jsonMediaType)
+			request.Header.Set(csrfHeaderName, "csrf")
+			request.Header.Set("Origin", "https://findur.example")
+			request.Header.Set("Sec-Fetch-Site", secFetchSameOrigin)
+			if test.withSession {
+				request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+			}
+			response := httptest.NewRecorder()
+			profileHandler(sessions, profiles, "https://findur.example").ServeHTTP(response, request)
+			if response.Code != test.wantStatus || profiles.saves != test.wantSaves || response.Header().Get(cacheControlHeader) != privateNoStoreDirective || !strings.Contains(response.Body.String(), test.wantBody) {
+				t.Fatalf("status=%d saves=%d cache=%q body=%q", response.Code, profiles.saves, response.Header().Get(cacheControlHeader), response.Body.String())
+			}
+			if test.name == "create" {
+				want := profile.Input{DisplayName: "Alex", AdultAttested: true, LocationKey: "halifax-ns", RelationshipIntent: "long-term", Biography: "Hello", AvatarKey: "aurora", Locale: "en", Theme: "system", ExpectedVersion: 0}
+				if profiles.saved != want {
+					t.Fatalf("mapped input=%+v want=%+v", profiles.saved, want)
+				}
+				for _, field := range []string{`"displayName":"Alex"`, `"locationKey":"halifax-ns"`, `"relationshipIntent":"long-term"`, `"biography":"Hello"`, `"avatarKey":"aurora"`, `"locale":"en"`, `"theme":"system"`, `"version":1`} {
+					if !strings.Contains(response.Body.String(), field) {
+						t.Fatalf("response omitted %s: %s", field, response.Body.String())
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestProfilePUTMapsSchemaFailuresToFieldValidation(t *testing.T) {
+	valid := `{"displayName":"Alex","adultAttested":true,"locationKey":"halifax-ns","relationshipIntent":"long-term","biography":"Hello","avatarKey":"aurora","locale":"en","theme":"system","expectedVersion":0}`
+	tests := []struct {
+		name, body, field string
+	}{
+		{name: "missing display name", body: strings.Replace(valid, `"displayName":"Alex",`, "", 1), field: "displayName"},
+		{name: "adult attestation false", body: strings.Replace(valid, `"adultAttested":true`, `"adultAttested":false`, 1), field: "adultAttested"},
+		{name: "invalid relationship intent", body: strings.Replace(valid, `"relationshipIntent":"long-term"`, `"relationshipIntent":"unsupported"`, 1), field: "relationshipIntent"},
+		{name: "negative version", body: strings.Replace(valid, `"expectedVersion":0`, `"expectedVersion":-1`, 1), field: "expectedVersion"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			profiles := &profileLifecycleStub{}
+			request := httptest.NewRequest(http.MethodPut, profilePath, strings.NewReader(test.body))
+			request.Header.Set(contentTypeHeader, jsonMediaType)
+			request.Header.Set(csrfHeaderName, "csrf")
+			request.Header.Set("Origin", "https://findur.example")
+			request.Header.Set("Sec-Fetch-Site", secFetchSameOrigin)
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+			response := httptest.NewRecorder()
+			profileHandler(&sessionLifecycleStub{}, profiles, "https://findur.example").ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest || profiles.saves != 0 || response.Header().Get(cacheControlHeader) != privateNoStoreDirective || !strings.Contains(response.Body.String(), `"code":"invalid_profile"`) || !strings.Contains(response.Body.String(), `"`+test.field+`"`) {
+				t.Fatalf("status=%d saves=%d cache=%q body=%q", response.Code, profiles.saves, response.Header().Get(cacheControlHeader), response.Body.String())
+			}
+		})
+	}
+}
+
+func TestEveryProfileFailureUsesPrivateNoStore(t *testing.T) {
+	tests := []struct {
+		name     string
+		profiles profileLifecycle
+		request  *http.Request
+		want     int
+	}{
+		{name: "unsupported content type", profiles: &profileLifecycleStub{}, request: httptest.NewRequest(http.MethodPut, profilePath, strings.NewReader("profile")), want: http.StatusUnsupportedMediaType},
+		{name: "service unavailable", profiles: &profileLifecycleStub{err: errors.New("database unavailable")}, request: httptest.NewRequest(http.MethodGet, profilePath, nil), want: http.StatusServiceUnavailable},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid"})
+			if test.want == http.StatusUnsupportedMediaType {
+				test.request.Header.Set(contentTypeHeader, "text/plain")
+				test.request.Header.Set(csrfHeaderName, "csrf")
+			}
+			response := httptest.NewRecorder()
+			profileHandler(&sessionLifecycleStub{}, test.profiles, "https://findur.example").ServeHTTP(response, test.request)
+			if response.Code != test.want || response.Header().Get(cacheControlHeader) != privateNoStoreDirective {
+				t.Fatalf("status=%d cache=%q body=%q", response.Code, response.Header().Get(cacheControlHeader), response.Body.String())
+			}
+		})
+	}
+}
 
 func TestInclusionGETIsOwnerPrivateAndStartsEmpty(t *testing.T) {
 	inclusion := &inclusionLifecycleStub{snapshot: portfolio.InclusionSnapshot{Version: 0, Committed: []string{}}}

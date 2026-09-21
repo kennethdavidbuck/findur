@@ -51,9 +51,9 @@ development_status:
   1-5-disconnect-snaptrade-and-leave-findur: backlog
   epic-1-retrospective: optional
 
-  epic-2: backlog
+  epic-2: in-progress
   2-1-derive-a-private-portfolio-matching-profile: backlog
-  2-2-complete-the-minimum-personal-profile: backlog
+  2-2-complete-the-minimum-personal-profile: done
   2-3-set-discovery-distance-and-compatibility-preferences: backlog
   2-4-preview-and-save-a-disclosure-level: backlog
   2-5-preview-the-complete-live-owner-profile-and-readiness: backlog

@@ -21,6 +21,54 @@ paths:
               schema: { $ref: '#/components/schemas/PortfolioShowcase' }
         '401': { $ref: '#/components/responses/InventoryUnauthorized' }
         '503': { $ref: '#/components/responses/SafeError' }
+  /api/profile:
+    get:
+      operationId: getPersonalProfile
+      summary: Return the authenticated owner's personal profile and safe catalogues
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Owner-private profile state
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PersonalProfileSnapshot' }
+        '401': { $ref: '#/components/responses/ProfileUnauthorized' }
+        '503': { $ref: '#/components/responses/ProfileUnavailable' }
+    put:
+      operationId: putPersonalProfile
+      summary: Atomically create or replace the authenticated owner's complete personal profile
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          required: true
+          schema: { type: string, minLength: 1 }
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PersonalProfileInput' }
+      responses:
+        '200':
+          description: Saved owner-private profile
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PersonalProfile' }
+        '400': { $ref: '#/components/responses/ProfileValidation' }
+        '401': { $ref: '#/components/responses/ProfileUnauthorized' }
+        '403': { $ref: '#/components/responses/ProfileForbidden' }
+        '409': { $ref: '#/components/responses/ProfileConflict' }
+        '503': { $ref: '#/components/responses/ProfileUnavailable' }
   /api/portfolio/inventory:
     get:
       operationId: getPortfolioInventory
@@ -232,6 +280,63 @@ components:
       in: cookie
       name: findur_session
   schemas:
+    ProfileLocation:
+      type: object
+      additionalProperties: false
+      required: [key, cityEn, cityFr, provinceEn, provinceFr]
+      properties:
+        key: { type: string }
+        cityEn: { type: string }
+        cityFr: { type: string }
+        provinceEn: { type: string }
+        provinceFr: { type: string }
+    PersonalProfile:
+      type: object
+      additionalProperties: false
+      required: [displayName, adultAttestedAt, locationKey, relationshipIntent, biography, avatarKey, locale, theme, version]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 60 }
+        adultAttestedAt: { type: string, format: date-time }
+        locationKey: { type: string }
+        relationshipIntent: { type: string, enum: [long-term, open-to-long-term, figuring-it-out] }
+        biography: { type: string, minLength: 1, maxLength: 500 }
+        avatarKey: { type: string, enum: [aurora, cedar, ember, harbour, meadow, solstice] }
+        locale: { type: string, enum: [en, fr] }
+        theme: { type: string, enum: [system, light, dark] }
+        version: { type: integer, format: int64, minimum: 1 }
+    PersonalProfileSnapshot:
+      type: object
+      additionalProperties: false
+      required: [locations]
+      properties:
+        profile: { $ref: '#/components/schemas/PersonalProfile' }
+        locations:
+          type: array
+          items: { $ref: '#/components/schemas/ProfileLocation' }
+    PersonalProfileInput:
+      type: object
+      additionalProperties: false
+      required: [displayName, adultAttested, locationKey, relationshipIntent, biography, avatarKey, locale, theme, expectedVersion]
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 60 }
+        adultAttested: { type: boolean, const: true }
+        locationKey: { type: string }
+        relationshipIntent: { type: string, enum: [long-term, open-to-long-term, figuring-it-out] }
+        biography: { type: string, minLength: 1, maxLength: 500 }
+        avatarKey: { type: string, enum: [aurora, cedar, ember, harbour, meadow, solstice] }
+        locale: { type: string, enum: [en, fr] }
+        theme: { type: string, enum: [system, light, dark] }
+        expectedVersion: { type: integer, format: int64, minimum: 0 }
+    ProfileValidationError:
+      type: object
+      additionalProperties: false
+      required: [code, fields]
+      properties:
+        code: { type: string, const: invalid_profile }
+        fields:
+          type: array
+          uniqueItems: true
+          items: { type: string, enum: [displayName, adultAttested, locationKey, relationshipIntent, biography, avatarKey, locale, theme, expectedVersion] }
     InventoryState:
       type: string
       enum: [pending, ready, empty, disabled, unauthorized, rate_limited, unavailable, malformed]
@@ -402,8 +507,44 @@ components:
       properties:
         code:
           type: string
-          enum: [invalid_request, authorization_unavailable, initialization_failed, restart_required, unauthenticated, forbidden, conflict, invalid_selection]
+          enum: [invalid_request, authorization_unavailable, initialization_failed, restart_required, unauthenticated, forbidden, conflict, invalid_selection, invalid_profile]
   responses:
+    ProfileValidation:
+      description: The complete profile failed bounded validation
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ProfileValidationError' }
+    ProfileUnauthorized:
+      description: The presented session is not active
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ProfileForbidden:
+      description: A session request defense failed
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ProfileConflict:
+      description: The expected profile version is stale
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
     InventoryUnauthorized:
       description: The presented session is not active
       headers:
@@ -442,6 +583,16 @@ components:
           schema:
             type: array
             items: { type: string }
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ProfileUnavailable:
+      description: The owner-private profile is temporarily unavailable
+      headers:
+        Cache-Control:
+          required: true
+          schema: { type: string, const: 'private, no-store' }
       content:
         application/json:
           schema:

@@ -27,6 +27,7 @@ import (
 	postgresadapter "github.com/kennethdavidbuck/findur/backend/internal/platform/postgres"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/provider"
 	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
+	"github.com/kennethdavidbuck/findur/backend/internal/profile"
 )
 
 const (
@@ -147,7 +148,12 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		pool.Close()
 		return errInvalidConfiguration
 	}
-	server := newServer(cfg.Address, httpapi.NewHandlerWithShowcase(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, inventory, inclusion, showcaseService, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
+	profiles, err := profile.NewService(postgresadapter.NewProfileRepository(pool), time.Now)
+	if err != nil {
+		pool.Close()
+		return errInvalidConfiguration
+	}
+	server := newServer(cfg.Address, httpapi.NewHandlerWithProfile(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, inventory, inclusion, showcaseService, profiles, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("http server starting", "address", cfg.Address)

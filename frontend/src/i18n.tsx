@@ -507,10 +507,17 @@ const I18nContext = createContext<I18nContextValue | null>(null)
 
 function readLocale(): Locale {
   try {
-    return window.localStorage.getItem(localeStorageKey) === 'fr' ? 'fr' : 'en'
+    const stored = window.localStorage.getItem(localeStorageKey)
+    if (stored === 'en' || stored === 'fr') return stored
   } catch {
-    return 'en'
+    // Browser preference still provides a safe default when storage is unavailable.
   }
+  const preferences = window.navigator.languages?.length ? window.navigator.languages : [window.navigator.language]
+  for (const preference of preferences) {
+    const language = preference.toLowerCase().split('-')[0]
+    if (language === 'en' || language === 'fr') return language
+  }
+  return 'en'
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {
