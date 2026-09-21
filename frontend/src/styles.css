@@ -23,9 +23,12 @@
   --danger: #a52b3a;
   --on-danger: #ffffff;
   --danger-subtle: #ffe0e4;
+  --text-disabled: #77839b;
   --grid-line: rgb(40 92 199 / 9%);
   --glow-primary: rgb(40 92 199 / 20%);
   --glow-secondary: rgb(6 115 108 / 20%);
+  --font-display: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --content-max: 90rem;
   --reading-max: 45rem;
   --space-1: 0.25rem;
@@ -67,6 +70,7 @@
   --danger: #ff9cac;
   --on-danger: #3b0710;
   --danger-subtle: #4b1d29;
+  --text-disabled: #7784a2;
   --grid-line: rgb(142 179 255 / 8%);
   --glow-primary: rgb(142 179 255 / 22%);
   --glow-secondary: rgb(101 234 219 / 20%);
@@ -536,16 +540,16 @@ p { line-height: 1.65; }
 .logout-control { flex: none; }
 .logout-control p { max-width: 17rem; margin: 0.35rem 0 0; color: var(--warning); font-size: 0.78rem; }
 .logout-control button { background: transparent; cursor: pointer; }
-.logout-control button:disabled { color: var(--text-disabled); border-color: var(--border-strong); background: var(--surface-subtle); cursor: wait; }
+.logout-control button:disabled { color: var(--text-muted); border-color: var(--border-strong); background: var(--surface-subtle); cursor: wait; }
 
 .authenticated-content { padding: clamp(2rem, 4vw, 4rem) max(var(--page-margin), var(--safe-right)) clamp(3rem, 5vw, 5rem) max(var(--page-margin), var(--safe-left)); }
 .private-placeholder { width: min(100%, var(--reading-max)); margin-inline: auto; }
 .showcase-layout { width: 100%; max-width: 64rem; min-width: 0; margin-inline: auto; }
 .portfolio-showcase { width: 100%; min-width: 0; padding-top: 2rem; margin: 0; }
-.portfolio-showcase--state { min-height: 25rem; padding-top: clamp(2rem, 8vw, 6rem); }
-.portfolio-showcase h1 { max-width: none; margin: .75rem 0; font-size: clamp(2rem, 4vw, 2.75rem); }
-.showcase-eyebrow { margin: 0; color: var(--secondary); font: 700 .75rem/1.4 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: .1em; text-transform: uppercase; }
-.freshness { display: inline-flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: .4rem; font: 700 .75rem/1.4 "IBM Plex Mono", ui-monospace, monospace; overflow-wrap: anywhere; }
+.portfolio-showcase--state { max-width: 64rem; min-height: 25rem; padding-top: 2rem; margin-inline: auto; }
+.portfolio-showcase h1 { max-width: none; margin: .45rem 0; font-size: clamp(2rem, 4vw, 2.5rem); font-weight: 400; letter-spacing: -.04em; line-height: 1.18; }
+.showcase-eyebrow { margin: 0; color: var(--secondary); font: 700 .75rem/1.4 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.freshness { display: inline-flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: .4rem; font: 700 .75rem/1.4 var(--font-mono); overflow-wrap: anywhere; }
 .freshness--current { color: var(--secondary); }.freshness--stale_usable { color: var(--warning); }.freshness--expired,.freshness--unavailable { color: var(--danger); }
 .showcase-note { margin: .75rem 0; color: var(--text-muted); font-size: .875rem; }.showcase-note--unavailable,.showcase-recovery { padding: .85rem 1rem; border-left: 3px solid var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }.showcase-note--unavailable p,.showcase-recovery p { margin-bottom: .5rem; }.showcase-note--unavailable .action,.showcase-recovery .action { margin-top: .25rem; }
 .showcase-empty,.showcase-loading { padding: clamp(2rem, 7vw, 5rem); margin-top: 2rem; border: 1px dashed var(--border-strong); text-align: center; color: var(--text-muted); }.showcase-empty > span { display: block; color: var(--secondary); font-size: 2rem; }.showcase-empty .text-link { margin-top: .5rem; }
@@ -553,41 +557,43 @@ p { line-height: 1.65; }
 .showcase-reference { width: 100%; min-width: 0; }
 .showcase-reference .topline { display: flex; align-items: end; justify-content: space-between; gap: 1.25rem; }.showcase-reference .topline > div { min-width: 0; }.showcase-reference .topline h1 { margin: .45rem 0; font-size: clamp(2rem, 4vw, 2.5rem); font-weight: 400; letter-spacing: -.04em; }.showcase-reference .topline p:not(.eyebrow) { max-width: 34rem; margin: 0; color: var(--text-muted); font-size: .82rem; line-height: 1.55; }
 .showcase-reference .coverage { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .9rem; align-items: center; padding: .8rem .9rem; margin: 1.1rem 0; border: 1px solid var(--secondary); background: var(--surface); }.showcase-reference .coverage > div { min-width: 0; }.showcase-reference .coverage strong { display: block; font-size: .9rem; }.showcase-reference .coverage span { display: block; margin-top: .2rem; color: var(--text-muted); font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
-.showcase-reference .account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: .75rem; }.showcase-reference .account { position: relative; min-width: 0; padding: 1rem; border: 1px solid var(--border-strong); background: var(--surface); }.showcase-reference .account header { display: flex; justify-content: space-between; gap: .75rem; }.showcase-reference .account header > div,.showcase-reference .money div { min-width: 0; }.showcase-reference .account h2 { margin: 0; font-size: 1.05rem; line-height: 1.35; overflow-wrap: anywhere; }.showcase-reference .account small { color: var(--text-muted); font: 600 .75rem/1.45 "IBM Plex Mono", ui-monospace, monospace; overflow-wrap: anywhere; }.showcase-reference .included { flex: none; color: var(--secondary); font: 750 .7rem/1.35 "IBM Plex Mono", ui-monospace, monospace; text-transform: uppercase; white-space: nowrap; }.account-index { display: block; margin-top: .7rem; color: var(--text-muted); font: 650 .7rem/1.3 "IBM Plex Mono", ui-monospace, monospace; }
-.showcase-reference .money { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .45rem; margin-top: .8rem; }.showcase-reference .money div { min-width: 0; padding: .65rem; border-left: 2px solid var(--primary); background: var(--surface-subtle); }.showcase-reference .money b { display: block; font: 750 .9rem/1.3 "IBM Plex Mono", ui-monospace, monospace; overflow-wrap: anywhere; }.showcase-reference .money span { color: var(--text-muted); font-size: .72rem; }.showcase-reference .money > p { grid-column: 1/-1; margin: 0; color: var(--warning); font-size: .8rem; }.showcase-reference .no-total { grid-column: 1/-1; color: var(--warning); font: 650 .72rem/1.3 "IBM Plex Mono", ui-monospace, monospace; }
-.showcase-ledgers { min-width: 0; display: grid; gap: 1.5rem; margin-top: 1.5rem; }.account-ledger { min-width: 0; border-top: 2px solid var(--secondary); }.ledger-header { min-width: 0; padding: .85rem 1rem; border: 1px solid var(--border-strong); border-top: 0; background: var(--surface-subtle); }.ledger-header h2 { margin: .15rem 0; font-size: 1.15rem; overflow-wrap: anywhere; }.ledger-header p:last-child { margin: 0; color: var(--text-muted); font-size: .8rem; overflow-wrap: anywhere; }.ledger-kicker { margin: 0; color: var(--secondary); font: 750 .7rem/1.3 "IBM Plex Mono", ui-monospace, monospace; text-transform: uppercase; }.dataset-list { min-width: 0; display: grid; gap: 1rem; padding-top: 1rem; }
-.showcase-reference .dataset { min-width: 0; overflow: hidden; border: 1px solid var(--border-strong); background: var(--surface); }.showcase-reference .dataset > header { min-width: 0; display: flex; align-items: start; justify-content: space-between; gap: .8rem; padding: .8rem .9rem; border-bottom: 1px solid var(--border-strong); }.showcase-reference .dataset header > * { min-width: 0; }.showcase-reference .dataset h3 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }.showcase-reference .dataset .freshness { justify-content: flex-end; color: var(--text-muted); text-align: right; }.dataset-context { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 1px; padding: 0; margin: 0; background: var(--border-strong); border-bottom: 1px solid var(--border-strong); }.dataset-context div { min-width: 0; padding: .65rem .75rem; background: var(--surface-subtle); }.dataset-context dt { color: var(--text-muted); font: 700 .7rem/1.35 "IBM Plex Mono", ui-monospace, monospace; text-transform: uppercase; }.dataset-context dd { margin: .25rem 0 0; font: 600 .75rem/1.45 "IBM Plex Mono", ui-monospace, monospace; overflow-wrap: anywhere; }.dataset-summary { padding: 0 .9rem; margin: .75rem 0; color: var(--text-muted); font-size: .8rem; }.showcase-reference .table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; }.showcase-reference .table-wrap:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }.showcase-reference .data { width: 100%; min-width: 38rem; border-collapse: collapse; font: 650 .75rem/1.45 "IBM Plex Mono", ui-monospace, monospace; }.showcase-reference .data caption { padding: .6rem .9rem; color: var(--text-muted); text-align: left; }.showcase-reference .data th,.showcase-reference .data td { padding: .6rem .9rem; border-top: 1px solid var(--border); text-align: left; white-space: nowrap; }.showcase-reference .data th { background: var(--surface-subtle); text-transform: uppercase; }.showcase-reference .data :is(th,td):nth-child(n+2) { text-align: right; }.showcase-reference .showcase-note { padding: .8rem .9rem; margin: 0; }
-.showcase-reference .coverage .text-link { min-height: 2.75rem; display: inline-flex; align-items: center; justify-self: end; padding: 0; border: 0; background: transparent; color: var(--secondary); font: 600 .8rem/1.4 Inter, "Segoe UI", system-ui, sans-serif; text-align: right; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .2rem; white-space: normal; }
+.showcase-reference .account-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr)); gap: .75rem; }.showcase-reference .account { position: relative; min-width: 0; padding: 1rem; border: 1px solid var(--border-strong); background: var(--surface); }.showcase-reference .account header { display: flex; justify-content: space-between; gap: .75rem; }.showcase-reference .account header > div,.showcase-reference .money div { min-width: 0; }.showcase-reference .account h2 { margin: 0; font-size: 1.05rem; line-height: 1.35; overflow-wrap: anywhere; }.showcase-reference .account small { color: var(--text-muted); font: 600 .75rem/1.45 var(--font-mono); overflow-wrap: anywhere; }.showcase-reference .included { flex: none; color: var(--secondary); font: 750 .7rem/1.35 var(--font-mono); text-transform: uppercase; white-space: nowrap; }.account-index { display: block; margin-top: .7rem; color: var(--text-muted); font: 650 .7rem/1.3 var(--font-mono); }
+.showcase-reference .money { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); gap: .45rem; margin-top: .8rem; }.showcase-reference .money div { min-width: 0; padding: .65rem; border-left: 2px solid var(--primary); background: var(--surface-subtle); }.showcase-reference .money b { display: block; font: 750 .9rem/1.3 var(--font-mono); overflow-wrap: anywhere; }.showcase-reference .money span { color: var(--text-muted); font-size: .72rem; }.showcase-reference .money > p { grid-column: 1/-1; margin: 0; color: var(--warning); font-size: .8rem; }.showcase-reference .no-total { grid-column: 1/-1; color: var(--warning); font: 650 .72rem/1.3 var(--font-mono); }
+.showcase-ledgers { min-width: 0; display: grid; gap: 1.5rem; margin-top: 1.5rem; }.account-ledger { min-width: 0; border-top: 2px solid var(--secondary); }.ledger-header { min-width: 0; padding: .85rem 1rem; border: 1px solid var(--border-strong); border-top: 0; background: var(--surface-subtle); }.ledger-header h2 { margin: .15rem 0; font-size: 1.15rem; overflow-wrap: anywhere; }.ledger-header p:last-child { margin: 0; color: var(--text-muted); font-size: .8rem; overflow-wrap: anywhere; }.ledger-kicker { margin: 0; color: var(--secondary); font: 750 .7rem/1.3 var(--font-mono); text-transform: uppercase; }.dataset-list { min-width: 0; display: grid; gap: 1rem; padding-top: 1rem; }
+.showcase-reference .dataset { min-width: 0; overflow: hidden; border: 1px solid var(--border-strong); background: var(--surface); }.showcase-reference .dataset > header { min-width: 0; display: flex; align-items: start; justify-content: space-between; gap: .8rem; padding: .8rem .9rem; border-bottom: 1px solid var(--border-strong); }.showcase-reference .dataset header > * { min-width: 0; }.showcase-reference .dataset h3 { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }.showcase-reference .dataset .freshness { justify-content: flex-end; color: var(--text-muted); text-align: right; }.dataset-context { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 1px; padding: 0; margin: 0; background: var(--border-strong); border-bottom: 1px solid var(--border-strong); }.dataset-context div { min-width: 0; padding: .65rem .75rem; background: var(--surface-subtle); }.dataset-context dt { color: var(--text-muted); font: 700 .7rem/1.35 var(--font-mono); text-transform: uppercase; }.dataset-context dd { margin: .25rem 0 0; font: 600 .75rem/1.45 var(--font-mono); overflow-wrap: anywhere; }.dataset-summary { padding: 0 .9rem; margin: .75rem 0; color: var(--text-muted); font-size: .8rem; }.showcase-reference .table-wrap { width: 100%; max-width: 100%; min-width: 0; overflow-x: auto; overscroll-behavior-inline: contain; }.showcase-reference .table-wrap:focus-visible { outline: 3px solid var(--focus); outline-offset: -3px; }.showcase-reference .data { width: 100%; min-width: 38rem; border-collapse: collapse; font: 650 .75rem/1.45 var(--font-mono); }.showcase-reference .data caption { padding: .6rem .9rem; color: var(--text-muted); text-align: left; }.showcase-reference .data th,.showcase-reference .data td { padding: .6rem .9rem; border-top: 1px solid var(--border); text-align: left; white-space: nowrap; }.showcase-reference .data th { background: var(--surface-subtle); text-transform: uppercase; }.showcase-reference .data :is(th,td):nth-child(n+2) { text-align: right; }.showcase-reference .showcase-note { padding: .8rem .9rem; margin: 0; }
+.showcase-reference .coverage .text-link { min-height: 2.75rem; display: inline-flex; align-items: center; justify-self: end; padding: 0; border: 0; background: transparent; color: var(--secondary); font: 600 .8rem/1.4 var(--font-display); text-align: right; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .2rem; white-space: normal; }
 .showcase-reference .coverage .text-link:hover { box-shadow: none; background: transparent; text-decoration-thickness: 2px; }
 
 .profile-page {
-  width: min(100%, var(--reading-max));
+  width: 100%;
+  max-width: 64rem;
+  min-width: 0;
   margin-inline: auto;
 }
 .profile-page--state { min-height: 20rem; padding-top: 2rem; }
-.profile-intro { padding: 0.5rem 0 clamp(2.5rem, 7vw, 4.5rem); }
-.profile-intro h1 { max-width: 18ch; margin: 0.75rem 0 1rem; font-size: clamp(2.25rem, 6vw, 3.25rem); font-weight: 500; }
-.profile-intro > p:last-of-type { max-width: 40rem; margin-bottom: 0; color: var(--text-muted); font-size: 1.05rem; }
-.profile-route { display: flex; align-items: center; gap: 0.75rem; margin: 0; color: var(--secondary); font: 700 0.7rem/1.4 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: 0.05em; }
-.profile-route span { width: 2rem; height: 2rem; display: grid; place-items: center; border: 1px solid var(--secondary); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
-.profile-visibility-key { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; margin: 2rem 0 0; border-block: 1px solid var(--border-strong); }
+.profile-intro { padding: 2rem 0; }
+.profile-page h1 { max-width: none; margin: 0.45rem 0; font-size: clamp(2rem, 4vw, 2.5rem); font-weight: 400; letter-spacing: -0.04em; line-height: 1.18; }
+.profile-intro > p:last-of-type { max-width: 34rem; margin-bottom: 0; color: var(--text-muted); font-size: 0.82rem; line-height: 1.55; }
+.profile-route { display: flex; align-items: center; gap: 0.65rem; margin: 0; color: var(--secondary); font: 700 0.75rem/1.4 var(--font-mono); letter-spacing: 0.07em; }
+.profile-route span { width: 1.5rem; height: 1.5rem; display: grid; place-items: center; border: 1px solid var(--secondary); font-size: 0.625rem; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.profile-visibility-key { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; margin: 1.5rem 0 0; border: 1px solid var(--border-strong); background: var(--surface); }
 .profile-visibility-key div { min-width: 0; padding: 1rem; }
 .profile-visibility-key div + div { border-left: 1px solid var(--border-strong); }
 .profile-visibility-key :is(dt, dd) { margin: 0; }
-.profile-visibility-key dt { display: flex; align-items: center; gap: 0.5rem; font: 700 0.68rem/1.4 "IBM Plex Mono", ui-monospace, monospace; }
+.profile-visibility-key dt { display: flex; align-items: center; gap: 0.5rem; font: 700 0.68rem/1.4 var(--font-mono); }
 .profile-visibility-key dd { padding: 0.35rem 0 0 1rem; color: var(--text-muted); font-size: 0.75rem; line-height: 1.45; }
 .visibility-mark { width: 0.5rem; height: 0.5rem; flex: none; border: 1px solid currentColor; transform: rotate(45deg); }
 .visibility-mark--pre { color: var(--secondary); background: var(--secondary); }
 .visibility-mark--post { color: var(--accent); }
 .visibility-mark--private { color: var(--border-strong); background: repeating-linear-gradient(45deg, transparent 0 2px, currentColor 2px 3px); }
-.profile-form { display: grid; gap: 0; }
+.profile-form { width: min(100%, var(--reading-max)); display: grid; gap: 0; }
 .profile-edit-fields { display: contents; margin: 0; padding: 0; border: 0; min-width: 0; }
-.profile-section { padding: clamp(2rem, 7vw, 3.5rem) 0; border-top: 1px solid var(--border-strong); }
-.profile-section > header { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 1rem; margin-bottom: 2rem; }
-.profile-section > header > span { padding-top: 0.32rem; color: var(--secondary); font: 700 0.72rem/1.4 "IBM Plex Mono", ui-monospace, monospace; }
-.profile-section h2 { margin: 0 0 0.35rem; font-size: clamp(1.55rem, 4vw, 2rem); font-weight: 600; letter-spacing: -0.025em; }
+.profile-section { padding: clamp(2rem, 5vw, 3rem) 0; border-top: 1px solid var(--border-strong); }
+.profile-section > header { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+.profile-section > header > span { padding-top: 0.32rem; color: var(--secondary); font: 700 0.72rem/1.4 var(--font-mono); }
+.profile-section h2 { margin: 0 0 0.35rem; font-size: clamp(1.375rem, 3vw, 1.5rem); font-weight: 600; letter-spacing: -0.015em; line-height: 1.25; }
 .profile-section header p { max-width: 38rem; margin: 0; color: var(--text-muted); font-size: 0.9rem; }
-.profile-section__fields { display: grid; gap: 1.75rem; padding-left: 3rem; }
+.profile-section__fields { display: grid; gap: 1.5rem; padding-left: 3rem; }
 .profile-field { position: relative; display: grid; gap: 0.45rem; min-width: 0; padding: 0; margin: 0; border: 0; }
 .profile-field label { display: grid; gap: 0.55rem; font-weight: 700; }
 .profile-field__heading, .profile-choice-field legend, .profile-avatar-field legend { width: 100%; display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
@@ -595,7 +601,7 @@ p { line-height: 1.65; }
   width: 100%; min-height: 3rem; padding: 0.75rem 0.875rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); color: var(--text); background: var(--surface); font: inherit;
 }
 .profile-field textarea { min-height: 9rem; resize: vertical; line-height: 1.55; }
-.profile-field__annotation { flex: none; color: var(--text-muted); font: 650 0.64rem/1.4 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: 0.02em; text-align: right; }
+.profile-field__annotation { flex: none; color: var(--text-muted); font: 650 0.64rem/1.4 var(--font-mono); letter-spacing: 0.02em; text-align: right; }
 .profile-field p { margin: 0; color: var(--text-muted); font-size: 0.8rem; }
 .profile-field input[aria-invalid="true"], .profile-field select[aria-invalid="true"], .profile-field textarea[aria-invalid="true"] { border: 2px solid var(--danger); }
 .profile-attestation { border: 1px solid var(--border-strong); background: var(--surface); }
@@ -616,7 +622,7 @@ p { line-height: 1.65; }
 .choice-diamond { color: transparent; }
 .profile-choice:has(input:checked) .choice-diamond { color: var(--secondary); }
 .profile-choice:has(input:focus-visible), .avatar-options label:has(input:focus-visible), .profile-preference-options label:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 3px; }
-.character-count { position: absolute; right: 0.75rem; bottom: 0.7rem; color: var(--text-muted); font: 650 0.68rem/1.4 "IBM Plex Mono", ui-monospace, monospace; }
+.character-count { position: absolute; right: 0.75rem; bottom: 0.7rem; color: var(--text-muted); font: 650 0.68rem/1.4 var(--font-mono); }
 .avatar-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.65rem; }
 .avatar-options label { position: relative; display: grid; gap: 0 !important; padding: 0; border: 1px solid var(--border-strong); background: var(--surface); cursor: pointer; overflow: hidden; }
 .avatar-options label:has(input:checked) { border-color: var(--secondary); box-shadow: inset 0 0 0 3px var(--secondary); }
@@ -628,7 +634,7 @@ p { line-height: 1.65; }
 .avatar--harbour { background-position: 0 100%; }
 .avatar--meadow { background-position: 50% 100%; }
 .avatar--solstice { background-position: 100% 100%; }
-.avatar-name { padding: 0.65rem 0.75rem; font: 700 0.68rem/1.4 "IBM Plex Mono", ui-monospace, monospace; }
+.avatar-name { padding: 0.65rem 0.75rem; font: 700 0.68rem/1.4 var(--font-mono); }
 .avatar-selected { position: absolute; right: 0.6rem; bottom: 0.6rem; color: transparent; }
 .avatar-options label:has(input:checked) .avatar-selected { color: var(--secondary); }
 .profile-preference-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.5rem; }
@@ -640,12 +646,12 @@ p { line-height: 1.65; }
 .profile-save-region { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1.5rem; padding: 1.5rem; border-block: 1px solid var(--warning); border-left: 4px solid var(--warning); background: var(--warning-subtle); }
 .profile-save-region p { max-width: 30rem; margin: 0.35rem 0 0; color: var(--text-muted); font-size: 0.8rem; }
 .profile-save-region .action { min-width: 12rem; }
-.profile-save-region .action:disabled { color: var(--text-disabled); border-color: var(--border-strong); background: var(--surface-subtle); cursor: progress; }
+.profile-save-region .action:disabled { color: var(--text-muted); border-color: var(--border-strong); background: var(--surface-subtle); cursor: progress; }
 .profile-status { min-height: 4rem; padding: 1rem 0; color: var(--secondary); font-weight: 700; }
 .profile-status:not(:empty) { padding: 1rem; border-left: 4px solid var(--secondary); background: var(--secondary-subtle); }
 .profile-status[role="alert"] { border-left-color: var(--warning); color: var(--text); background: var(--warning-subtle); }
 .profile-error { color: var(--danger); font-size: 0.82rem; font-weight: 700; }
-.profile-error-summary { padding: 1rem 1.25rem; margin-bottom: 1.5rem; border: 2px solid var(--danger); color: var(--danger); background: var(--danger-subtle); }
+.profile-error-summary { width: min(100%, var(--reading-max)); padding: 1rem 1.25rem; margin-bottom: 1.5rem; border: 2px solid var(--danger); color: var(--danger); background: var(--danger-subtle); }
 .profile-error-summary a { color: inherit; }
 .profile-form :focus-visible, .profile-error-summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 @media (hover: hover) and (pointer: fine) {
@@ -670,7 +676,7 @@ p { line-height: 1.65; }
   margin-bottom: 1rem;
 }
 .connection-setup-grid { width: min(100%, 64.1875rem); display: grid; grid-template-columns: 14.6875rem minmax(0, 47.5rem); gap: 2rem; margin-left: max(0rem, calc(50vw - 42.5625rem)); }
-.connection-setup-grid--edit { width: min(100%, 47.5rem); display: block; margin-inline: auto; }
+.connection-setup-grid--edit { width: 100%; max-width: 64rem; display: block; margin-inline: auto; }
 .connection-setup-grid--edit .portfolio-inventory { padding-top: 0; }
 .setup-progress { min-height: calc(100vh - 4.25rem); display: flex; flex-direction: column; padding: 5rem 1.5rem 0 0; border-right: 1px solid var(--border-strong); }
 .setup-progress ol { padding: 0; margin: 1rem 0 2rem; list-style: none; }
@@ -683,7 +689,7 @@ p { line-height: 1.65; }
 .setup-progress li.active::before { color: var(--primary); content: "◆"; }
 .setup-progress > p { margin-top: auto; color: var(--text-muted); font: 600 0.7rem/1.55 var(--font-mono); }
 .portfolio-inventory { width: min(100%, 47.5rem); padding-top: 4rem; }
-.portfolio-inventory h1 { max-width: none; margin: 0.75rem 0; }
+.portfolio-inventory h1 { max-width: none; margin: 0.45rem 0; font-size: clamp(2rem, 4vw, 2.5rem); font-weight: 400; letter-spacing: -0.04em; line-height: 1.18; }
 .portfolio-inventory > .eyebrow { margin-bottom: 0; color: var(--secondary); font: 700 0.625rem/1.4 var(--font-mono); letter-spacing: 0.11em; text-transform: none; }
 .portfolio-inventory > .large-copy { max-width: 40.625rem; margin-bottom: 0; color: var(--text-muted); font-size: 0.875rem; line-height: 1.55; }
 .setup-layers { display: none; align-items: center; gap: 0.5rem; margin-block: 1.25rem; color: var(--text-muted); font: 700 0.625rem/1.3 var(--font-mono); }
@@ -699,7 +705,7 @@ p { line-height: 1.65; }
 .inventory-connection ul { display: grid; gap: 0.75rem; padding: 0; margin: 0; list-style: none; }
 .inventory-connection li { display: grid; gap: 0.25rem; padding: 1rem; background: var(--surface-subtle); }
 .inventory-connection li span { color: var(--text-muted); }
-.portfolio-inventory .action:disabled { color: var(--text-disabled); border-color: var(--border-strong); background: var(--surface-subtle); cursor: not-allowed; }
+.portfolio-inventory .action:disabled { color: var(--text-muted); border-color: var(--border-strong); background: var(--surface-subtle); cursor: not-allowed; }
 .account-inclusion { margin-block: 1.25rem; border: 1px solid var(--border-strong); background: var(--surface); overflow: hidden; clip-path: polygon(0.9375rem 0, 100% 0, 100% calc(100% - 0.9375rem), calc(100% - 0.9375rem) 100%, 0 100%, 0 0.9375rem); }
 .account-inclusion > p { margin-inline: 1rem; }
 .account-inclusion > .connection-success { padding: 0.75rem 1rem; margin: 0; border-bottom: 1px solid var(--secondary); background: color-mix(in srgb, var(--secondary) 8%, var(--surface)); font-size: 0.8rem; }
@@ -762,7 +768,7 @@ p { line-height: 1.65; }
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 0.5rem max(0.5rem, var(--safe-right)) calc(0.5rem + env(safe-area-inset-bottom, 0px)) max(0.5rem, var(--safe-left));
   border-top: 1px solid var(--border-strong);
   box-shadow: 0 -0.25rem 1rem color-mix(in srgb, var(--text) 8%, transparent);
@@ -887,6 +893,7 @@ p { line-height: 1.65; }
   .section-heading, .boundary-grid, .split-section, .status-inner { grid-template-columns: 1fr; gap: 1.5rem; }
   .step-grid, .principle-grid { grid-template-columns: 1fr; }
   .portfolio-showcase { padding-top: 0; }
+  .portfolio-showcase--state, .profile-page--state, .profile-intro { padding-top: 0; }
   .step-grid li, .principle-grid article { border-right: 1px solid var(--border-strong); }
   .step-number { margin-bottom: 1.5rem; }
   .consent-summary ul { grid-template-columns: 1fr; }
