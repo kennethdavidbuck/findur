@@ -381,19 +381,16 @@ describe('public site', () => {
 		await act(async () => {
 			resolveSave(new Response(JSON.stringify({ version: 1, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'committed', additions: ['account-1'], removals: [] } }), { status: 200 }))
 		})
-		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
-		expect(replaceState).toHaveBeenLastCalledWith(null, '', '/portfolio')
+		await waitFor(() => expect(window.location.pathname).toBe('/onboarding/portfolio'))
+		expect(replaceState).toHaveBeenLastCalledWith(null, '', '/onboarding/portfolio')
 		expect(screen.getByRole('heading', { level: 1, name: 'Your portfolio profile is taking shape.' })).toBeVisible()
 		expect(screen.getByRole('status')).toHaveTextContent('Account choices saved. Your portfolio profile is ready for the next step.')
+		expect(screen.getByRole('link', { name: 'Edit included accounts' })).toHaveAttribute('href', '/onboarding/accounts')
 		const post = fetchMock.mock.calls.find(([path, init]) => path === '/api/portfolio/inclusion' && init?.method === 'POST')
 		expect(post?.[1]).toEqual(expect.objectContaining({
 			cache: 'no-store', credentials: 'same-origin', body: JSON.stringify({ accountIds: ['account-1'] }),
 			headers: expect.objectContaining({ 'X-CSRF-Token': 'inclusion-csrf', 'X-Inclusion-Version': '0' }),
 		}))
-		fireEvent.click(screen.getByRole('link', { name: 'Profile' }))
-		expect(screen.queryByText(/Account choices saved/)).not.toBeInTheDocument()
-		fireEvent.click(screen.getByRole('link', { name: 'Portfolio' }))
-		expect(screen.queryByText(/Account choices saved/)).not.toBeInTheDocument()
 	})
 
 	it('omits closed and unactionable temporary accounts from initial setup', async () => {
@@ -416,31 +413,29 @@ describe('public site', () => {
 		expect(screen.getByText(/Saved to your profile: 0 of 1 accounts shown/)).toBeVisible()
 	})
 
-	it('replace-routes an existing durable selection without a just-saved notice', async () => {
+	it('keeps an existing durable selection available to review without a just-saved notice', async () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		const inventory = inclusionInventory([
 			inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready'),
 			inclusionAccount('account-2', 'Growth (•••• 2002)', true, 'ready'),
 		])
 		installInclusionFetch(inventory, { version: 4, committed: ['account-1'] })
-		const replaceState = vi.spyOn(window.history, 'replaceState')
 		render(<App />)
 
-		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
-		expect(replaceState).toHaveBeenLastCalledWith(null, '', '/portfolio')
-		expect(screen.getByRole('heading', { name: 'Your portfolio profile is taking shape.' })).toBeVisible()
+		expect(await screen.findByRole('checkbox', { name: /Retirement/ })).toBeChecked()
+		expect(window.location.pathname).toBe('/onboarding/accounts')
+		expect(screen.getByRole('button', { name: 'Review my choices' })).toBeEnabled()
 		expect(screen.queryByText(/Account choices saved/)).not.toBeInTheDocument()
 	})
 
-	it('replace-routes a durable selection even while inventory recovery is unavailable', async () => {
+	it('keeps account setup visible for recovery when durable choices exist', async () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		const inventory = { state: 'unavailable', generation: 4, updatedAt: '2026-09-20T12:00:00Z', connections: [] }
 		installInclusionFetch(inventory, { version: 4, committed: ['account-1'] })
-		const replaceState = vi.spyOn(window.history, 'replaceState')
 		render(<App />)
 
-		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
-		expect(replaceState).toHaveBeenLastCalledWith(null, '', '/portfolio')
+		expect(await screen.findByRole('button', { name: 'Try again' })).toBeVisible()
+		expect(window.location.pathname).toBe('/onboarding/accounts')
 		expect(screen.queryByText(/Account choices saved/)).not.toBeInTheDocument()
 	})
 
@@ -501,7 +496,7 @@ describe('public site', () => {
 		fireEvent.click(retry)
 		expect(screen.getByRole('dialog', { name: 'Ready to save your choices?' })).toBeVisible()
 		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
-		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+		await waitFor(() => expect(window.location.pathname).toBe('/onboarding/portfolio'))
 		const post = fetchMock.mock.calls.find(([path, init]) => path === '/api/portfolio/inclusion' && init?.method === 'POST')
 		expect(post?.[1]).toEqual(expect.objectContaining({
 			body: JSON.stringify({ accountIds: ['account-1'] }),
@@ -556,7 +551,7 @@ describe('public site', () => {
 		fireEvent.click(await screen.findByRole('checkbox', { name: /Retirement/ }))
 		fireEvent.click(screen.getByRole('button', { name: 'Review my choices' }))
 		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
-		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+		await waitFor(() => expect(window.location.pathname).toBe('/onboarding/portfolio'))
 		expect(screen.getByRole('status')).toHaveTextContent('Account choices saved')
 		expect(getCalls).toBe(2)
 	})
@@ -666,6 +661,8 @@ describe('public site', () => {
 		expect(unavailable).toBeChecked()
 		fireEvent.click(unavailable)
 		expect(screen.getByText('Unavailable')).toBeVisible()
+		expect(screen.getByRole('button', { name: 'Review my choices' })).toBeDisabled()
+		fireEvent.click(ready)
 		fireEvent.click(screen.getByRole('button', { name: 'Review my choices' }))
 		const dialog = screen.getByRole('dialog', { name: 'Ready to save your choices?' })
 		expect(dialog).toHaveTextContent('Removing')
