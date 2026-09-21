@@ -22,32 +22,19 @@ export function ConsentPage({ headingRef, onNavigate }: ConsentPageProps) {
         <h1 ref={headingRef} tabIndex={-1}>{consent.title}</h1>
         <p className="large-copy">{consent.intro}</p>
 
-        <div className="consent-sections">
-          <section aria-labelledby="initial-consent-heading">
-            <h2 id="initial-consent-heading">{consent.initialTitle}</h2>
-            <p>{consent.initialBody}</p>
-            <p className="consent-emphasis">{consent.noDefault}</p>
-          </section>
-          <section aria-labelledby="later-consent-heading">
-            <h2 id="later-consent-heading">{consent.laterTitle}</h2>
-            <p>{consent.laterBody}</p>
-          </section>
-          <section aria-labelledby="disclosure-consent-heading">
-            <h2 id="disclosure-consent-heading">{consent.disclosureTitle}</h2>
-            <p>{consent.disclosureBody}</p>
-          </section>
-          <section aria-labelledby="limits-consent-heading">
-            <h2 id="limits-consent-heading">{consent.limitsTitle}</h2>
-            <ul>{consent.limits.map((limit) => <li key={limit}>{limit}</li>)}</ul>
-          </section>
+        <p className="consent-reassurance">{consent.reassurance}</p>
+        <div className="consent-actions">
+          <form action="/api/auth/snaptrade/authorize" method="post" aria-describedby={available ? undefined : "authorization-unavailable"}>
+            <input type="hidden" name="returnTo" value="/portfolio" />
+            <Button className="action action--primary" type="submit" isDisabled={!available} aria-describedby={available ? undefined : "authorization-unavailable"}>{consent.action}</Button>
+            {!available && <p className="consent-unavailable" id="authorization-unavailable" role="status">{authorization.resolving ? consent.checking : consent.unavailable}</p>}
+          </form>
+          <p className="mono-label consent-eligibility">{consent.eligibility}</p>
         </div>
-
-        <p className="mono-label consent-eligibility">{consent.eligibility}</p>
-		<form action="/api/auth/snaptrade/authorize" method="post" aria-describedby={available ? undefined : "authorization-unavailable"}>
-          <input type="hidden" name="returnTo" value="/portfolio" />
-		  <Button className="action action--primary" type="submit" isDisabled={!available} aria-describedby={available ? undefined : "authorization-unavailable"}>{consent.action}</Button>
-		  {!available && <p className="consent-unavailable" id="authorization-unavailable" role="status">{authorization.resolving ? consent.checking : consent.unavailable}</p>}
-        </form>
+        <section className="consent-summary" aria-labelledby="consent-summary-heading">
+          <h2 id="consent-summary-heading">{consent.summaryTitle}</h2>
+          <ul>{consent.summary.map((item) => <li key={item}>{item}</li>)}</ul>
+        </section>
         <PublicLink className="text-link" href="/" onNavigate={onNavigate}>{consent.back}</PublicLink>
       </div>
     </section>
