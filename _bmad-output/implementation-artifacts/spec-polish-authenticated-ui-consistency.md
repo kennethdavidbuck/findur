@@ -29,6 +29,7 @@ context:
 - Kept loading/error headings stable with loaded routes, constrained validation feedback to the form column, and preserved readable pending-action labels after independent review.
 - Verified desktop and 390px Profile/Portfolio captures in dark French UI: both desktop route frames measured 1024px with 40px headings, the Profile form remained 720px, mobile navigation resolved to two equal columns, and neither viewport had page-level horizontal overflow. The user approved the rendered result.
 - Verification passed: 63 focused Vitest cases; frontend typecheck, lint (two pre-existing Fast Refresh warnings, zero errors), and production build; `docker compose config --quiet`; a fresh isolated `./scripts/compose-test.sh` browser journey; `cd backend && golangci-lint run` with 0 issues; and `git diff --check`.
+- PR CI reproduced the first-run Profile focus timing race seen locally. Hardened the browser helper to wait for both the persisted value and the route-heading focus it asserts, with explicit timeout assertions for each condition; the formerly failing clean-database journey then passed in a fresh isolated Compose project.
 
 ## Review Triage Log
 

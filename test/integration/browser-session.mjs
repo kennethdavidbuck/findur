@@ -366,10 +366,12 @@ async function waitForProfileValue(webdriver, sessionId, displayName) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ script: `return {name:document.querySelector('#displayName')?.value,biography:document.querySelector('#biography')?.value,headingFocused:document.activeElement===document.querySelector('h1')}`, args: [] }),
     })
-    if (state.name === displayName) return state
+    if (state.name === displayName && state.headingFocused) return state
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   assert.equal(state?.name, displayName, 'profile value appears after direct load')
+  assert.equal(state?.headingFocused, true, 'profile heading receives focus after direct load')
+  return state
 }
 
 export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockUrl }) {
