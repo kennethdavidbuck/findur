@@ -86,10 +86,10 @@ describe('public site', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
       'Find a different pattern in the same sky.',
     )
-    expect(screen.getByText('18+ evaluation demo')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Owner access' })).toHaveAttribute('href', '/connect')
-    expect(screen.getByRole('link', { name: 'Owner access' })).toHaveAccessibleDescription('Review the secure connection boundary.')
-    expect(screen.getByText('Review the secure connection boundary.')).toBeVisible()
+    expect(screen.getByText('Private 18+ demo')).toBeInTheDocument()
+    const loginLinks = screen.getAllByRole('link', { name: 'Log in' })
+    expect(loginLinks).toHaveLength(2)
+    expect(loginLinks.every((link) => link.getAttribute('href') === '/connect')).toBe(true)
     expect(screen.getAllByRole('navigation')).toHaveLength(1)
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -97,16 +97,18 @@ describe('public site', () => {
   it('navigates to About, updates metadata, and focuses the route heading', async () => {
     render(<App />)
 
-    fireEvent.click(screen.getByRole('link', { name: /explore the idea/i }))
+    fireEvent.click(screen.getByRole('link', { name: /how findur works/i }))
 
-    const heading = screen.getByRole('heading', { level: 1, name: /compatibility can begin/i })
+    const heading = screen.getByRole('heading', { level: 1, name: /more to investing/i })
     await waitFor(() => expect(heading).toHaveFocus())
     expect(window.location.pathname).toBe('/about')
     expect(document.title).toBe('About Findur')
     expect(document.querySelector('meta[name="description"]')).toHaveAttribute(
       'content',
-      expect.stringContaining('deliberate disclosure'),
+      expect.stringContaining('conversation starters'),
     )
+    expect(screen.getByText(/mix of holdings, diversification, recent activity, and account coverage/)).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'The numbers never get the last word.' })).toBeVisible()
     expect(screen.getAllByRole('link', { name: 'About' })[0]).toHaveAttribute('aria-current', 'page')
   })
 
@@ -126,14 +128,14 @@ describe('public site', () => {
     fireEvent.click(screen.getAllByRole('link', { name: 'À propos' })[0])
     expect(window.location.pathname).toBe('/about')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'La compatibilité peut commencer par nos choix.',
+      'Investir, c’est bien plus que le solde.',
     )
     expect(screen.getAllByRole('navigation')).toHaveLength(1)
 
     unmount()
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'La compatibilité peut commencer par nos choix.',
+      'Investir, c’est bien plus que le solde.',
     )
   })
 
@@ -188,7 +190,7 @@ describe('public site', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Compatibility can begin with how we choose.',
+      'There’s more to investing than the balance.',
     )
 
     window.history.pushState(null, '', '/')
@@ -206,17 +208,21 @@ describe('public site', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
 
-    fireEvent.click(screen.getByRole('link', { name: 'Owner access' }))
+    fireEvent.click(screen.getAllByRole('link', { name: 'Log in' })[0])
 
-    const heading = screen.getByRole('heading', { level: 1, name: /without sharing your brokerage password/i })
+    const heading = screen.getByRole('heading', { level: 1, name: 'Log in to Findur.' })
     await waitFor(() => expect(heading).toHaveFocus())
     expect(window.location.pathname).toBe('/connect')
-    expect(screen.getByText('No account is included by default.')).toBeVisible()
-    expect(screen.getByText(/Balances, positions, activities, signal derivation/)).toBeVisible()
-    expect(screen.getByText(/Findur never sees or stores/)).toBeVisible()
-    expect(screen.getByText(/cannot trade and does not provide financial advice/)).toBeVisible()
-    expect(screen.getByText(/deleting your data from app-controlled active storage/)).toBeVisible()
-	await waitFor(() => expect(screen.getByRole('button', { name: 'Continue to SnapTrade' })).toBeEnabled())
+    expect(screen.getByText(/No account is included by default/)).toBeVisible()
+    expect(screen.getByText(/connecting never publishes your portfolio/i)).toBeVisible()
+    expect(screen.getByText(/Findur never receives or stores your brokerage credentials/)).toBeVisible()
+    expect(screen.getByText(/connection status, and masked account details/)).toBeVisible()
+    expect(screen.getByText(/signal building, profile previews, and Discovery stay off until you explicitly include at least one account/)).toBeVisible()
+    expect(screen.getByText(/Confirming selected accounts starts private analysis and profile previews/)).toBeVisible()
+    expect(screen.getByText(/What a match may see remains a separate choice/)).toBeVisible()
+    expect(screen.getByText(/Findur is read-only/)).toBeVisible()
+    expect(screen.getByText(/deletes your complete account from app-controlled active storage/)).toBeVisible()
+	await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with SnapTrade' })).toBeEnabled())
 	expect(fetchMock).toHaveBeenCalledWith('/api/auth/status', expect.objectContaining({ cache: 'no-store', credentials: 'same-origin' }))
   })
 
@@ -968,10 +974,10 @@ describe('public site', () => {
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: false, authenticated: false }), { status: 200 })))
 		window.history.replaceState(null, '', '/connect')
 		render(<App />)
-		const action = screen.getByRole('button', { name: 'Continue to SnapTrade' })
+		const action = screen.getByRole('button', { name: 'Continue with SnapTrade' })
 		expect(action).toBeDisabled()
-		expect(await screen.findByText(/Authorization is not available yet/)).toBeVisible()
-		expect(action).toHaveAccessibleDescription(/Authorization is not available yet/)
+		expect(await screen.findByText(/Login is unavailable right now/)).toBeVisible()
+		expect(action).toHaveAccessibleDescription(/Login is unavailable right now/)
 	})
 
   it('preserves consent route and focus while locale and theme change', async () => {
@@ -979,10 +985,15 @@ describe('public site', () => {
 	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200 })))
     render(<App />)
     fireEvent.click(screen.getAllByRole('radio', { name: 'FR' })[0])
-    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Connectez-vous sans partager votre mot de passe de courtage.')
-    expect(screen.getByText('Aucun compte n’est inclus par défaut.')).toBeVisible()
-    expect(screen.getByText(/Findur ne peut effectuer aucune opération/)).toBeVisible()
-    expect(screen.getByText(/supprimer vos données du stockage actif/)).toBeVisible()
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Connectez-vous à Findur.')
+    expect(screen.getByText(/Aucun compte n’est inclus par défaut/)).toBeVisible()
+    expect(screen.getByText(/Findur ne reçoit ni ne conserve jamais vos identifiants de courtage/)).toBeVisible()
+    expect(screen.getByText(/l’état de la connexion et les renseignements masqués/)).toBeVisible()
+    expect(screen.getByText(/jusqu’à ce que vous incluiez explicitement au moins un compte/)).toBeVisible()
+    expect(screen.getByText(/La confirmation des comptes choisis lance l’analyse privée/)).toBeVisible()
+    expect(screen.getByText(/Ce qu’un match peut voir reste un choix distinct/)).toBeVisible()
+    expect(screen.getByText(/Findur est en lecture seule/)).toBeVisible()
+    expect(screen.getByText(/supprime votre compte complet du stockage actif/)).toBeVisible()
     expect(window.location.pathname).toBe('/connect')
     fireEvent.click(screen.getAllByRole('radio', { name: 'Sombre' })[0])
     await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'dark'))

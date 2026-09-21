@@ -57,3 +57,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-fix-account-inclusion-ux.md`
   summary: Harden the local OIDC integration fixture with challenge-bound, expiring, single-use authorization codes.
   evidence: The fixture's token endpoint predated this correction and accepts any non-empty code verifier and authorization code; binding issued codes to the S256 challenge would let browser integration detect wrong-verifier and replay regressions without expanding the account-selection UX fix.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-public-site-polish.md`
+  summary: Correct the frozen polish spec's obsolete owner-only demonstration wording.
+  evidence: The architecture spine supersedes the single-owner assumption with up to five isolated SnapTrade test viewers; runtime copy was corrected, but the workflow forbids implementation agents from changing frozen human-owned intent.

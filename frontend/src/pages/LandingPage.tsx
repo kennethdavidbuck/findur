@@ -22,7 +22,10 @@ export function LandingPage({ headingRef, onNavigate }: LandingPageProps) {
             </h1>
             <p className="hero-intro">{content.intro}</p>
             <div className="hero-actions">
-              <PublicLink className="action action--primary" href="/about" onNavigate={onNavigate}>
+              <PublicLink className="action action--primary" href="/connect" onNavigate={onNavigate}>
+                {content.loginAction} <span aria-hidden="true">→</span>
+              </PublicLink>
+              <PublicLink className="action action--secondary" href="/about" onNavigate={onNavigate}>
                 {content.aboutAction} <span aria-hidden="true">→</span>
               </PublicLink>
               <span className="demo-marker"><span aria-hidden="true">◇</span> {content.demoLabel}</span>

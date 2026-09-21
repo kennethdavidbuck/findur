@@ -17,10 +17,9 @@ type PublicLinkProps = {
   current?: boolean
   href: PublicRoute
   onNavigate: (route: PublicRoute) => void
-  describedBy?: string
 }
 
-export function PublicLink({ children, className, current, href, onNavigate, describedBy }: PublicLinkProps) {
+export function PublicLink({ children, className, current, href, onNavigate }: PublicLinkProps) {
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault()
@@ -28,7 +27,7 @@ export function PublicLink({ children, className, current, href, onNavigate, des
   }
 
   return (
-    <a className={className} href={href} aria-current={current ? 'page' : undefined} aria-describedby={describedBy} onClick={handleClick}>
+    <a className={className} href={href} aria-current={current ? 'page' : undefined} onClick={handleClick}>
       {children}
     </a>
   )
@@ -85,10 +84,9 @@ export function PublicLayout({ children, route, onNavigate }: PublicLayoutProps)
             </PublicLink>
           </nav>
           <div className="owner-entry">
-            <PublicLink className="owner-button" href="/connect" current={route === '/connect'} onNavigate={onNavigate} describedBy="owner-access-note">
+            <PublicLink className="owner-button" href="/connect" current={route === '/connect'} onNavigate={onNavigate}>
               {messages.owner.action}
             </PublicLink>
-            <span className="owner-status" id="owner-access-note">{messages.owner.unavailable}</span>
           </div>
         </div>
       </header>
