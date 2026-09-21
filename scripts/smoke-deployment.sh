@@ -1,24 +1,18 @@
 #!/usr/bin/env sh
 set -eu
 
-if [ "$#" -ne 2 ]; then
-  echo "usage: $0 https://your-static-site.onrender.com EXPECTED_FULL_SHA" >&2
+if [ "$#" -ne 1 ]; then
+  echo "usage: $0 https://your-static-site.onrender.com" >&2
   exit 2
 fi
 
-expected_sha=$2
-if ! printf '%s\n' "$expected_sha" | grep -Eq '^[0-9a-f]{40}$'; then
-  echo "expected build SHA must be 40 lowercase hexadecimal characters" >&2
-  exit 2
-fi
-
-if ! printf '%s\n' "$1" | grep -Eq '^https://[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*(:[1-9][0-9]{0,4})?/?$'; then
-  echo "deployment URL must be an HTTPS origin without a path, query, fragment, or credentials" >&2
+if ! printf '%s\n' "$1" | grep -Eq '^(https://[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*|http://127\.0\.0\.1)(:[1-9][0-9]{0,4})?/?$'; then
+  echo "deployment URL must be an HTTPS origin, or an HTTP loopback origin, without a path, query, fragment, or credentials" >&2
   exit 2
 fi
 
 base_url=${1%/}
-authority=${base_url#https://}
+authority=${base_url#*://}
 case "$authority" in
   *:*)
     port=${authority##*:}
@@ -34,22 +28,29 @@ trap 'rm -rf "$smoke_dir"' EXIT HUP INT TERM
 
 deadline=$(( $(date +%s) + 300 ))
 while :; do
-  rm -f "$smoke_dir/root.html" "$smoke_dir/health.json"
+  rm -f "$smoke_dir/root.html" "$smoke_dir/status.html" "$smoke_dir/health.json" "$smoke_dir/ready.json"
   curl --fail --silent --show-error --max-time 15 "$base_url/" --output "$smoke_dir/root.html" || true
+  curl --fail --silent --show-error --max-time 15 "$base_url/__status" --output "$smoke_dir/status.html" || true
   curl --fail --silent --show-error --max-time 15 "$base_url/api/healthz" --output "$smoke_dir/health.json" || true
-  if grep -Fq "content=\"$expected_sha\"" "$smoke_dir/root.html" 2>/dev/null \
-    && grep -Eq "^\\{\"status\":\"ok\",\"buildSha\":\"$expected_sha\"\\}[[:space:]]*$" "$smoke_dir/health.json" 2>/dev/null; then
+  curl --fail --silent --show-error --max-time 15 "$base_url/api/readyz" --output "$smoke_dir/ready.json" || true
+  if grep -q '<div id="root"></div>' "$smoke_dir/root.html" 2>/dev/null \
+    && grep -q '<div id="root"></div>' "$smoke_dir/status.html" 2>/dev/null \
+    && grep -Eq '^\{"status":"ok","buildSha":"[0-9a-f]{40}"\}[[:space:]]*$' "$smoke_dir/health.json" 2>/dev/null \
+    && grep -Eq '^\{"status":"ready","buildSha":"[0-9a-f]{40}"\}[[:space:]]*$' "$smoke_dir/ready.json" 2>/dev/null; then
     break
   fi
   if [ "$(date +%s)" -ge "$deadline" ]; then
-    echo "deployment did not converge to expected frontend and API revisions" >&2
+    echo "deployment did not become healthy" >&2
     exit 1
   fi
   sleep 5
 done
 
 grep -q '<div id="root"></div>' "$smoke_dir/root.html"
-grep -Fq "<meta name=\"findur-build-sha\" content=\"$expected_sha\"" "$smoke_dir/root.html"
+grep -q '<div id="root"></div>' "$smoke_dir/status.html"
+grep -Eq '<meta name="findur-build-sha" content="[0-9a-f]{40}"' "$smoke_dir/root.html"
+frontend_sha=$(sed -n 's/.*<meta name="findur-build-sha" content="\([0-9a-f]\{40\}\)".*/\1/p' "$smoke_dir/root.html")
+test -n "$frontend_sha"
 
 module_path=$(sed -n 's/.*<script[^>]*type="module"[^>]*src="\([^"]*\)"[^>]*>.*/\1/p' "$smoke_dir/root.html")
 case "$module_path" in
@@ -72,13 +73,10 @@ if [ ! -s "$smoke_dir/module.js" ] || grep -Eiq '<(!doctype|html|body)([[:space:
   echo "module asset is empty or contains an HTML fallback" >&2
   exit 1
 fi
+grep -Fq "$frontend_sha" "$smoke_dir/module.js"
 
-grep -Eq "^\\{\"status\":\"ok\",\"buildSha\":\"$expected_sha\"\\}[[:space:]]*$" "$smoke_dir/health.json"
+grep -Eq '^\{"status":"ok","buildSha":"[0-9a-f]{40}"\}[[:space:]]*$' "$smoke_dir/health.json"
 
-curl --fail --silent --show-error --max-time 15 "$base_url/api/readyz" --output "$smoke_dir/ready.json"
-grep -Eq "^\\{\"status\":\"ready\",\"buildSha\":\"$expected_sha\"\\}[[:space:]]*$" "$smoke_dir/ready.json"
+grep -Eq '^\{"status":"ready","buildSha":"[0-9a-f]{40}"\}[[:space:]]*$' "$smoke_dir/ready.json"
 
-curl --fail --silent --show-error --max-time 15 "$base_url/__status" --output "$smoke_dir/status.html"
-grep -Fq "content=\"$expected_sha\"" "$smoke_dir/status.html"
-
-echo "deployment smoke check passed"
+echo "deployment health smoke check passed"

@@ -88,6 +88,8 @@ Press `Ctrl+C` to stop the attached stack, then remove its containers and networ
 
 PostgreSQL data is preserved between runs. To intentionally reset it, use `./scripts/compose-down.sh --volumes`.
 
+Run the deployment-health smoke against this local stack with `./scripts/smoke-deployment.sh http://127.0.0.1:8080`.
+
 For rebuild-and-restart development:
 
 ```sh
@@ -141,7 +143,7 @@ The checked-in SnapTrade provider client is generated from a checksum-pinned off
 
 ## Deployment model
 
-The hosted demonstration uses a Render static site, Go web service, and PostgreSQL database. CI builds and integration-tests the backend image, publishes it under the full Git SHA, deploys its immutable digest, deploys the frontend for the same commit, and verifies that both public surfaces report that revision. Render auto-deploy and Blueprint auto-sync remain disabled after initial provisioning so the CI workflow is the sole release path.
+The hosted demonstration uses a Render static site, Go web service, and PostgreSQL database. CI builds and integration-tests the backend image, publishes it under the full Git SHA, deploys its immutable digest, deploys the frontend for the same commit, and verifies that the served frontend and same-origin API are healthy. Render auto-deploy and Blueprint auto-sync remain disabled after initial provisioning so the CI workflow is the sole release path.
 
 Deployment requires repository secrets for Docker Hub publication, Render API access, the protected frontend deploy hook, and the public origin. Do not commit credentials, `.env` files, OAuth tokens, provider secrets, real financial data, or unredacted logs.
 
@@ -159,7 +161,9 @@ Create `bootstrap-once` only for provisioning; do not move or reuse it. Normal r
 After deployment, verify the public origin without emitting request or response headers:
 
 ```sh
-./scripts/smoke-deployment.sh https://YOUR-STATIC-SITE.onrender.com "$(git rev-parse HEAD)"
+./scripts/smoke-deployment.sh https://YOUR-STATIC-SITE.onrender.com
 ```
 
 [Render's free PostgreSQL service expires 30 days after creation](https://render.com/docs/free), has no backups, and is not a production data store. Provision it for the intended demonstration window. The hosted environment is a demonstration boundary, not authorization for real-user or production financial data.
+
+The smoke is bounded and fails when the public frontend, same-origin API health/readiness, or frontend module asset is unavailable or malformed. `/__status` displays the frontend and API revisions as diagnostics; independently deployed resources may legitimately differ. Health and status checks do not make provider calls.

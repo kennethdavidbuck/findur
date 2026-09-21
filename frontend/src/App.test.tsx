@@ -1033,7 +1033,7 @@ describe('public site', () => {
 
 	render(<App />)
 
-	expect(await screen.findByText('Build identity malformed')).toBeInTheDocument()
+	expect(await screen.findByText('Deployment healthy')).toBeInTheDocument()
 	expect(fetchMock).toHaveBeenCalledTimes(1)
 	expect(fetchMock).toHaveBeenCalledWith('/api/readyz', expect.objectContaining({
 	  cache: 'no-store',
@@ -1064,7 +1064,7 @@ describe('public site', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('État de la version Findur')
-    expect(await screen.findByText('Identité de version non valide')).toBeInTheDocument()
+    expect(await screen.findByText('Déploiement sain')).toBeInTheDocument()
     expect(screen.getByText('Version de l’interface')).toBeInTheDocument()
     expect(document.title).toBe('État de la version — Findur')
   })

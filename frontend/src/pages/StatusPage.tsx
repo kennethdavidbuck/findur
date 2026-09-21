@@ -48,7 +48,7 @@ export function StatusPage() {
         <dt>{messages.status.frontendRevision}</dt>
         <dd><code>{frontendBuildSha}</code></dd>
         <dt>{messages.status.apiRevision}</dt>
-        <dd><code>{'backendSha' in result ? result.backendSha : messages.status.notAvailable}</code></dd>
+        <dd><code>{result.kind === 'ready' && result.backendSha ? result.backendSha : messages.status.notAvailable}</code></dd>
       </dl>
     </main>
   )

@@ -143,11 +143,8 @@ p { line-height: 1.65; }
 .reading-width, .reading-column { max-width: var(--reading-max); }
 .status-page { width: min(calc(100% - 2rem), 45rem); margin: 0 auto; padding-block: 5rem; }
 .status-page code { overflow-wrap: anywhere; }
-.status-page [data-result="match"] { color: var(--secondary); font-weight: 750; }
-.status-page [data-result="unavailable"],
-.status-page [data-result="malformed"],
-.status-page [data-result="stale"],
-.status-page [data-result="mismatch"] { color: var(--warning); font-weight: 750; }
+.status-page [data-result="ready"] { color: var(--secondary); font-weight: 750; }
+.status-page [data-result="unavailable"] { color: var(--warning); font-weight: 750; }
 .section-pad { padding-block: clamp(4.5rem, 10vw, 8.5rem); }
 
 .visually-hidden {
