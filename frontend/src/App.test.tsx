@@ -282,7 +282,7 @@ describe('public site', () => {
 		expect(await screen.findByText('Retirement (•••• 8443)')).toBeVisible()
 		expect(screen.getByRole('heading', { level: 1, name: 'Choose what Findur may use.' })).toBeVisible()
 		expect(screen.getAllByText('Retirement (•••• 8443)')).toHaveLength(1)
-		expect(screen.getByRole('heading', { name: 'Connection setup' })).toBeVisible()
+		expect(screen.getByRole('heading', { name: 'Connection setup' })).toBeInTheDocument()
 		expect(screen.getByText('1 · Connect', { selector: 'li' })).toBeVisible()
 		expect(screen.getByText('2 · Choose accounts', { selector: 'li' })).toHaveAttribute('aria-current', 'step')
 		expect(screen.getByText('3 · Portfolio showcase', { selector: 'li' })).toBeVisible()

@@ -162,7 +162,7 @@ export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionEx
   return (
     <div className="connection-setup-grid">
       <aside className="setup-progress" aria-labelledby="setup-progress-title">
-        <h2 id="setup-progress-title">{copy.inclusion.progressTitle}</h2>
+        <h2 className="visually-hidden" id="setup-progress-title">{copy.inclusion.progressTitle}</h2>
         <ol>
           {copy.inclusion.progressSteps.map((step, index) => <li className={connectionComplete && index === 0 ? 'done' : index === (connectionComplete ? 1 : 0) ? 'active' : ''} aria-current={index === (connectionComplete ? 1 : 0) ? 'step' : undefined} key={step}>{step}</li>)}
         </ol>

@@ -37,6 +37,16 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
       await new Promise((resolve) => setTimeout(resolve, 250))
     }
     assert.deepEqual(oauthEvidence, { path: '/onboarding/accounts', search: '', heading: 'Choose what Findur may use.' })
+    await webdriver(`/session/${sessionId}/window/rect`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ width: 1032, height: 900 }),
+    })
+    const setupLayout = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const header=document.querySelector('.authenticated-header').getBoundingClientRect();const eyebrow=document.querySelector('.portfolio-inventory > .eyebrow').getBoundingClientRect();const progress=document.querySelector('#setup-progress-title').getBoundingClientRect();return {headerBottom:header.bottom,eyebrowTop:eyebrow.top,progressWidth:progress.width,progressHeight:progress.height}`, args: [] }),
+    })
+    assert.ok(setupLayout.headerBottom <= setupLayout.eyebrowTop, `1032px setup controls clear the OAuth return text; observed: ${JSON.stringify(setupLayout)}`)
+    assert.ok(setupLayout.progressWidth <= 1 && setupLayout.progressHeight <= 1, `the accessible setup label is not visually rendered; observed: ${JSON.stringify(setupLayout)}`)
     let inventoryEvidence
     for (let attempt = 0; attempt < 40; attempt += 1) {
       inventoryEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
@@ -51,7 +61,7 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
     assert.equal(inventoryEvidence.inventoryCount, 0, 'the raw inventory is not duplicated beside the chooser')
     assert.equal(inventoryEvidence.accountLabelCount, 1, `the account is rendered once; observed: ${JSON.stringify(inventoryEvidence)}`)
     assert.match(inventoryEvidence.text, /Pick the accounts you’d like to include\. You can change this anytime\./)
-    assert.match(inventoryEvidence.text, /Saved to your profile:\s*0\s*of\s*1\s*available accounts/)
+    assert.match(inventoryEvidence.text, /Saved to your profile:\s*0\s*of\s*1\s*accounts shown/)
     for (const forbidden of ['Q6542138443', '15363.23', 'RAW-SYMBOL-DO-NOT-RENDER']) assert.doesNotMatch(inventoryEvidence.text, new RegExp(forbidden), `${forbidden} is not rendered`)
     const browserCookies = await webdriver(`/session/${sessionId}/cookie`)
     assert.ok(browserCookies.some((cookie) => cookie.name === 'findur_session' && cookie.httpOnly && cookie.secure), 'opaque secure session cookie is issued')
