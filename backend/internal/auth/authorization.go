@@ -25,7 +25,7 @@ const (
 	AttemptLifetime          = 10 * time.Minute
 	SnapTradeProvider        = "snaptrade"
 	SnapTradeCallbackPath    = "/api/auth/snaptrade/callback"
-	AuthorizationResultRoute = "/connect/result"
+	AuthorizationResultRoute = "/onboarding/accounts"
 	DefaultReturnRoute       = "/connect"
 	PortfolioReturnRoute     = "/portfolio"
 	ScopeOpenID              = "openid"

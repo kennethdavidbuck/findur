@@ -11,7 +11,7 @@
     },
     "jsonBody": {
       "issuer": "http://wiremock:8080",
-      "authorization_endpoint": "http://wiremock:8080/oauth/authorize",
+      "authorization_endpoint": "http://127.0.0.1:8080/api/__fixture/oidc/authorize",
       "token_endpoint": "http://backend:10000/api/__fixture/oidc/token",
       "revocation_endpoint": "http://backend:10000/api/__fixture/oidc/revoke",
       "jwks_uri": "http://backend:10000/api/__fixture/oidc/jwks",

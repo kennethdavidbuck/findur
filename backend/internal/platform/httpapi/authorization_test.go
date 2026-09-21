@@ -422,13 +422,13 @@ func TestAuthorizationCallbackRotatesSecureCookiesAndRedirectsCleanly(t *testing
 		if input.State != "state" || input.Code != "code" || input.Binding != "binding" {
 			t.Fatalf("input=%+v", input)
 		}
-		return auth.CallbackResult{Route: "/connect/result", Session: "session-secret", CSRF: "csrf-secret", Success: true}, nil
+		return auth.CallbackResult{Route: "/onboarding/accounts", Session: "session-secret", CSRF: "csrf-secret", Success: true}, nil
 	}))
 	request := httptest.NewRequest(http.MethodGet, "/api/auth/snaptrade/callback?state=state&code=code", nil)
 	request.AddCookie(&http.Cookie{Name: "findur_oauth_attempt", Value: "binding"})
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/connect/result" || response.Header().Get("Cache-Control") != "no-store" {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/onboarding/accounts" || response.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("response=%d %v", response.Code, response.Header())
 	}
 	cookies := response.Result().Cookies()
@@ -440,11 +440,11 @@ func TestAuthorizationCallbackRotatesSecureCookiesAndRedirectsCleanly(t *testing
 
 func TestAuthorizationCallbackFailureIsCategorical(t *testing.T) {
 	handler := callbackHandler(completeFunc(func(context.Context, auth.CallbackInput) (auth.CallbackResult, error) {
-		return auth.CallbackResult{Route: "/connect/result"}, errors.New("private provider detail")
+		return auth.CallbackResult{Route: "/onboarding/accounts"}, errors.New("private provider detail")
 	}))
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/auth/snaptrade/callback?error=access_denied&error_description=private-provider-detail", nil))
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/connect/result" || strings.Contains(response.Body.String(), "provider") || len(response.Result().Cookies()) != 1 {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/onboarding/accounts" || strings.Contains(response.Body.String(), "provider") || len(response.Result().Cookies()) != 1 {
 		t.Fatalf("status=%d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
 	}
 }

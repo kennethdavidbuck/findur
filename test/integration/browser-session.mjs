@@ -19,10 +19,10 @@ async function establishSession(webdriver, sessionId, origin) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ script: `return {path:location.pathname,heading:document.querySelector('h1')?.innerText,focused:document.activeElement===document.querySelector('h1')}`, args: [] }),
     })
-    if (state.path === '/portfolio' && state.heading === 'Your masked account inventory') break
+    if (state.path === '/onboarding/accounts' && state.heading === 'Choose what Findur may use.') break
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
-  assert.deepEqual(state, { path: '/portfolio', heading: 'Your masked account inventory', focused: true })
+  assert.deepEqual(state, { path: '/onboarding/accounts', heading: 'Choose what Findur may use.', focused: true })
 }
 
 async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
@@ -136,15 +136,15 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
       await second.webdriver(`/session/${second.sessionId}/url`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: `${publicOrigin}/portfolio` }),
       })
-      let secondHeading
+      let otherSessionHeading
       for (let attempt = 0; attempt < 40; attempt += 1) {
-        secondHeading = await second.webdriver(`/session/${second.sessionId}/execute/sync`, {
+        otherSessionHeading = await second.webdriver(`/session/${second.sessionId}/execute/sync`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script: `return document.querySelector('h1')?.innerText`, args: [] }),
         })
-        if (secondHeading) break
+        if (otherSessionHeading) break
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
-      assert.equal(secondHeading, 'Your masked account inventory', 'another browser remains authenticated')
+      assert.equal(otherSessionHeading, 'Your portfolio profile is taking shape.', 'logging out one browser preserves another active session')
 
       for (const [width, expectedPosition] of [[767, 'fixed'], [768, 'fixed']]) {
         await second.webdriver(`/session/${second.sessionId}/window/rect`, {

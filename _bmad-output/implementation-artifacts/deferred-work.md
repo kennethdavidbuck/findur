@@ -53,3 +53,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-select-and-confirm-included-accounts.md`
   summary: Define retained masked account rows and reasons for disabled brokerage connections without calling the provider.
   evidence: Disabled connections intentionally skip account retrieval, while UX planning expects unavailable accounts to remain recognizable; the stable cached-inventory lifecycle must decide how those requirements combine.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-account-inclusion-ux.md`
+  summary: Harden the local OIDC integration fixture with challenge-bound, expiring, single-use authorization codes.
+  evidence: The fixture's token endpoint predated this correction and accepts any non-empty code verifier and authorization code; binding issued codes to the S256 challenge would let browser integration detect wrong-verifier and replay regressions without expanding the account-selection UX fix.

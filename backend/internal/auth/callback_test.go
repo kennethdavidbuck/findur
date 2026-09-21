@@ -120,7 +120,7 @@ func TestCallbackSuccessCreatesOpaqueEncryptedSessionMaterial(t *testing.T) {
 	if err != nil || string(plain) != "access" || bytes.Equal(repo.final.AccessToken, repo.final.RefreshToken) {
 		t.Fatalf("token envelope invalid: %q %v", plain, err)
 	}
-	if result.Route != "/connect/result" {
+	if result.Route != "/onboarding/accounts" {
 		t.Fatalf("route=%q", result.Route)
 	}
 	if got := repo.final.SessionIdleExpiresAt.Sub(repo.final.CompletedAt); got != 12*time.Hour {
@@ -211,19 +211,19 @@ func TestCallbackFailuresAreTerminalAndCompensatedOnce(t *testing.T) {
 func TestCallbackReplayNeverExchangesAgain(t *testing.T) {
 	service, repo, client := callbackFixture(t)
 	repo.claim.TerminalOutcome = "succeeded"
-	repo.claim.TerminalRoute = "/connect/result"
+	repo.claim.TerminalRoute = "/onboarding/accounts"
 	repo.active = true
 	result, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode, ExistingSession: "session"})
-	if err != nil || result.Route != "/connect/result" || client.exchanges != 0 {
+	if err != nil || result.Route != "/onboarding/accounts" || client.exchanges != 0 {
 		t.Fatalf("result=%+v err=%v exchanges=%d", result, err, client.exchanges)
 	}
 }
 
 func TestCallbackReplayWithoutActiveSessionRequiresRestart(t *testing.T) {
 	service, repo, client := callbackFixture(t)
-	repo.claim.TerminalOutcome, repo.claim.TerminalRoute = "succeeded", "/connect/result"
+	repo.claim.TerminalOutcome, repo.claim.TerminalRoute = "succeeded", "/onboarding/accounts"
 	result, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode})
-	if !errors.Is(err, ErrRestartRequired) || result.Route != "/connect/result" || client.exchanges != 0 || repo.final.UserID != uuid.Nil {
+	if !errors.Is(err, ErrRestartRequired) || result.Route != "/onboarding/accounts" || client.exchanges != 0 || repo.final.UserID != uuid.Nil {
 		t.Fatalf("result=%+v err=%v exchanges=%d", result, err, client.exchanges)
 	}
 }

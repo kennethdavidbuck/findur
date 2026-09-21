@@ -177,7 +177,7 @@ UX-DR10: Keep Synthetic Data Label visually and programmatically adjacent to ide
 
 UX-DR11: Build Freshness Indicator for connected, syncing, stale, needs reauthorization, failed, and disconnected using text, timestamp, and shape/icon—not color alone—with access to dataset-specific details and no unsupported “live” claim.
 
-UX-DR12: Build Account Inclusion Control as a named checkbox group with none selected by default, usable and disabled-with-reason rows, tri-state Select All, distinct draft and committed coverage, one scoped confirmation summary, and stable announcements for apply, purge, recalculation, success, and failure.
+UX-DR12: Build Account Inclusion Control as a friendly persistent-profile choice with none selected by default, one account list, closed accounts omitted, temporarily unavailable rows shown only when actionable, tri-state Select All, distinct selected and saved counts in ordinary language, one compact review of changed names/resulting count, and stable save/success/failure announcements without technical lifecycle prose.
 
 UX-DR13: Build Disclosure Level Control as a named three-option single-select with no default, Snapshot marked neutrally recommended, concrete hidden/bucketed/derived/exact examples, persistent saved-versus-preview summary, explicit Save/Cancel, discard-or-stay route protection, and screenshot/memory/inference warnings strongest at Full Detail.
 
@@ -733,16 +733,17 @@ So that no portfolio data is retrieved or used without my separate, scoped confi
 **Given** masked account inventory is available
 **When** Account Inclusion opens
 **Then** it renders a named checkbox group with no account included by default
-**And** distinguishes the editable draft from committed coverage
-**And** shows usable rows and disabled rows with specific reasons
+**And** presents one friendly **Choose what Findur may use.** list rather than duplicate inventory and selection sections
+**And** distinguishes selected choices from saved choices in ordinary language
+**And** omits closed accounts and shows temporary unavailability only when actionable or previously saved
 **And** provides an accessible tri-state Select All that affects only usable rows.
 
 **Given** the user changes the draft selection
 **When** they review the confirmation summary
 **Then** it names added and removed masked accounts
-**And** explains that confirmed accounts may be retrieved for the owner-only showcase, private derivation/matching, and disclosure-controlled previews
-**And** explains that exclusion purges affected source, derived, cached, preview, and Discovery outputs
-**And** Cancel returns focus to the invoker without changing committed coverage.
+**And** shows the resulting selected count and says the choice can be changed anytime
+**And** contains no provider-access essay, data-category inventory, private-purpose list, purge warning, technical consequence wall, or destructive styling
+**And** Back returns focus to the invoker without changing saved choices.
 
 **Given** the user confirms one or more additions
 **When** inclusion processing begins
@@ -754,6 +755,7 @@ So that no portfolio data is retrieved or used without my separate, scoped confi
 **When** the guarded finalizer publishes the change
 **Then** immutable dataset versions and the new inclusion membership become committed atomically
 **And** the account becomes available to the private Portfolio Showcase
+**And** first-time setup announces success and navigates to the Portfolio Showcase
 **And** the operation is idempotent under duplicate submission.
 
 **Given** an addition fails, times out, is unsupported, or loses its lifecycle/version guard
@@ -777,7 +779,9 @@ So that no portfolio data is retrieved or used without my separate, scoped confi
 **Given** account inclusion is mutated or read
 **When** authorization is evaluated
 **Then** the server scopes the operation from the authenticated Actor and resource ownership
-**And** cross-user IDs cannot reveal or change another user's inventory or selection.
+**And** cross-user IDs cannot reveal or change another user's inventory or selection
+**And** ordinary login, refresh, temporary unavailability, staleness, and reauthorization preserve the saved selection
+**And** later **Edit included accounts** opens saved choices from the Showcase and returns there after success.
 
 ### Story 1.2: Inspect the Private Portfolio Showcase
 
@@ -792,6 +796,17 @@ So that I can understand exactly what Findur received before it powers any datin
 **Then** it presents connection state, committed account coverage, balances/values, positions/holdings, and recent activities as distinct datasets
 **And** every dataset shows source, observation/retrieval time, publication time, coverage, and Freshness State
 **And** it never claims the portfolio is complete net worth, financial health, responsibility, or identity.
+
+**Given** first-time account setup commits successfully
+**When** the save completes
+**Then** the user navigates directly to the Portfolio Showcase
+**And** an incomplete user sees one friendly **Continue setting up your profile** action to the first unmet Profile prerequisite
+**And** the Showcase remains the normal Portfolio destination rather than another setup form.
+
+**Given** the user activates **Edit included accounts** from the Showcase
+**When** the account chooser opens
+**Then** it uses the ordinary authenticated app shell with saved choices preselected and does not replay onboarding progress
+**And** a successful edit returns to the Showcase without rendering both surfaces together.
 
 **Given** normalized provider data is published
 **When** it is stored
