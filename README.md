@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="frontend/public/icon.svg" alt="Findur constellation mark" width="96" height="96">
-</p>
+<img src="docs/assets/findur-readme-hero.webp" alt="" width="100%">
 
 # Findur
 
@@ -22,14 +20,14 @@ Delivery is organized into epics and stories rather than described as a fixed sn
 
 Findur is being planned and built with the [BMad Method](https://docs.bmad-method.org/). The repository keeps the path from “what if?” to working software visible, so the product thinking can be explored alongside the code instead of disappearing into a separate planning system.
 
-| Stage | Artifact | What it establishes |
+| Stage | Go deeper | Key highlights |
 | --- | --- | --- |
-| Ask the big question | [Product brief](_bmad-output/planning-artifacts/briefs/brief-findur-2026-09-19/brief.md) | The problem, audience, product promise, trust boundary, and initial vision. |
-| Test it against reality | [SnapTrade integration research](_bmad-output/planning-artifacts/research/technical-snaptrade-commercial-integration-feasibi-2026-09-19/research.md) | Provider capabilities, OAuth and data constraints, operational risks, and the safe demonstration boundary. |
-| Turn the idea into promises | [Product requirements](_bmad-output/planning-artifacts/prds/prd-findur-2026-09-19/prd.md) | User journeys, functional requirements, non-goals, success measures, and privacy and safety requirements. |
-| Design the moments that matter | [Experience spine](_bmad-output/planning-artifacts/ux-designs/ux-findur-2026-09-19/EXPERIENCE.md) and [design spine](_bmad-output/planning-artifacts/ux-designs/ux-findur-2026-09-19/DESIGN.md) | Information architecture, interaction states, accessibility, responsive behaviour, visual language, and key flows. |
-| Give it strong bones | [Architecture spine](_bmad-output/planning-artifacts/architecture/architecture-findur-2026-09-19/ARCHITECTURE-SPINE.md) and [data model](_bmad-output/planning-artifacts/architecture/architecture-findur-2026-09-19/DATA-MODEL.md) | System boundaries, security decisions, consistency rules, deployment shape, and data ownership. |
-| Ship it in meaningful slices | [Epics and stories](_bmad-output/planning-artifacts/epics.md) | The implementation path from secure connection through portfolio-led discovery and matching. |
+| Ask the big question | [Product brief](_bmad-output/planning-artifacts/briefs/brief-findur-2026-09-19/brief.md) | Portfolio-first dating: investing patterns lead and photos follow mutual interest. Private matching inputs remain separate from visible disclosure; the initial vision uses one protected owner and synthetic candidates. |
+| Test it against reality | [SnapTrade integration research](_bmad-output/planning-artifacts/research/technical-snaptrade-commercial-integration-feasibi-2026-09-19/research.md) | Maps SnapTrade's OAuth/OIDC flow and read-only data capabilities, then surfaces the Personal/Commercial boundary, uneven freshness and coverage, webhook limits, policy questions, and production gates. The adopted architecture narrows retrieval further. |
+| Turn the idea into promises | [Product requirements](_bmad-output/planning-artifacts/prds/prd-findur-2026-09-19/prd.md) | Staged consent, account inclusion, a private portfolio showcase, profile/disclosure controls, proximity-aware synthetic discovery, one persisted in-session swipe decision, and mutual-match photo reveal. No wealth scores, advice, real-user cross-disclosure, or real-user dating-service launch. |
+| Design the moments that matter | [Experience spine](_bmad-output/planning-artifacts/ux-designs/ux-findur-2026-09-19/EXPERIENCE.md), [design spine](_bmad-output/planning-artifacts/ux-designs/ux-findur-2026-09-19/DESIGN.md), and [browser-viewable mockups](#view-the-html-designs) | Owner entry, account selection, portfolio showcase, profile/preferences, discovery, candidate detail, and matching—specified for phone/desktop, English/French, light/dark themes, explicit permission and recovery states, and a WCAG 2.2 AA floor. |
+| Give it strong bones | [Architecture spine](_bmad-output/planning-artifacts/architecture/architecture-findur-2026-09-19/ARCHITECTURE-SPINE.md) and [data model](_bmad-output/planning-artifacts/architecture/architecture-findur-2026-09-19/DATA-MODEL.md) | Specifies a Go modular monolith, React frontend, PostgreSQL, and one browser origin, with opaque sessions, encrypted versioned provider tokens, a purpose-limited adapter, normalized snapshots, lifecycle fences, and exact-revision deployment. |
+| Ship it in meaningful slices | [Epics and stories](_bmad-output/planning-artifacts/epics.md) | Four slices: exact-revision, same-origin, synthetic-integration foundations plus secure connection; live portfolio control/showcase; profile/preferences/disclosure; and synthetic discovery/swiping/matching. Specs, reviews, deferred work, and sprint status trace delivery without freezing progress here. |
 
 Together, these artifacts preserve the chain from product intent to acceptance criteria, implementation, review, and delivery status.
 
