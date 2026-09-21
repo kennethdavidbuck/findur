@@ -38,6 +38,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portfolio/inclusion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the authenticated owner's committed and pending account inclusion */
+        get: operations["getPortfolioInclusion"];
+        put?: never;
+        /** Confirm the authenticated owner's complete target account set */
+        post: operations["confirmPortfolioInclusion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/logout": {
         parameters: {
             query?: never;
@@ -120,6 +138,9 @@ export interface components {
             maskedLabel: string;
             available: boolean;
             eligible: boolean;
+            selectable: boolean;
+            /** @enum {string} */
+            usabilityReason: "ready" | "provisional_status" | "provisional_category" | "sync_pending" | "connection_disabled" | "connection_unavailable" | "account_closed" | "account_unavailable" | "unsupported_category" | "sync_unavailable";
             /** @enum {string} */
             syncState: "complete" | "pending" | "unavailable" | "unknown";
         };
@@ -144,6 +165,25 @@ export interface components {
             updatedAt: string;
             connections: components["schemas"]["InventoryConnection"][];
         };
+        InclusionChange: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "pending" | "committed" | "failed";
+            additions: string[];
+            removals: string[];
+            /** @enum {string} */
+            failureReason?: "authorization_required" | "rate_limited" | "provider_unavailable" | "unusable_data" | "stale_guard";
+        };
+        PortfolioInclusion: {
+            /** Format: int64 */
+            version: number;
+            committed: string[];
+            change?: components["schemas"]["InclusionChange"];
+        };
+        ConfirmInclusionRequest: {
+            accountIds: string[];
+        };
         AuthorizationStatus: {
             authorizationAvailable: boolean;
             authenticated: boolean;
@@ -153,7 +193,7 @@ export interface components {
         };
         Error: {
             /** @enum {string} */
-            code: "invalid_request" | "authorization_unavailable" | "initialization_failed" | "restart_required" | "unauthenticated" | "forbidden";
+            code: "invalid_request" | "authorization_unavailable" | "initialization_failed" | "restart_required" | "unauthenticated" | "forbidden" | "conflict" | "invalid_selection";
         };
     };
     responses: {
@@ -169,6 +209,16 @@ export interface components {
         };
         /** @description A session request defense failed */
         InventoryForbidden: {
+            headers: {
+                "Cache-Control": "private, no-store";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Version, idempotency, or selection conflict with no account disclosure */
+        InclusionConflict: {
             headers: {
                 "Cache-Control": "private, no-store";
                 [name: string]: unknown;
@@ -262,6 +312,62 @@ export interface operations {
             };
             401: components["responses"]["InventoryUnauthorized"];
             403: components["responses"]["InventoryForbidden"];
+            503: components["responses"]["SafeError"];
+        };
+    };
+    getPortfolioInclusion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owner-private account inclusion state */
+            200: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioInclusion"];
+                };
+            };
+            401: components["responses"]["InventoryUnauthorized"];
+            503: components["responses"]["SafeError"];
+        };
+    };
+    confirmPortfolioInclusion: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+                "X-Inclusion-Version": number;
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmInclusionRequest"];
+            };
+        };
+        responses: {
+            /** @description The replayed, pending, failed, or committed inclusion result */
+            200: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PortfolioInclusion"];
+                };
+            };
+            401: components["responses"]["InventoryUnauthorized"];
+            403: components["responses"]["InventoryForbidden"];
+            409: components["responses"]["InclusionConflict"];
             503: components["responses"]["SafeError"];
         };
     };

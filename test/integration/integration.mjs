@@ -12,6 +12,9 @@ const request = (path, init = {}) => fetch(`${base}${path}`, {
   signal: init.signal ?? AbortSignal.timeout(15_000),
 })
 
+const resetJournal = await fetch(`${wiremock}/__admin/requests`, { method: 'DELETE', signal: AbortSignal.timeout(15_000) })
+assert.ok(resetJournal.ok, 'WireMock request journal reset for this run')
+
 const health = await request('/api/healthz')
 assert.equal(health.status, 200)
 assert.deepEqual(await health.json(), { status: 'ok', buildSha: expectedSha })
@@ -132,6 +135,22 @@ for (let index = 0; index < inventoryRequests.length; index += 1) {
   if (inventoryRequests[index].url.endsWith('/accounts')) assert.equal(inventoryRequests[index - 1]?.url, '/authorizations', 'connections are requested before accounts')
 }
 for (const providerRequest of inventoryRequests) {
+  assert.equal(providerRequest.headers.Authorization, 'Bearer synthetic-access-token')
+  for (const forbidden of ['clientId', 'consumerKey', 'userId', 'userSecret', 'timestamp', 'Signature']) assert.equal(providerRequest.headers[forbidden], undefined)
+}
+const accountDataRequests = journal.requests
+  .map(({ request }) => request)
+  .filter(({ url }) => url.startsWith('/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/'))
+assert.deepEqual(
+  accountDataRequests.map(({ url }) => new URL(url, 'http://wiremock').pathname).sort(),
+  [
+    '/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/activities',
+    '/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/balances',
+    '/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/positions/all',
+  ],
+  'inclusion calls each required allowlisted dataset exactly once',
+)
+for (const providerRequest of accountDataRequests) {
   assert.equal(providerRequest.headers.Authorization, 'Bearer synthetic-access-token')
   for (const forbidden of ['clientId', 'consumerKey', 'userId', 'userSecret', 'timestamp', 'Signature']) assert.equal(providerRequest.headers[forbidden], undefined)
 }

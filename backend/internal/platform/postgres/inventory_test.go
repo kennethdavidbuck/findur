@@ -97,7 +97,7 @@ func TestInventoryRepositoryClaimsPublishesAndIsolatesOwners(t *testing.T) {
 		t.Fatal(err)
 	}
 	if inclusionColumns != 0 {
-		t.Fatalf("inventory schema contains %d account-inclusion columns", inclusionColumns)
+		t.Fatalf("inventory schema contains %d committed-inclusion columns", inclusionColumns)
 	}
 }
 
@@ -154,6 +154,9 @@ func TestInventoryRepositoryPublishesDisabledRowsAndReauthorizationInvalidatesHe
 	if err != nil || !published || disabled.State != portfolio.StateDisabled || len(disabled.Connections) != 1 {
 		t.Fatalf("disabled=%+v published=%v err=%v", disabled, published, err)
 	}
+	if _, err := fixture.pool.Exec(fixture.ctx, `INSERT INTO portfolio_inclusion_state (user_id,version,lifecycle_generation,updated_at) VALUES ($1,0,7,$2)`, owner, fixture.now); err != nil {
+		t.Fatal(err)
+	}
 
 	secondAttempt := fixture.createAttempt(t, 103, fixture.now.Add(10*time.Minute))
 	fixture.claimCallback(t, secondAttempt)
@@ -161,6 +164,13 @@ func TestInventoryRepositoryPublishesDisabledRowsAndReauthorizationInvalidatesHe
 	second.Subject = first.Subject
 	if err := fixture.repository.FinalizeCallback(fixture.ctx, second); err != nil {
 		t.Fatal(err)
+	}
+	var inclusionLifecycle int64
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT lifecycle_generation FROM portfolio_inclusion_state WHERE user_id=$1`, owner).Scan(&inclusionLifecycle); err != nil {
+		t.Fatal(err)
+	}
+	if inclusionLifecycle != 8 {
+		t.Fatalf("reauthorization inclusion lifecycle=%d, want 8", inclusionLifecycle)
 	}
 	if stale, published, err := repository.Finalize(fixture.ctx, owner, claim.Generation, portfolio.StateReady, nil, disabledRows, fixture.now.Add(time.Minute)); err != nil || published || stale.Generation <= claim.Generation {
 		t.Fatalf("old bearer completion snapshot=%+v published=%v err=%v", stale, published, err)

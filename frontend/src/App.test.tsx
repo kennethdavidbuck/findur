@@ -8,6 +8,31 @@ const emptyInventory = () => new Response(JSON.stringify({
   state: 'empty', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [],
 }), { status: 200, headers: { 'Content-Type': 'application/json' } })
 
+const jsonResponseBody = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+
+function inclusionAccount(id: string, maskedLabel: string, selectable: boolean, usabilityReason: string, category = 'investment') {
+	return { id, category, type: category === 'investment' ? 'Margin' : 'Checking', maskedLabel, available: true, eligible: selectable, selectable, usabilityReason, syncState: 'complete' }
+}
+
+function inclusionInventory(accounts: ReturnType<typeof inclusionAccount>[]) {
+	return {
+		state: 'ready', generation: 4, updatedAt: '2026-09-20T12:00:00Z', connections: [{
+			id: 'connection-1', brokerageLabel: 'Synthetic Broker', status: 'active', syncMode: 'realtime', available: true, eligible: true, accounts,
+		}],
+	}
+}
+
+function installInclusionFetch(inventory: ReturnType<typeof inclusionInventory>, inclusion: unknown) {
+	const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+		if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+		if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
+		if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody(inclusion))
+		return Promise.resolve(new Response(null, { status: 404 }))
+	})
+	vi.stubGlobal('fetch', fetchMock)
+	return fetchMock
+}
+
 function installMatchMedia(initialDark = false) {
   let matches = initialDark
   const listeners = new Set<MediaChangeListener>()
@@ -240,36 +265,216 @@ describe('public site', () => {
 			state: 'ready', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [{
 				id: 'connection-1', brokerageLabel: 'Synthetic Broker', status: 'active', syncMode: 'delayed', available: true, eligible: true,
 				accounts: [
-					{ id: 'account-1', category: 'investment', type: 'Margin', maskedLabel: 'Retirement (•••• 8443)', available: true, eligible: true, syncState: 'complete' },
-					{ id: 'account-2', category: 'unknown', type: 'unknown', maskedLabel: 'Everyday account', available: true, eligible: false, syncState: 'complete' },
+					{ id: 'account-1', category: 'investment', type: 'Margin', maskedLabel: 'Retirement (•••• 8443)', available: true, eligible: true, selectable: true, usabilityReason: 'ready', syncState: 'complete' },
+					{ id: 'account-2', category: 'unknown', type: 'unknown', maskedLabel: 'Everyday account', available: true, eligible: false, selectable: true, usabilityReason: 'provisional_category', syncState: 'complete' },
 				],
 			}],
 		}
 		const fetchMock = vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
 			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })
-			: new Response(JSON.stringify(inventory), { status: 200 })))
+			: path === '/api/portfolio/inclusion'
+				? new Response(JSON.stringify({ version: 0, committed: [] }), { status: 200 })
+				: new Response(JSON.stringify(inventory), { status: 200 })))
 		vi.stubGlobal('fetch', fetchMock)
 		render(<App />)
 
-		expect(await screen.findByText('Retirement (•••• 8443)')).toBeVisible()
+		expect((await screen.findAllByText('Retirement (•••• 8443)'))[0]).toBeVisible()
 		expect(screen.getByText(/No account is included by default/)).toBeVisible()
 		const status = screen.getByRole('heading', { name: 'Connection status' })
-		const account = screen.getByText('Retirement (•••• 8443)')
+		const account = screen.getAllByText('Retirement (•••• 8443)')[0]
 		expect(status.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 		expect(document.body).not.toHaveTextContent('Q6542138443')
 		expect(document.body).not.toHaveTextContent('$')
 		expect(screen.getAllByText(/Availability:/).length).toBeGreaterThan(0)
-		expect(screen.getAllByText(/Later-inclusion eligibility:/).length).toBeGreaterThan(0)
+		expect(screen.getByText('Later-inclusion eligibility: Eligible')).toBeVisible()
+		expect(screen.queryByText('Later-inclusion eligibility: Not eligible')).not.toBeInTheDocument()
+		expect(screen.getAllByText('Inclusion readiness: Selectable for confirmation')).toHaveLength(2)
+		expect(screen.getByText('Selectable provisionally; the provider must confirm investment data.')).toBeVisible()
 		expect(screen.getByText('Connection sync mode: Delayed')).toBeVisible()
 		expect(screen.getAllByText('Account sync state: Complete')).toHaveLength(2)
 		expect(screen.getByText('Category: Category unavailable')).toBeVisible()
-		expect(screen.getByText('Everyday account')).toBeVisible()
+		expect(screen.getAllByText('Everyday account')[0]).toBeVisible()
 
 		fireEvent.click(screen.getAllByRole('radio', { name: 'FR' })[0])
 		expect(await screen.findByRole('heading', { level: 1, name: 'Votre inventaire de comptes masqués' })).toHaveFocus()
+		expect(screen.getByText(/Couverture confirmée: 0 sur 2 comptes connectés/)).toBeVisible()
 		fireEvent.click(screen.getAllByRole('radio', { name: 'Sombre' })[0])
 		await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'dark'))
-		expect(fetchMock).toHaveBeenCalledTimes(2)
+		expect(fetchMock).toHaveBeenCalledTimes(3)
+	})
+
+	it('keeps inclusion draft separate, explains disabled rows, and confirms through the defended dialog', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		document.cookie = 'findur_csrf=inclusion-csrf; Path=/'
+		const inventory = {
+			state: 'ready', generation: 4, updatedAt: '2026-09-20T12:00:00Z', connections: [{
+				id: 'connection-1', brokerageLabel: 'Synthetic Broker', status: 'active', syncMode: 'realtime', available: true, eligible: true,
+				accounts: [
+					{ id: 'account-1', category: 'investment', type: 'Margin', maskedLabel: 'Retirement (•••• 8443)', available: true, eligible: true, selectable: true, usabilityReason: 'ready', syncState: 'complete' },
+					{ id: 'account-2', category: 'deposit', type: 'Checking', maskedLabel: 'Daily cash (•••• 1000)', available: true, eligible: false, selectable: false, usabilityReason: 'unsupported_category', syncState: 'complete' },
+				],
+			}],
+		}
+		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+			if (path === '/api/auth/status') return Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			if (path === '/api/portfolio/inventory') return Promise.resolve(new Response(JSON.stringify(inventory), { status: 200 }))
+			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(new Response(JSON.stringify({ version: 0, committed: [] }), { status: 200 }))
+			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') return Promise.resolve(new Response(JSON.stringify({ version: 1, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'committed', additions: ['account-1'], removals: [] } }), { status: 200 }))
+			return Promise.resolve(new Response(null, { status: 404 }))
+		})
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+
+		const retirement = await screen.findByRole('checkbox', { name: /Retirement/ })
+		const disabled = screen.getByRole('checkbox', { name: /Daily cash/ })
+		expect(retirement).not.toBeChecked()
+		expect(disabled).toBeDisabled()
+		expect(screen.getAllByText('Unavailable because Findur supports investment accounts only.').length).toBeGreaterThan(0)
+		expect(screen.getByText('Inclusion readiness: Unavailable for inclusion')).toBeVisible()
+		expect(screen.getByText(/Committed coverage: 0 of 2 connected accounts/)).toBeVisible()
+		fireEvent.click(retirement)
+		expect(screen.getByText(/Draft coverage: 1 of 2 connected accounts/)).toBeVisible()
+		const review = screen.getByRole('button', { name: 'Review and confirm' })
+		fireEvent.click(review)
+		expect(screen.getByRole('dialog', { name: 'Confirm included accounts' })).toBeVisible()
+		expect(screen.getByText(/separate balances, positions, and recent-activities datasets/)).toBeVisible()
+		fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+		await waitFor(() => expect(review).toHaveFocus())
+		expect(retirement).toBeChecked()
+
+		fireEvent.click(review)
+		fireEvent.click(screen.getByRole('button', { name: 'Confirm selection' }))
+		await waitFor(() => expect(screen.getByText(/Currently included: Retirement/)).toBeVisible())
+		const post = fetchMock.mock.calls.find(([path, init]) => path === '/api/portfolio/inclusion' && init?.method === 'POST')
+		expect(post?.[1]).toEqual(expect.objectContaining({
+			cache: 'no-store', credentials: 'same-origin', body: JSON.stringify({ accountIds: ['account-1'] }),
+			headers: expect.objectContaining({ 'X-CSRF-Token': 'inclusion-csrf', 'X-Inclusion-Version': '0' }),
+		}))
+	})
+
+	it('applies tri-state Select All only to usable rows and preserves disabled committed coverage', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		const inventory = inclusionInventory([
+			inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready'),
+			inclusionAccount('account-2', 'Growth (•••• 2002)', true, 'ready'),
+			inclusionAccount('account-3', 'Legacy cash (•••• 3003)', false, 'unsupported_category', 'deposit'),
+		])
+		installInclusionFetch(inventory, { version: 4, committed: ['account-3'] })
+		render(<App />)
+
+		const selectAll = await screen.findByRole('checkbox', { name: 'Select all usable accounts' })
+		const first = screen.getByRole('checkbox', { name: /Retirement/ })
+		const second = screen.getByRole('checkbox', { name: /Growth/ })
+		const disabledCommitted = screen.getByRole('checkbox', { name: /Legacy cash/ })
+		expect(selectAll).not.toBeChecked()
+		expect(disabledCommitted).toBeChecked()
+
+		fireEvent.click(selectAll)
+		expect(selectAll).toBeChecked()
+		expect(first).toBeChecked()
+		expect(second).toBeChecked()
+		expect(disabledCommitted).toBeChecked()
+
+		fireEvent.click(first)
+		expect(selectAll).toBePartiallyChecked()
+		fireEvent.click(selectAll)
+		expect(selectAll).toBeChecked()
+		fireEvent.click(selectAll)
+		expect(selectAll).not.toBeChecked()
+		expect(first).not.toBeChecked()
+		expect(second).not.toBeChecked()
+		expect(disabledCommitted).toBeChecked()
+	})
+
+	it('reconstructs failed additions for a scoped retry while keeping removals effective', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		const inventory = inclusionInventory([
+			inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready'),
+			inclusionAccount('account-2', 'Removed (•••• 1000)', true, 'ready'),
+		])
+		installInclusionFetch(inventory, {
+			version: 3,
+			committed: [],
+			change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'failed', additions: ['account-1'], removals: ['account-2'], failureReason: 'provider_unavailable' },
+		})
+		render(<App />)
+
+		expect(await screen.findByText(/Draft selection: Retirement/)).toBeVisible()
+		expect(screen.getByText(/Currently included: None/)).toBeVisible()
+		expect(screen.getByRole('checkbox', { name: /Removed/ })).not.toBeChecked()
+		const retry = screen.getByRole('button', { name: 'Review scoped retry' })
+		expect(retry).toBeEnabled()
+		fireEvent.click(retry)
+		const dialog = screen.getByRole('dialog', { name: 'Confirm included accounts' })
+		expect(dialog).toHaveTextContent('SnapTrade authorization permits provider access')
+		expect(dialog).toHaveTextContent('Category: Investment')
+		expect(dialog).toHaveTextContent('Current included-account coverage: 0 of 2 connected accounts')
+		expect(dialog).toHaveTextContent('Coverage after this confirmation: 1 of 2 connected accounts')
+		expect(dialog).toHaveTextContent('Private derivation and matching')
+	})
+
+	it('reloads or safely supersedes a durable pending addition with the same scoped draft', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		document.cookie = 'findur_csrf=pending-csrf; Path=/'
+		const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
+		const pending = {
+			version: 1,
+			committed: [],
+			change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] },
+		}
+		let inclusionGets = 0
+		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
+			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') {
+				inclusionGets += 1
+				return Promise.resolve(jsonResponseBody(pending))
+			}
+			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') return Promise.resolve(jsonResponseBody({ version: 2, committed: ['account-1'], change: { ...pending.change, status: 'committed' } }))
+			throw new Error(`unexpected request ${path}`)
+		})
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+
+		expect(await screen.findByText(/Draft selection: Retirement/)).toBeVisible()
+		fireEvent.click(screen.getByRole('button', { name: 'Reload inclusion status' }))
+		await waitFor(() => expect(inclusionGets).toBe(2))
+		const retry = screen.getByRole('button', { name: 'Review scoped retry' })
+		fireEvent.click(retry)
+		expect(await screen.findByRole('button', { name: 'Cancel' })).toHaveFocus()
+		fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' })
+		await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+		await waitFor(() => expect(retry).toHaveFocus())
+
+		fireEvent.click(retry)
+		fireEvent.click(screen.getByRole('button', { name: 'Confirm selection' }))
+		await waitFor(() => expect(screen.getByText(/Currently included: Retirement/)).toBeVisible())
+		const post = fetchMock.mock.calls.find(([path, init]) => path === '/api/portfolio/inclusion' && init?.method === 'POST')
+		expect(post?.[1]).toEqual(expect.objectContaining({
+			body: JSON.stringify({ accountIds: ['account-1'] }),
+			headers: expect.objectContaining({ 'X-Inclusion-Version': '1', 'X-CSRF-Token': 'pending-csrf' }),
+		}))
+	})
+
+	it('uses a labelled danger action and complete purge warning for removals', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
+		installInclusionFetch(inventory, { version: 1, committed: ['account-1'] })
+		render(<App />)
+
+		fireEvent.click(await screen.findByRole('checkbox', { name: /Retirement/ }))
+		fireEvent.click(screen.getByRole('button', { name: 'Review and confirm' }))
+		const danger = screen.getByRole('button', { name: 'Remove accounts and confirm selection' })
+		expect(danger).toHaveClass('action--danger')
+		const consequence = screen.getByText(/Excluding an account is immediate and irreversible in Findur/)
+		expect(consequence).toHaveTextContent('source and normalized financial data')
+		expect(consequence).toHaveTextContent('derived outputs, signals, matching and ranking inputs or results')
+		expect(consequence).toHaveTextContent('caches and rendered or prefetched state')
+		expect(consequence).toHaveTextContent('disclosure-controlled previews')
+		expect(consequence).toHaveTextContent('Discovery outputs')
+		expect(consequence).toHaveTextContent('Failed additions do not restore any removed data')
+		expect(consequence).not.toHaveTextContent(/revok/i)
+		expect(screen.getByText(/Destructive removal:/)).toBeVisible()
 	})
 
 	it('shares one in-flight initial inventory request across a development remount', async () => {

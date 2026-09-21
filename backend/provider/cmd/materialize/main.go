@@ -141,7 +141,23 @@ func assembleDocument(source map[string]any, selection overlay, selectedPaths ma
 	if !ok {
 		return nil, errors.New("pinned specification lacks component schemas")
 	}
-	selectedSchemas, err := transitiveSchemas(selectedPaths, allSchemas)
+	allResponses, ok := components["responses"].(map[string]any)
+	if !ok {
+		return nil, errors.New("pinned specification lacks component responses")
+	}
+	selectedResponses, err := referencedResponses(selectedPaths, allResponses)
+	if err != nil {
+		return nil, err
+	}
+	allHeaders, ok := components["headers"].(map[string]any)
+	if !ok {
+		return nil, errors.New("pinned specification lacks component headers")
+	}
+	selectedHeaders, err := referencedComponents(selectedResponses, "#/components/headers/", allHeaders)
+	if err != nil {
+		return nil, err
+	}
+	selectedSchemas, err := transitiveSchemas([]any{selectedPaths, selectedResponses}, allSchemas)
 	if err != nil {
 		return nil, err
 	}
@@ -161,9 +177,31 @@ func assembleDocument(source map[string]any, selection overlay, selectedPaths ma
 		"components": map[string]any{
 			"securitySchemes": map[string]any{selection.OAuth.Name: map[string]any{"type": selection.OAuth.Type, "scheme": selection.OAuth.Scheme}},
 			"schemas":         selectedSchemas,
+			"responses":       selectedResponses,
+			"headers":         selectedHeaders,
 		},
 	}
 	return document, nil
+}
+
+func referencedResponses(root any, all map[string]any) (map[string]any, error) {
+	return referencedComponents(root, "#/components/responses/", all)
+}
+
+func referencedComponents(root any, prefix string, all map[string]any) (map[string]any, error) {
+	wanted := make(map[string]bool)
+	if err := collectComponentRefs(root, prefix, wanted); err != nil {
+		return nil, err
+	}
+	selected := make(map[string]any, len(wanted))
+	for name := range wanted {
+		component, exists := all[name]
+		if !exists {
+			return nil, fmt.Errorf("selected operation references missing component %q", name)
+		}
+		selected[name] = component
+	}
+	return selected, nil
 }
 
 func writeDeterministicDocument(document map[string]any) error {
@@ -189,18 +227,21 @@ func validateOverlay(value overlay) error {
 	if value.Upstream.Revision != revision || value.Upstream.SHA256 != wantSHA256 {
 		return errors.New("OAuth bearer overlay does not identify the pinned upstream specification")
 	}
-	if len(value.Operations) != 2 || value.OAuth.Name == "" || value.OAuth.Type != "http" || value.OAuth.Scheme != "bearer" {
-		return errors.New("OAuth bearer overlay must select exactly two operations and HTTP bearer security")
+	if len(value.Operations) != 5 || value.OAuth.Name == "" || value.OAuth.Type != "http" || value.OAuth.Scheme != "bearer" {
+		return errors.New("OAuth bearer overlay must select exactly five operations and HTTP bearer security")
 	}
 	wanted := map[string]bool{
 		"get /authorizations":                            false,
 		"get /authorizations/{authorizationId}/accounts": false,
+		"get /accounts/{accountId}/balances":             false,
+		"get /accounts/{accountId}/positions/all":        false,
+		"get /accounts/{accountId}/activities":           false,
 	}
 	for _, operation := range value.Operations {
 		key := strings.ToLower(operation.Method) + " " + operation.Path
 		seen, approved := wanted[key]
 		if !approved || seen {
-			return errors.New("OAuth bearer overlay must select only the approved inventory operations")
+			return errors.New("OAuth bearer overlay must select only approved read-only portfolio operations")
 		}
 		wanted[key] = true
 		removals := map[string]bool{"query:userId": false, "query:userSecret": false}
@@ -288,24 +329,30 @@ func transitiveSchemas(root any, all map[string]any) (map[string]any, error) {
 }
 
 func collectSchemaRefs(value any, destination map[string]bool) error {
+	return collectComponentRefs(value, "#/components/schemas/", destination)
+}
+
+func collectComponentRefs(value any, prefix string, destination map[string]bool) error {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, nested := range typed {
 			if key == "$ref" {
 				reference, ok := nested.(string)
-				if !ok || !strings.HasPrefix(reference, "#/components/schemas/") {
+				if !ok {
 					return fmt.Errorf("selected contract contains unsupported reference %v", nested)
 				}
-				destination[strings.TrimPrefix(reference, "#/components/schemas/")] = true
+				if strings.HasPrefix(reference, prefix) {
+					destination[strings.TrimPrefix(reference, prefix)] = true
+				}
 				continue
 			}
-			if err := collectSchemaRefs(nested, destination); err != nil {
+			if err := collectComponentRefs(nested, prefix, destination); err != nil {
 				return err
 			}
 		}
 	case []any:
 		for _, nested := range typed {
-			if err := collectSchemaRefs(nested, destination); err != nil {
+			if err := collectComponentRefs(nested, prefix, destination); err != nil {
 				return err
 			}
 		}

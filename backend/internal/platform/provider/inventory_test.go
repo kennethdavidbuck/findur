@@ -99,6 +99,53 @@ func TestInventoryClassifiesProviderFailures(t *testing.T) {
 	}
 }
 
+func TestInventoryMakesIncompleteStatusOrCategoryProvisionalWithSpecificReason(t *testing.T) {
+	for _, test := range []struct {
+		name, accounts string
+		want           portfolio.UsabilityReason
+	}{
+		{name: "missing status", accounts: strings.Replace(fixtureBody(t, "success-accounts.json"), `"status": "open",`, "", 1), want: portfolio.UsabilityProvisionalStatus},
+		{name: "missing category", accounts: strings.Replace(fixtureBody(t, "success-accounts.json"), `"account_category": "INVESTMENT",`, "", 1), want: portfolio.UsabilityProvisionalCategory},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			baseURL, _ := url.Parse("https://api.snaptrade.example")
+			client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				if strings.HasSuffix(request.URL.Path, "/accounts") {
+					return jsonResponse(http.StatusOK, test.accounts), nil
+				}
+				return jsonResponse(http.StatusOK, fixtureBody(t, "success-connections.json")), nil
+			}), time.Now)
+			connections, err := client.Load(context.Background(), "access-token")
+			if err != nil || len(connections) != 1 || len(connections[0].Accounts) != 1 {
+				t.Fatalf("connections=%+v err=%v", connections, err)
+			}
+			account := connections[0].Accounts[0]
+			if !account.Selectable || account.Eligible || account.UsabilityReason != test.want {
+				t.Fatalf("account=%+v want reason=%s", account, test.want)
+			}
+		})
+	}
+}
+
+func TestInventoryMakesMissingInitialHoldingsUnselectable(t *testing.T) {
+	accounts := strings.Replace(fixtureBody(t, "success-accounts.json"), `"initial_sync_completed": true`, `"initial_sync_completed": false`, 1)
+	baseURL, _ := url.Parse("https://api.snaptrade.example")
+	client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/accounts") {
+			return jsonResponse(http.StatusOK, accounts), nil
+		}
+		return jsonResponse(http.StatusOK, fixtureBody(t, "success-connections.json")), nil
+	}), time.Now)
+	connections, err := client.Load(context.Background(), "access-token")
+	if err != nil || len(connections) != 1 || len(connections[0].Accounts) != 1 {
+		t.Fatalf("connections=%+v err=%v", connections, err)
+	}
+	account := connections[0].Accounts[0]
+	if account.Selectable || account.Eligible || account.UsabilityReason != portfolio.UsabilitySyncPending {
+		t.Fatalf("pending initial holdings account=%+v", account)
+	}
+}
+
 func TestInventoryRateLimitRetryTiming(t *testing.T) {
 	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
 	for _, test := range []struct {
@@ -276,6 +323,33 @@ func TestInventoryRejectsNullListsAndUnknownAccountStatus(t *testing.T) {
 				t.Fatalf("unknown status connection=%+v", connections)
 			}
 		})
+	}
+}
+
+func TestInventoryMakesEveryRetainedAccountUnavailableWhenMalformedRowComesFirst(t *testing.T) {
+	baseURL, _ := url.Parse("https://api.snaptrade.example")
+	accounts := `[
+		{"id":"00000000-0000-0000-0000-000000000000","brokerage_authorization":"87b24961-b51e-4db8-9226-f198f6518a89","name":"Malformed","number":"12345","institution_name":"Broker","status":"open","sync_status":{},"balance":{},"is_paper":false},
+		{"id":"917c8734-8470-4a3e-a18f-57c3f2ee6631","brokerage_authorization":"87b24961-b51e-4db8-9226-f198f6518a89","name":"Valid","number":"67890","institution_name":"Broker","account_category":"INVESTMENT","raw_type":"Margin","status":"open","sync_status":{"holdings":{"initial_sync_completed":true}},"balance":{},"is_paper":false}
+	]`
+	client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/accounts") {
+			return jsonResponse(http.StatusOK, accounts), nil
+		}
+		return jsonResponse(http.StatusOK, fixtureBody(t, "success-connections.json")), nil
+	}), time.Now)
+
+	connections, err := client.Load(context.Background(), "access-token")
+	var providerErr *portfolio.ProviderError
+	if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateMalformed {
+		t.Fatalf("error=%v", err)
+	}
+	if len(connections) != 1 || connections[0].Status != portfolio.ConnectionStatusUnavailable || len(connections[0].Accounts) != 1 {
+		t.Fatalf("connections=%+v", connections)
+	}
+	account := connections[0].Accounts[0]
+	if account.Selectable || account.Eligible || account.UsabilityReason != portfolio.UsabilityConnectionUnavailable {
+		t.Fatalf("retained account remained usable after partial normalization: %+v", account)
 	}
 }
 

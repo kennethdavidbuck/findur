@@ -144,7 +144,7 @@ func publishInventoryVersion(ctx context.Context, tx pgx.Tx, owner uuid.UUID, ge
 	if _, err := tx.Exec(ctx, `INSERT INTO portfolio_inventory_versions (user_id,generation,status,published_at) VALUES ($1,$2,$3,$4)`, owner, generation, state, now); err != nil {
 		return err
 	}
-	if err := insertInventoryRows(ctx, tx, owner, generation, connections); err != nil {
+	if err := insertInventoryRows(ctx, tx, owner, generation, connections, now); err != nil {
 		return err
 	}
 	_, err := tx.Exec(ctx, `UPDATE portfolio_inventory_state SET current_status=$3,head_generation=$2,retry_at=$4,claim_expires_at=NULL,updated_at=$5
@@ -152,25 +152,36 @@ func publishInventoryVersion(ctx context.Context, tx pgx.Tx, owner uuid.UUID, ge
 	return err
 }
 
-func insertInventoryRows(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64, connections []portfolio.Connection) error {
+func insertInventoryRows(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64, connections []portfolio.Connection, now time.Time) error {
 	for _, connection := range connections {
 		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_inventory_connections
 			(user_id,generation,connection_id,brokerage_label,status,sync_mode,available,eligible)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, owner, generation, connection.ID, connection.BrokerageLabel, connection.Status, connection.SyncMode, connection.Available, connection.Eligible); err != nil {
 			return err
 		}
-		if err := insertAccountRows(ctx, tx, owner, generation, connection); err != nil {
+		if err := insertAccountRows(ctx, tx, owner, generation, connection, now); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func insertAccountRows(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64, connection portfolio.Connection) error {
+func insertAccountRows(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64, connection portfolio.Connection, now time.Time) error {
 	for _, account := range connection.Accounts {
+		selectable, reason := account.Selectable || account.Eligible, account.UsabilityReason
+		if reason == "" {
+			reason = portfolio.UsabilityAccountUnavailable
+			if account.Eligible {
+				reason = portfolio.UsabilityReady
+			}
+		}
 		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_inventory_accounts
-			(user_id,generation,account_id,connection_id,category,account_type,masked_label,available,eligible,sync_state)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, owner, generation, account.ID, connection.ID, account.Category, account.Type, account.MaskedLabel, account.Available, account.Eligible, account.SyncState); err != nil {
+			(user_id,generation,account_id,connection_id,category,account_type,masked_label,available,eligible,sync_state,selectable,usability_reason)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, owner, generation, account.ID, connection.ID, account.Category, account.Type, account.MaskedLabel, account.Available, account.Eligible, account.SyncState, selectable, reason); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_account_identities (user_id,account_id,connection_id,first_seen_at,last_seen_at)
+			VALUES ($1,$2,$3,$4,$4) ON CONFLICT (user_id,account_id) DO UPDATE SET connection_id=EXCLUDED.connection_id,last_seen_at=EXCLUDED.last_seen_at`, owner, account.ID, connection.ID, now); err != nil {
 			return err
 		}
 	}
@@ -234,7 +245,7 @@ func loadInventoryConnections(ctx context.Context, tx pgx.Tx, owner uuid.UUID, g
 }
 
 func loadInventoryAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64, connectionID string) ([]portfolio.Account, error) {
-	rows, err := tx.Query(ctx, `SELECT account_id,category,account_type,masked_label,available,eligible,sync_state
+	rows, err := tx.Query(ctx, `SELECT account_id,category,account_type,masked_label,available,eligible,sync_state,selectable,usability_reason
 		FROM portfolio_inventory_accounts WHERE user_id=$1 AND generation=$2 AND connection_id=$3 ORDER BY account_id`, owner, generation, connectionID)
 	if err != nil {
 		return nil, err
@@ -243,7 +254,7 @@ func loadInventoryAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, gene
 	var accounts []portfolio.Account
 	for rows.Next() {
 		var account portfolio.Account
-		if err := rows.Scan(&account.ID, &account.Category, &account.Type, &account.MaskedLabel, &account.Available, &account.Eligible, &account.SyncState); err != nil {
+		if err := rows.Scan(&account.ID, &account.Category, &account.Type, &account.MaskedLabel, &account.Available, &account.Eligible, &account.SyncState, &account.Selectable, &account.UsabilityReason); err != nil {
 			return nil, err
 		}
 		accounts = append(accounts, account)

@@ -12,6 +12,21 @@ operations:
     removeParameters:
       - { in: query, name: userId }
       - { in: query, name: userSecret }
+  - path: /accounts/{accountId}/balances
+    method: get
+    removeParameters:
+      - { in: query, name: userId }
+      - { in: query, name: userSecret }
+  - path: /accounts/{accountId}/positions/all
+    method: get
+    removeParameters:
+      - { in: query, name: userId }
+      - { in: query, name: userSecret }
+  - path: /accounts/{accountId}/activities
+    method: get
+    removeParameters:
+      - { in: query, name: userId }
+      - { in: query, name: userSecret }
 oauthBearer:
   name: OAuthBearer
   type: http

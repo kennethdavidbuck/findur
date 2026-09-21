@@ -19,6 +19,9 @@
   --accent: #8050b5;
   --focus: #6b4300;
   --warning: #7a4800;
+  --danger: #a52b3a;
+  --on-danger: #ffffff;
+  --danger-subtle: #ffe0e4;
   --grid-line: rgb(40 92 199 / 9%);
   --glow-primary: rgb(40 92 199 / 20%);
   --glow-secondary: rgb(6 115 108 / 20%);
@@ -59,6 +62,9 @@
   --accent: #d9a5ff;
   --focus: #ffd078;
   --warning: #ffd078;
+  --danger: #ff9cac;
+  --on-danger: #3b0710;
+  --danger-subtle: #4b1d29;
   --grid-line: rgb(142 179 255 / 8%);
   --glow-primary: rgb(142 179 255 / 22%);
   --glow-secondary: rgb(101 234 219 / 20%);
@@ -335,6 +341,7 @@ p { line-height: 1.65; }
 .hero-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1.25rem; margin-top: 2rem; }
 .action--primary { color: var(--canvas); background: var(--primary); }
 .action--secondary { color: var(--primary); background: transparent; }
+.action--danger { color: var(--on-danger); border-color: var(--danger); background: var(--danger); }
 .demo-marker { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--secondary); }
 
 .constellation {
@@ -533,6 +540,25 @@ p { line-height: 1.65; }
 .inventory-connection li span { color: var(--text-muted); }
 .portfolio-inventory .action:disabled { cursor: wait; opacity: 0.7; }
 .inventory-boundary { max-width: var(--reading-max); margin-top: 2rem; color: var(--text-muted); font-weight: 650; }
+.account-inclusion { padding: clamp(1.25rem, 4vw, 2rem); margin-block: 2rem; border: 2px solid var(--primary); background: var(--surface); }
+.account-selection { display: grid; gap: 0.75rem; padding: 0; margin-block: 1.5rem; border: 0; }
+.account-selection legend { margin-bottom: 0.75rem; font-family: var(--font-display); font-size: 1.35rem; font-weight: 800; }
+.select-all, .account-choice { min-height: 3rem; display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.8rem; border: 1px solid var(--border-strong); cursor: pointer; }
+.select-all { background: var(--primary-subtle); font-weight: 800; }
+.account-choice input, .select-all input { width: 1.25rem; height: 1.25rem; flex: none; margin-top: 0.1rem; accent-color: var(--primary); }
+.account-choice span { display: grid; gap: 0.2rem; }
+.account-choice small { color: var(--text-muted); }
+.account-choice--disabled { border-style: dashed; cursor: not-allowed; opacity: 0.75; }
+.inclusion-summary { padding: 1rem; margin-block: 1rem; background: var(--surface-subtle); }
+.inclusion-summary p:last-child { margin-bottom: 0; }
+.inclusion-recovery { padding: 1rem; border-left: 4px solid var(--warning); }
+.inclusion-recovery .action { margin-top: 0.5rem; }
+.dialog-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 1rem; background: color-mix(in srgb, var(--text) 65%, transparent); }
+.confirmation-dialog { width: min(100%, 36rem); max-height: calc(100dvh - 2rem); overflow: auto; padding: clamp(1.25rem, 5vw, 2rem); border: 2px solid var(--border-strong); background: var(--canvas); box-shadow: 0 1rem 3rem color-mix(in srgb, var(--text) 30%, transparent); }
+.confirmation-dialog h2 { font-size: clamp(1.8rem, 6vw, 2.6rem); }
+.confirmation-dialog h3 { font-size: 1.15rem; }
+.danger-notice { padding: 1rem; border: 2px solid var(--danger); background: var(--danger-subtle); }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.5rem; }
 
 .authenticated-nav { background: var(--surface); }
 .authenticated-nav a {

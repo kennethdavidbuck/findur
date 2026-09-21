@@ -41,6 +41,31 @@
         "headers": { "Content-Type": "application/json" },
         "bodyFileName": "inventory/success-accounts.json"
       }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/balances",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" }, "userId": { "absent": true }, "userSecret": { "absent": true }, "Signature": { "absent": true } }
+      },
+      "response": { "status": 200, "headers": { "Content-Type": "application/json" }, "bodyFileName": "inventory/success-balances.json" }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/positions/all",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" }, "userId": { "absent": true }, "userSecret": { "absent": true }, "Signature": { "absent": true } }
+      },
+      "response": { "status": 200, "headers": { "Content-Type": "application/json" }, "bodyFileName": "inventory/success-positions.json" }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "urlPath": "/accounts/917c8734-8470-4a3e-a18f-57c3f2ee6631/activities",
+        "queryParameters": { "limit": { "equalTo": "500" }, "offset": { "equalTo": "0" }, "startDate": { "matches": "[0-9]{4}-[0-9]{2}-[0-9]{2}" }, "endDate": { "matches": "[0-9]{4}-[0-9]{2}-[0-9]{2}" } },
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" }, "userId": { "absent": true }, "userSecret": { "absent": true }, "Signature": { "absent": true } }
+      },
+      "response": { "status": 200, "headers": { "Content-Type": "application/json" }, "bodyFileName": "inventory/success-activities.json" }
     }
   ]
 }

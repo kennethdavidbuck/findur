@@ -75,6 +75,33 @@ const (
 	AccountSyncStateUnknown     AccountSyncState = "unknown"
 )
 
+// UsabilityReason explains whether an account can be selected and whether the
+// later probe still needs to prove it usable.
+type UsabilityReason string
+
+const (
+	// UsabilityReady means inventory already proves basic usability.
+	UsabilityReady UsabilityReason = "ready"
+	// UsabilityProvisionalStatus means status needs the later probe.
+	UsabilityProvisionalStatus UsabilityReason = "provisional_status"
+	// UsabilityProvisionalCategory means category needs the later probe.
+	UsabilityProvisionalCategory UsabilityReason = "provisional_category"
+	// UsabilitySyncPending means missing initial holdings make selection unavailable.
+	UsabilitySyncPending UsabilityReason = "sync_pending"
+	// UsabilityConnectionDisabled means the connection must be repaired.
+	UsabilityConnectionDisabled UsabilityReason = "connection_disabled"
+	// UsabilityConnectionUnavailable means the connection could not be read.
+	UsabilityConnectionUnavailable UsabilityReason = "connection_unavailable"
+	// UsabilityAccountClosed means a closed account cannot be selected.
+	UsabilityAccountClosed UsabilityReason = "account_closed"
+	// UsabilityAccountUnavailable means provider account access is unavailable.
+	UsabilityAccountUnavailable UsabilityReason = "account_unavailable"
+	// UsabilityUnsupportedCategory means the account is not an investment account.
+	UsabilityUnsupportedCategory UsabilityReason = "unsupported_category"
+	// UsabilitySyncUnavailable means holdings synchronization is unavailable.
+	UsabilitySyncUnavailable UsabilityReason = "sync_unavailable"
+)
+
 // Connection is the complete persisted subset of one provider connection.
 type Connection struct {
 	ID, BrokerageLabel  string
@@ -86,10 +113,11 @@ type Connection struct {
 
 // Account is the complete persisted subset of one provider account.
 type Account struct {
-	ID, Type, MaskedLabel string
-	Category              AccountCategory
-	SyncState             AccountSyncState
-	Available, Eligible   bool
+	ID, Type, MaskedLabel           string
+	Category                        AccountCategory
+	SyncState                       AccountSyncState
+	Available, Eligible, Selectable bool
+	UsabilityReason                 UsabilityReason
 }
 
 // Snapshot is safe to return to an authenticated browser.
