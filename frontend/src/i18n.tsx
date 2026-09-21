@@ -144,6 +144,7 @@ const copy = {
       portfolioTitle: 'Your portfolio profile is taking shape.',
       portfolioBody: 'Your account choices are saved. Next, you’ll be able to shape how your portfolio appears in your dating profile.',
       portfolioSaved: 'Account choices saved. Your portfolio profile is ready for the next step.',
+      editAccounts: 'Edit included accounts',
       inventory: {
         connectionHeading: 'Account setup',
         states: {
@@ -396,6 +397,7 @@ const copy = {
       portfolioTitle: 'Votre profil de portefeuille prend forme.',
       portfolioBody: 'Vos choix de comptes sont enregistrés. Vous pourrez ensuite façonner la présentation de votre portefeuille dans votre profil de rencontre.',
       portfolioSaved: 'Choix de comptes enregistrés. Votre profil de portefeuille est prêt pour la prochaine étape.',
+      editAccounts: 'Modifier les comptes inclus',
       inventory: {
         connectionHeading: 'Configuration des comptes',
         states: {

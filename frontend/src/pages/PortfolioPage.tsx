@@ -4,13 +4,14 @@ import { checkPortfolioInventory, confirmPortfolioInclusion, getPortfolioInclusi
 import { useI18n } from '../i18n'
 
 type Props = {
+  editing?: boolean
   headingRef: RefObject<HTMLHeadingElement | null>
   onComplete: (savedNow: boolean) => void
   onReconnect: () => void
   onSessionExpired: () => void
 }
 
-export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionExpired }: Props) {
+export function PortfolioPage({ editing = false, headingRef, onComplete, onReconnect, onSessionExpired }: Props) {
   const { locale, messages } = useI18n()
   const copy = messages.authenticated.inventory
   const [inventory, setInventory] = useState<PortfolioInventory | null>(null)
@@ -25,6 +26,9 @@ export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionEx
   const [inclusionReload, setInclusionReload] = useState(0)
   const selectAllRef = useRef<HTMLInputElement>(null)
   const reviewButtonRef = useRef<HTMLButtonElement>(null)
+  const activeRef = useRef(true)
+
+  useEffect(() => () => { activeRef.current = false }, [])
 
   useEffect(() => {
     let active = true
@@ -39,16 +43,12 @@ export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionEx
     let active = true
     void getPortfolioInclusion().then((result) => {
       if (!active) return
-      if (result.committed.length > 0) {
-        onComplete(false)
-        return
-      }
       setInclusion(result)
       setDraft(recoveryDraft(result))
       setInclusionFailed(false)
     }).catch((error: unknown) => handleFailure(error, onSessionExpired, () => active && setInclusionFailed(true)))
     return () => { active = false }
-  }, [inclusionReload, inventory, onComplete, onSessionExpired])
+  }, [inclusionReload, inventory, onSessionExpired])
 
   const committed = useMemo(() => new Set(inclusion?.committed ?? []), [inclusion])
   const visibleConnections = useMemo(() => inventory?.connections.map((connection) => ({
@@ -106,6 +106,11 @@ export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionEx
 
   const save = async () => {
     if (!inclusion) return
+    if (additions.length + removals.length === 0) {
+      updateConfirmation(false)
+      onComplete(false)
+      return
+    }
     const visibleIDs = new Set(accounts.map((account) => account.id))
     const desired = [...draft].filter((id) => committed.has(id) || visibleIDs.has(id)).sort()
     setSaving(true)
@@ -115,7 +120,7 @@ export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionEx
       const result = await confirmPortfolioInclusion(inclusion.version, desired)
       setInclusion(result)
       setDraft(recoveryDraft(result))
-      if (result.change?.status === 'committed') onComplete(true)
+      if (result.change?.status === 'committed' && activeRef.current) onComplete(true)
     } catch (error: unknown) {
       if (isSessionError(error)) {
         onSessionExpired()
@@ -123,7 +128,7 @@ export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionEx
         try {
           const durable = await getPortfolioInclusion()
           if (sameIDs(durable.committed, desired)) {
-            onComplete(true)
+            if (activeRef.current) onComplete(true)
           } else {
             setInclusion(durable)
             setDraft(recoveryDraft(durable))
@@ -160,14 +165,14 @@ export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionEx
   const connectionComplete = state === 'ready'
 
   return (
-    <div className="connection-setup-grid">
-      <aside className="setup-progress" aria-labelledby="setup-progress-title">
+    <div className={`connection-setup-grid${editing ? ' connection-setup-grid--edit' : ''}`}>
+      {!editing && <aside className="setup-progress" aria-labelledby="setup-progress-title">
         <h2 className="visually-hidden" id="setup-progress-title">{copy.inclusion.progressTitle}</h2>
         <ol>
           {copy.inclusion.progressSteps.map((step, index) => <li className={connectionComplete && index === 0 ? 'done' : index === (connectionComplete ? 1 : 0) ? 'active' : ''} aria-current={index === (connectionComplete ? 1 : 0) ? 'step' : undefined} key={step}>{step}</li>)}
         </ol>
         <p>{copy.inclusion.progressNote}</p>
-      </aside>
+      </aside>}
       <section className="portfolio-inventory">
       <p className="eyebrow">{connectionComplete ? copy.inclusion.setupEyebrow : copy.inclusion.recoveryEyebrow}</p>
       <h1 ref={headingRef} tabIndex={-1}>{copy.inclusion.setupTitle}</h1>
@@ -231,7 +236,7 @@ export function PortfolioPage({ headingRef, onComplete, onReconnect, onSessionEx
               </div>
               <DialogTrigger isOpen={confirming} onOpenChange={updateConfirmation}>
                 <div className="inclusion-actions">
-                  <Button ref={reviewButtonRef} className="action action--primary" isDisabled={saving || additions.length + removals.length === 0}>{copy.inclusion.review}</Button>
+                  <Button ref={reviewButtonRef} className="action action--primary" isDisabled={saving || selectedVisibleCount === 0}>{copy.inclusion.review}</Button>
                 </div>
                 <ModalOverlay className="dialog-backdrop" isDismissable>
                   <Modal className="confirmation-dialog confirmation-dialog--compact">
