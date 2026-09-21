@@ -196,12 +196,11 @@ jobs:
           esac
           curl --fail --silent --show-error --max-time 20 \
             -X POST "$RENDER_FRONTEND_DEPLOY_HOOK_URL${ref_separator}ref=${{ github.sha }}" >/dev/null
-      - name: Bounded public exact-build smoke
-        run: ./scripts/smoke-deployment.sh "$PUBLIC_ORIGIN" "${{ github.sha }}"
-      - name: Bounded browser exact-build smoke
+      - name: Bounded public deployment-health smoke
+        run: ./scripts/smoke-deployment.sh "$PUBLIC_ORIGIN"
+      - name: Bounded browser deployment-health smoke
         env:
           BROWSER_URL: http://127.0.0.1:4444
-          EXPECTED_SHA: ${{ github.sha }}
         run: |
           docker run --detach --rm --name findur-deploy-browser \
             --publish 127.0.0.1:4444:4444 --shm-size=1g \
@@ -215,4 +214,10 @@ jobs:
             test "$attempt" -lt 40
             sleep 1
           done
-          PUBLIC_ORIGIN="$PUBLIC_ORIGIN" node test/integration/browser-status.mjs
+          for attempt in $(seq 1 30); do
+            if PUBLIC_ORIGIN="$PUBLIC_ORIGIN" node test/integration/browser-status.mjs; then
+              exit 0
+            fi
+            test "$attempt" -lt 30
+            sleep 10
+          done

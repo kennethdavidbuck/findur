@@ -61,3 +61,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-public-site-polish.md`
   summary: Correct the frozen polish spec's obsolete owner-only demonstration wording.
   evidence: The architecture spine supersedes the single-owner assumption with up to five isolated SnapTrade test viewers; runtime copy was corrected, but the workflow forbids implementation agents from changing frozen human-owned intent.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-deployment-health-smoke.md`
+  summary: Update the governing Epic 0 planning acceptance criteria from exact frontend/API SHA equality to the approved deployment-health contract.
+  evidence: The approved follow-up treats differing component revisions as diagnostic information, but `epics.md` still requires exact-SHA convergence; changing planning artifacts is deferred to a planning correction rather than this implementation fix.
