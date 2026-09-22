@@ -846,7 +846,7 @@ describe('public site', () => {
 		render(<App />)
 		await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === '/api/auth/status')).toHaveLength(2))
 		resolveInventory(emptyInventory())
-		expect(await screen.findByText('We could not find any connected accounts.')).toBeVisible()
+		expect(await screen.findByText('No investment accounts are ready to include.')).toBeVisible()
 		expect(fetchMock.mock.calls.filter(([path]) => path === '/api/portfolio/inventory')).toHaveLength(1)
 	})
 
@@ -871,7 +871,7 @@ describe('public site', () => {
 		first.unmount()
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		render(<App />)
-		expect(await screen.findByText('We could not find any connected accounts.')).toBeVisible()
+		expect(await screen.findByText('No investment accounts are ready to include.')).toBeVisible()
 		expect(inventoryCalls).toBe(2)
 	})
 
@@ -894,7 +894,7 @@ describe('public site', () => {
 		const check = await screen.findByRole('button', { name: 'Check again' })
 		expect(inventoryCalls).toBe(1)
 		fireEvent.click(check)
-		expect(await screen.findByText('We could not find any connected accounts.')).toBeVisible()
+		expect(await screen.findByText('No investment accounts are ready to include.')).toBeVisible()
 		expect(inventoryCalls).toBe(2)
 	})
 
@@ -905,7 +905,7 @@ describe('public site', () => {
 			: emptyInventory())))
 		render(<App />)
 
-		expect(await screen.findByText('We could not find any connected accounts.')).toBeVisible()
+		expect(await screen.findByText('No investment accounts are ready to include.')).toBeVisible()
 		expect(screen.getByRole('button', { name: 'Reconnect accounts' })).toBeVisible()
 		expect(screen.getAllByText('Account setup')[0]).toBeVisible()
 		expect(screen.queryByText('Connection complete')).not.toBeInTheDocument()
@@ -955,7 +955,7 @@ describe('public site', () => {
 		render(<App />)
 
 		fireEvent.click(await screen.findByRole('button', { name: 'Try again' }))
-		expect(await screen.findByText('We could not find any connected accounts.')).toBeVisible()
+		expect(await screen.findByText('No investment accounts are ready to include.')).toBeVisible()
 		expect(fetchMock.mock.calls).toContainEqual(['/api/portfolio/inventory/retry', expect.objectContaining({
 			method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: { 'X-CSRF-Token': 'inventory-csrf' },
 		})])

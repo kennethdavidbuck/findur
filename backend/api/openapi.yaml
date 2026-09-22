@@ -484,7 +484,7 @@ components:
       properties:
         accountIds:
           type: array
-          maxItems: 500
+          maxItems: 5000
           uniqueItems: true
           items: { type: string, minLength: 1, maxLength: 128 }
     AuthorizationStatus:

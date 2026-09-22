@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"bytes"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +12,137 @@ import (
 	postgresadapter "github.com/kennethdavidbuck/findur/backend/internal/platform/postgres"
 	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
 )
+
+func TestInventoryRepositoryFiltersLegacyCachedAccountsWithoutRetry(t *testing.T) {
+	fixture := newRepositoryFixture(t)
+	fixture.reset(t)
+	owner := inclusionOwnerWithInventory(t, fixture, 201, "legacy-inventory-owner")
+	excluded := publishLegacyEligibilityInventory(t, fixture, owner)
+
+	// All excluded rows really exist in the immutable old snapshot, including
+	// obsolete selectable=true flags. Reading must apply today's policy without
+	// refreshing provider data or rewriting historical inventory.
+	var persistedCount int
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT count(*) FROM portfolio_inventory_accounts WHERE user_id=$1`, owner).Scan(&persistedCount); err != nil {
+		t.Fatal(err)
+	}
+	if persistedCount != len(excluded)+2 {
+		t.Fatalf("persisted accounts=%d, want %d", persistedCount, len(excluded)+2)
+	}
+	reloaded, err := postgresadapter.NewInventoryRepository(fixture.pool).Prepare(fixture.ctx, owner, false, fixture.now)
+	if err != nil || reloaded.Claimed || reloaded.State != portfolio.StateReady {
+		t.Fatalf("cached inventory=%+v err=%v", reloaded, err)
+	}
+	var ids []string
+	for _, connection := range reloaded.Connections {
+		for _, account := range connection.Accounts {
+			ids = append(ids, account.ID)
+			if !account.Eligible || !account.Selectable || account.UsabilityReason != portfolio.UsabilityReady {
+				t.Fatalf("accepted cached account does not project current eligibility: %+v", account)
+			}
+		}
+	}
+	slices.Sort(ids)
+	if !slices.Equal(ids, []string{"open-investment", "unspecified-status-investment"}) {
+		t.Fatalf("cached inventory accounts=%v", ids)
+	}
+	var historicalEligible bool
+	var historicalReason string
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT eligible,usability_reason FROM portfolio_inventory_accounts WHERE user_id=$1 AND account_id='unspecified-status-investment'`, owner).Scan(&historicalEligible, &historicalReason); err != nil {
+		t.Fatal(err)
+	}
+	if historicalEligible || historicalReason != string(portfolio.UsabilityProvisionalStatus) {
+		t.Fatalf("cached projection rewrote history: eligible=%v reason=%s", historicalEligible, historicalReason)
+	}
+}
+
+func TestInventoryRepositoryProjectsExcludedOnlyCachedHeadAsEmpty(t *testing.T) {
+	fixture := newRepositoryFixture(t)
+	fixture.reset(t)
+	owner := inclusionOwnerWithInventory(t, fixture, 203, "excluded-only-inventory-owner")
+	publishLegacyEligibilityInventory(t, fixture, owner)
+	if _, err := fixture.pool.Exec(fixture.ctx, `DELETE FROM portfolio_inventory_accounts WHERE user_id=$1 AND account_id IN ('open-investment','unspecified-status-investment')`, owner); err != nil {
+		t.Fatal(err)
+	}
+	repository := postgresadapter.NewInventoryRepository(fixture.pool)
+	empty, err := repository.Prepare(fixture.ctx, owner, false, fixture.now)
+	if err != nil || empty.Claimed || empty.State != portfolio.StateEmpty || empty.Generation != 1 {
+		t.Fatalf("excluded-only cached projection=%+v err=%v", empty, err)
+	}
+	for _, connection := range empty.Connections {
+		if len(connection.Accounts) != 0 {
+			t.Fatalf("excluded account leaked into empty projection: %+v", connection)
+		}
+	}
+	var historicalStatus string
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT current_status FROM portfolio_inventory_state WHERE user_id=$1`, owner).Scan(&historicalStatus); err != nil {
+		t.Fatal(err)
+	}
+	if historicalStatus != string(portfolio.StateReady) {
+		t.Fatalf("empty projection rewrote persisted status=%s", historicalStatus)
+	}
+	for _, state := range []portfolio.State{portfolio.StateUnavailable, portfolio.StateMalformed, portfolio.StateUnauthorized, portfolio.StateRateLimited, portfolio.StateDisabled, portfolio.StatePending} {
+		if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_inventory_state SET current_status=$2,claim_expires_at=CASE WHEN $2='pending' THEN $3::timestamptz ELSE NULL END WHERE user_id=$1`, owner, state, fixture.now.Add(time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+		cached, err := repository.Prepare(fixture.ctx, owner, false, fixture.now)
+		if err != nil || cached.Claimed || cached.State != state || cached.Generation != empty.Generation {
+			t.Fatalf("categorical state %s changed or triggered refresh: %+v err=%v", state, cached, err)
+		}
+	}
+}
+
+func publishLegacyEligibilityInventory(t *testing.T, fixture *repositoryFixture, owner uuid.UUID) []string {
+	t.Helper()
+	base := portfolio.Account{Category: portfolio.AccountCategoryInvestment, Type: "Margin", MaskedLabel: "Synthetic investment", Available: true, Eligible: true, Selectable: true, UsabilityReason: portfolio.UsabilityReady, SyncState: portfolio.AccountSyncStateComplete}
+	open, unspecified := base, base
+	open.ID, unspecified.ID = "open-investment", "unspecified-status-investment"
+	unspecified.Eligible, unspecified.UsabilityReason = false, portfolio.UsabilityProvisionalStatus
+	active := portfolio.Connection{ID: "active", BrokerageLabel: "Synthetic Broker", Status: portfolio.ConnectionStatusActive, SyncMode: portfolio.SyncModeRealtime, Available: true, Eligible: true, Accounts: []portfolio.Account{open, unspecified}}
+	var excluded []string
+	add := func(id string, change func(*portfolio.Account)) {
+		account := base
+		account.ID = id
+		change(&account)
+		active.Accounts = append(active.Accounts, account)
+		excluded = append(excluded, id)
+	}
+	for _, category := range []portfolio.AccountCategory{portfolio.AccountCategoryUnknown, portfolio.AccountCategoryDeposit, portfolio.AccountCategoryCredit} {
+		add(string(category), func(account *portfolio.Account) { account.Category = category })
+	}
+	for _, syncState := range []portfolio.AccountSyncState{portfolio.AccountSyncStatePending, portfolio.AccountSyncStateUnavailable, portfolio.AccountSyncStateUnknown} {
+		add("sync-"+string(syncState), func(account *portfolio.Account) { account.SyncState = syncState })
+	}
+	add("unavailable-account", func(account *portfolio.Account) { account.Available = false })
+	for _, reason := range []portfolio.UsabilityReason{portfolio.UsabilityAccountClosed, portfolio.UsabilityAccountUnavailable, portfolio.UsabilitySyncUnavailable, portfolio.UsabilityProvisionalCategory} {
+		add("reason-"+string(reason), func(account *portfolio.Account) { account.UsabilityReason = reason })
+	}
+	connections := []portfolio.Connection{active}
+	for _, status := range []portfolio.ConnectionStatus{portfolio.ConnectionStatusDisabled, portfolio.ConnectionStatusUnavailable} {
+		connection, account := active, base
+		connection.ID, connection.Status = string(status), status
+		account.ID = "connection-" + string(status)
+		connection.Accounts = []portfolio.Account{account}
+		connections = append(connections, connection)
+		excluded = append(excluded, account.ID)
+	}
+	connection, account := active, base
+	connection.ID, connection.Available = "unavailable-active", false
+	account.ID = "unavailable-active-account"
+	connection.Accounts = []portfolio.Account{account}
+	connections = append(connections, connection)
+	excluded = append(excluded, account.ID)
+
+	repository := postgresadapter.NewInventoryRepository(fixture.pool)
+	claim, err := repository.Prepare(fixture.ctx, owner, false, fixture.now)
+	if err != nil || !claim.Claimed {
+		t.Fatalf("legacy inventory claim=%+v err=%v", claim, err)
+	}
+	if _, accepted, err := repository.Finalize(fixture.ctx, owner, claim.Generation, portfolio.StateReady, nil, connections, fixture.now); err != nil || !accepted {
+		t.Fatalf("legacy publication accepted=%v err=%v", accepted, err)
+	}
+	return excluded
+}
 
 func TestInventoryRepositoryClaimsPublishesAndIsolatesOwners(t *testing.T) {
 	fixture := newRepositoryFixture(t)

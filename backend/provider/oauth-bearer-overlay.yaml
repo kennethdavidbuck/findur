@@ -7,7 +7,7 @@ operations:
     removeParameters:
       - { in: query, name: userId }
       - { in: query, name: userSecret }
-  - path: /authorizations/{authorizationId}/accounts
+  - path: /accounts
     method: get
     removeParameters:
       - { in: query, name: userId }

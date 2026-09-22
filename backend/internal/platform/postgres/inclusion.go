@@ -339,7 +339,10 @@ func validateSelection(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generati
 			continue
 		}
 		var selectable bool
-		err := tx.QueryRow(ctx, `SELECT selectable FROM portfolio_inventory_accounts WHERE user_id=$1 AND generation=$2 AND account_id=$3`, owner, generation, id).Scan(&selectable)
+		err := tx.QueryRow(ctx, `SELECT account.selectable FROM portfolio_inventory_accounts account
+			JOIN portfolio_inventory_connections connection USING (user_id,generation,connection_id)
+			WHERE account.user_id=$1 AND account.generation=$2 AND account.account_id=$3
+			AND `+selectableInventoryAccountSQL, owner, generation, id).Scan(&selectable)
 		if errors.Is(err, pgx.ErrNoRows) || err == nil && !selectable {
 			return portfolio.ErrInvalidAccountSelection
 		}

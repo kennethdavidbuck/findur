@@ -16,7 +16,7 @@ func TestServiceClaimsOncePublishesAndServesPersistedSnapshot(t *testing.T) {
 	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
 	encrypted, _ := tokens.EncryptAccess(uuid.Nil, "access-token")
 	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1, UpdatedAt: now}, Claimed: true, EncryptedToken: encrypted, TokenVersion: 1}}
-	provider := &providerStub{connections: []Connection{{ID: "connection", BrokerageLabel: "Broker", Status: "active", SyncMode: "delayed", Available: true}}}
+	provider := &providerStub{connections: []Connection{{ID: "connection", BrokerageLabel: "Broker", Status: "active", SyncMode: "delayed", Available: true, Accounts: []Account{{ID: "account"}}}}}
 	service, err := NewService(repository, provider, tokens, func() time.Time { return now }, time.Second)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestServicePersistsCategoricalProviderFailures(t *testing.T) {
 	}
 }
 
-func TestServicePublishesTrustworthyPartialRowsWithCategoricalFailure(t *testing.T) {
+func TestServiceDiscardsPartialRowsOnBulkFailure(t *testing.T) {
 	now := time.Now().UTC()
 	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
 	encrypted, _ := tokens.EncryptAccess(uuid.Nil, "access-token")
@@ -63,7 +63,20 @@ func TestServicePublishesTrustworthyPartialRowsWithCategoricalFailure(t *testing
 	partial := []Connection{{ID: "connection", BrokerageLabel: "Broker", Status: "unavailable", SyncMode: "delayed"}}
 	service, _ := NewService(repository, &providerStub{connections: partial, err: &ProviderError{State: StateMalformed}}, tokens, func() time.Time { return now }, time.Second)
 	got, err := service.Get(context.Background(), auth.Actor{})
-	if err != nil || got.State != StateMalformed || len(got.Connections) != 1 || got.Connections[0].BrokerageLabel != "Broker" {
+	if err != nil || got.State != StateMalformed || len(got.Connections) != 0 {
+		t.Fatalf("snapshot=%+v err=%v", got, err)
+	}
+}
+
+func TestServicePublishesEmptyWhenNoAccountsPassTheServerRules(t *testing.T) {
+	now := time.Now().UTC()
+	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
+	encrypted, _ := tokens.EncryptAccess(uuid.Nil, "access-token")
+	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1}, Claimed: true, EncryptedToken: encrypted, TokenVersion: 1}}
+	provider := &providerStub{connections: []Connection{{ID: "connection", Status: ConnectionStatusActive, Available: true}}}
+	service, _ := NewService(repository, provider, tokens, func() time.Time { return now }, time.Second)
+	got, err := service.Get(context.Background(), auth.Actor{})
+	if err != nil || got.State != StateEmpty || len(got.Connections) != 1 {
 		t.Fatalf("snapshot=%+v err=%v", got, err)
 	}
 }

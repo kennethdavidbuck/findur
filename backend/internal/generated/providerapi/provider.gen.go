@@ -336,24 +336,6 @@ func (e TokenizedAssetInstrumentKind) Valid() bool {
 	}
 }
 
-// N401FailedRequestResponse Example for failed request response
-type N401FailedRequestResponse struct {
-	// DefaultCode Example: 1076
-	DefaultCode interface{} `json:"default_code,omitempty"`
-
-	// DefaultDetail Example: Unable to verify signature sent
-	DefaultDetail interface{} `json:"default_detail,omitempty"`
-}
-
-// N404FailedRequestResponse Example for failed request response
-type N404FailedRequestResponse struct {
-	// DefaultCode Example: 1011
-	DefaultCode interface{} `json:"default_code,omitempty"`
-
-	// DefaultDetail Example: The requested resource does not exist.
-	DefaultDetail interface{} `json:"default_detail,omitempty"`
-}
-
 // N429TooManyRequestsResponse Example for a rate-limited request response
 type N429TooManyRequestsResponse struct {
 	// Code Example: throttled
@@ -2929,6 +2911,15 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
+	// AccountInformationListUserAccounts List user accounts
+	//
+	// Returns all brokerage accounts across all connections known to SnapTrade for the authenticated user.
+	//
+	// This endpoint returns Daily data regardless of the customer's plan. Daily data is cached and refreshed once a day, which makes this endpoint fast and well-suited to listing accounts across all of a user's connections in a single call. Exact refresh timing may vary by brokerage. To get real-time data on Pay as you Go / Real-time, use the [list accounts for a connection endpoint](/reference/Connections/Connections_listBrokerageAuthorizationAccounts). Customers on Pay as you Go / Daily can force a refresh with the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).
+	//
+	// Corresponds with GET /accounts (the `AccountInformationListUserAccounts` operationId).
+	AccountInformationListUserAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AccountInformationGetAccountActivities List account activities
 	//
 	// This endpoint is not deprecated and has no planned sunset. Responses to requests using the legacy `/api/v1` path prefix include `Deprecation: @1781222400` (June 12, 2026); that header applies only to the path prefix. Use the canonical root path `/accounts/{accountId}/activities`.
@@ -2984,19 +2975,25 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /authorizations (the `ConnectionsListBrokerageAuthorizations` operationId).
 	ConnectionsListBrokerageAuthorizations(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
 
-	// ConnectionsListBrokerageAuthorizationAccounts List accounts for a connection
-	//
-	// Returns all brokerage accounts that belong to the specified connection for the authenticated user.
-	//
-	// On Pay as you Go / Real-time, this endpoint refreshes each account's opening date, funding date, and total value live from the brokerage on each call.
-	//
-	// On Pay as you Go / Daily, this endpoint returns Daily data. Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage. To force a refresh, use the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).
-	//
-	// Check your API key on the [Customer Dashboard billing page](https://dashboard.snaptrade.com/settings/billing) to see whether your plan includes real-time data.
-	//
-	// Corresponds with GET /authorizations/{authorizationId}/accounts (the `ConnectionsListBrokerageAuthorizationAccounts` operationId).
-	ConnectionsListBrokerageAuthorizationAccounts(ctx context.Context, authorizationId BrokerageAuthID, reqEditors ...RequestEditorFn) (*http.Response, error)
+// AccountInformationListUserAccounts List user accounts
+//
+// Returns all brokerage accounts across all connections known to SnapTrade for the authenticated user.
+//
+// This endpoint returns Daily data regardless of the customer's plan. Daily data is cached and refreshed once a day, which makes this endpoint fast and well-suited to listing accounts across all of a user's connections in a single call. Exact refresh timing may vary by brokerage. To get real-time data on Pay as you Go / Real-time, use the [list accounts for a connection endpoint](/reference/Connections/Connections_listBrokerageAuthorizationAccounts). Customers on Pay as you Go / Daily can force a refresh with the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).
+//
+// Corresponds with GET /accounts (the `AccountInformationListUserAccounts` operationId).
+func (c *Client) AccountInformationListUserAccounts(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAccountInformationListUserAccountsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 // AccountInformationGetAccountActivities List account activities
@@ -3095,27 +3092,31 @@ func (c *Client) ConnectionsListBrokerageAuthorizations(ctx context.Context, req
 	return c.Client.Do(req)
 }
 
-// ConnectionsListBrokerageAuthorizationAccounts List accounts for a connection
-//
-// Returns all brokerage accounts that belong to the specified connection for the authenticated user.
-//
-// On Pay as you Go / Real-time, this endpoint refreshes each account's opening date, funding date, and total value live from the brokerage on each call.
-//
-// On Pay as you Go / Daily, this endpoint returns Daily data. Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage. To force a refresh, use the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).
-//
-// Check your API key on the [Customer Dashboard billing page](https://dashboard.snaptrade.com/settings/billing) to see whether your plan includes real-time data.
-//
-// Corresponds with GET /authorizations/{authorizationId}/accounts (the `ConnectionsListBrokerageAuthorizationAccounts` operationId).
-func (c *Client) ConnectionsListBrokerageAuthorizationAccounts(ctx context.Context, authorizationId BrokerageAuthID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewConnectionsListBrokerageAuthorizationAccountsRequest(c.Server, authorizationId)
+// NewAccountInformationListUserAccountsRequest constructs an http.Request for the AccountInformationListUserAccounts method
+func NewAccountInformationListUserAccountsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+
+	operationPath := fmt.Sprintf("/accounts")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
 		return nil, err
 	}
-	return c.Client.Do(req)
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
 }
 
 // NewAccountInformationGetAccountActivitiesRequest constructs an http.Request for the AccountInformationGetAccountActivities method
@@ -3322,40 +3323,6 @@ func NewConnectionsListBrokerageAuthorizationsRequest(server string) (*http.Requ
 	return req, nil
 }
 
-// NewConnectionsListBrokerageAuthorizationAccountsRequest constructs an http.Request for the ConnectionsListBrokerageAuthorizationAccounts method
-func NewConnectionsListBrokerageAuthorizationAccountsRequest(server string, authorizationId BrokerageAuthID) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "authorizationId", authorizationId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/authorizations/%s/accounts", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -3399,6 +3366,17 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+
+	// AccountInformationListUserAccountsWithResponse List user accounts
+	//
+	// Returns all brokerage accounts across all connections known to SnapTrade for the authenticated user.
+	//
+	// This endpoint returns Daily data regardless of the customer's plan. Daily data is cached and refreshed once a day, which makes this endpoint fast and well-suited to listing accounts across all of a user's connections in a single call. Exact refresh timing may vary by brokerage. To get real-time data on Pay as you Go / Real-time, use the [list accounts for a connection endpoint](/reference/Connections/Connections_listBrokerageAuthorizationAccounts). Customers on Pay as you Go / Daily can force a refresh with the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /accounts (the `AccountInformationListUserAccounts` operationId).
+	AccountInformationListUserAccountsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AccountInformationListUserAccountsResponse, error)
 
 	// AccountInformationGetAccountActivitiesWithResponse List account activities
 	//
@@ -3463,21 +3441,47 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /authorizations (the `ConnectionsListBrokerageAuthorizations` operationId).
 	ConnectionsListBrokerageAuthorizationsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*ConnectionsListBrokerageAuthorizationsResponse, error)
+}
 
-	// ConnectionsListBrokerageAuthorizationAccountsWithResponse List accounts for a connection
-	//
-	// Returns all brokerage accounts that belong to the specified connection for the authenticated user.
-	//
-	// On Pay as you Go / Real-time, this endpoint refreshes each account's opening date, funding date, and total value live from the brokerage on each call.
-	//
-	// On Pay as you Go / Daily, this endpoint returns Daily data. Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage. To force a refresh, use the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).
-	//
-	// Check your API key on the [Customer Dashboard billing page](https://dashboard.snaptrade.com/settings/billing) to see whether your plan includes real-time data.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with GET /authorizations/{authorizationId}/accounts (the `ConnectionsListBrokerageAuthorizationAccounts` operationId).
-	ConnectionsListBrokerageAuthorizationAccountsWithResponse(ctx context.Context, authorizationId BrokerageAuthID, reqEditors ...RequestEditorFn) (*ConnectionsListBrokerageAuthorizationAccountsResponse, error)
+type AccountInformationListUserAccountsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Account
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AccountInformationListUserAccountsResponse) GetJSON200() *[]Account {
+	return r.JSON200
+}
+
+// GetBody returns the raw response body bytes
+func (r AccountInformationListUserAccountsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AccountInformationListUserAccountsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AccountInformationListUserAccountsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AccountInformationListUserAccountsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 // AccountInformationGetAccountActivitiesResponse429Headers the declared response headers of an HTTP 429 response for AccountInformationGetAccountActivities
@@ -3718,59 +3722,21 @@ func (r ConnectionsListBrokerageAuthorizationsResponse) ContentType() string {
 	return ""
 }
 
-type ConnectionsListBrokerageAuthorizationAccountsResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *[]Account
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *N401FailedRequestResponse
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *N404FailedRequestResponse
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r ConnectionsListBrokerageAuthorizationAccountsResponse) GetJSON200() *[]Account {
-	return r.JSON200
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r ConnectionsListBrokerageAuthorizationAccountsResponse) GetJSON401() *N401FailedRequestResponse {
-	return r.JSON401
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r ConnectionsListBrokerageAuthorizationAccountsResponse) GetJSON404() *N404FailedRequestResponse {
-	return r.JSON404
-}
-
-// GetBody returns the raw response body bytes
-func (r ConnectionsListBrokerageAuthorizationAccountsResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r ConnectionsListBrokerageAuthorizationAccountsResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
+// AccountInformationListUserAccountsWithResponse List user accounts
+//
+// Returns all brokerage accounts across all connections known to SnapTrade for the authenticated user.
+//
+// This endpoint returns Daily data regardless of the customer's plan. Daily data is cached and refreshed once a day, which makes this endpoint fast and well-suited to listing accounts across all of a user's connections in a single call. Exact refresh timing may vary by brokerage. To get real-time data on Pay as you Go / Real-time, use the [list accounts for a connection endpoint](/reference/Connections/Connections_listBrokerageAuthorizationAccounts). Customers on Pay as you Go / Daily can force a refresh with the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /accounts (the `AccountInformationListUserAccounts` operationId).
+func (c *ClientWithResponses) AccountInformationListUserAccountsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*AccountInformationListUserAccountsResponse, error) {
+	rsp, err := c.AccountInformationListUserAccounts(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
 	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r ConnectionsListBrokerageAuthorizationAccountsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r ConnectionsListBrokerageAuthorizationAccountsResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
+	return ParseAccountInformationListUserAccountsResponse(rsp)
 }
 
 // AccountInformationGetAccountActivitiesWithResponse List account activities
@@ -3861,25 +3827,30 @@ func (c *ClientWithResponses) ConnectionsListBrokerageAuthorizationsWithResponse
 	return ParseConnectionsListBrokerageAuthorizationsResponse(rsp)
 }
 
-// ConnectionsListBrokerageAuthorizationAccountsWithResponse List accounts for a connection
-//
-// Returns all brokerage accounts that belong to the specified connection for the authenticated user.
-//
-// On Pay as you Go / Real-time, this endpoint refreshes each account's opening date, funding date, and total value live from the brokerage on each call.
-//
-// On Pay as you Go / Daily, this endpoint returns Daily data. Daily data is cached and refreshed once a day. Exact refresh timing may vary by brokerage. To force a refresh, use the [manual refresh endpoint](/reference/Connections/Connections_refreshBrokerageAuthorization).
-//
-// Check your API key on the [Customer Dashboard billing page](https://dashboard.snaptrade.com/settings/billing) to see whether your plan includes real-time data.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with GET /authorizations/{authorizationId}/accounts (the `ConnectionsListBrokerageAuthorizationAccounts` operationId).
-func (c *ClientWithResponses) ConnectionsListBrokerageAuthorizationAccountsWithResponse(ctx context.Context, authorizationId BrokerageAuthID, reqEditors ...RequestEditorFn) (*ConnectionsListBrokerageAuthorizationAccountsResponse, error) {
-	rsp, err := c.ConnectionsListBrokerageAuthorizationAccounts(ctx, authorizationId, reqEditors...)
+// ParseAccountInformationListUserAccountsResponse parses an HTTP response from a AccountInformationListUserAccountsWithResponse call
+func ParseAccountInformationListUserAccountsResponse(rsp *http.Response) (*AccountInformationListUserAccountsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
-	return ParseConnectionsListBrokerageAuthorizationAccountsResponse(rsp)
+
+	response := &AccountInformationListUserAccountsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Account
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseAccountInformationGetAccountActivitiesResponse parses an HTTP response from a AccountInformationGetAccountActivitiesWithResponse call
@@ -4180,46 +4151,6 @@ func ParseConnectionsListBrokerageAuthorizationsResponse(rsp *http.Response) (*C
 			return nil, err
 		}
 		response.JSON200 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseConnectionsListBrokerageAuthorizationAccountsResponse parses an HTTP response from a ConnectionsListBrokerageAuthorizationAccountsWithResponse call
-func ParseConnectionsListBrokerageAuthorizationAccountsResponse(rsp *http.Response) (*ConnectionsListBrokerageAuthorizationAccountsResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &ConnectionsListBrokerageAuthorizationAccountsResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []Account
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401FailedRequestResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest N404FailedRequestResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
 
 	}
 

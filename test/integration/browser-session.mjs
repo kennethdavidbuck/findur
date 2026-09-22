@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { withWebDriverSession } from './webdriver.mjs'
+import { exerciseLargeInventory } from './browser-large-inventory.mjs'
 
 async function establishSession(webdriver, sessionId, origin) {
   await webdriver(`/session/${sessionId}/url`, {
@@ -437,6 +438,7 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
       assert.equal(desktopHeader, 'sticky', 'desktop authenticated header remains visible above the fixed rail')
       await exerciseAccountInclusion(second.webdriver, second.sessionId, wiremockUrl)
       await exercisePersonalProfile(second.webdriver, second.sessionId, publicOrigin)
+      await exerciseLargeInventory(second.webdriver, second.sessionId, publicOrigin, wiremockUrl)
       await exerciseInventoryFixtures(second.webdriver, second.sessionId, wiremockUrl)
     })
   })

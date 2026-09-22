@@ -107,11 +107,13 @@ To run the complete synthetic integration suite, including the headless-browser 
 
 Native verification requires Go and Node.js/npm; exact versions are pinned in [`.tool-versions`](.tool-versions).
 
-Verify the Go API and generated provider boundary:
+Verify the Go API and generated provider boundary. Generate with the Go version in
+`backend/go.mod`, matching CI: other Go versions can produce different compressed
+embedded API schemas even when the contract is unchanged.
 
 ```sh
 cd backend
-go generate ./...
+GOTOOLCHAIN=go1.25.11 go generate ./...
 golangci-lint run
 go test ./...
 go vet ./...

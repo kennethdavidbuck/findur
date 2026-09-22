@@ -66,6 +66,7 @@ func requestFromContext(ctx context.Context) *http.Request {
 
 const (
 	authorizationRequestLimit   = 4 << 10
+	inclusionRequestLimit       = 1 << 20
 	attemptCookieName           = "findur_oauth_attempt"
 	sessionCookieName           = "findur_session"
 	csrfCookieName              = "findur_csrf"
@@ -188,7 +189,11 @@ func callbackContextMiddleware(next http.Handler) http.Handler {
 			}
 			r = r.WithContext(context.WithValue(r.Context(), callbackCookieKey{}, cookies))
 		}
-		r.Body = http.MaxBytesReader(w, r.Body, authorizationRequestLimit)
+		requestLimit := int64(authorizationRequestLimit)
+		if r.URL.Path == portfolioInclusionPath {
+			requestLimit = inclusionRequestLimit
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, requestLimit)
 		r = r.WithContext(context.WithValue(r.Context(), httpRequestContextKey{}, r))
 		next.ServeHTTP(w, r)
 	})

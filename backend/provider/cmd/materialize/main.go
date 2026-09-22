@@ -231,11 +231,11 @@ func validateOverlay(value overlay) error {
 		return errors.New("OAuth bearer overlay must select exactly five operations and HTTP bearer security")
 	}
 	wanted := map[string]bool{
-		"get /authorizations":                            false,
-		"get /authorizations/{authorizationId}/accounts": false,
-		"get /accounts/{accountId}/balances":             false,
-		"get /accounts/{accountId}/positions/all":        false,
-		"get /accounts/{accountId}/activities":           false,
+		"get /authorizations":                     false,
+		"get /accounts":                           false,
+		"get /accounts/{accountId}/balances":      false,
+		"get /accounts/{accountId}/positions/all": false,
+		"get /accounts/{accountId}/activities":    false,
 	}
 	for _, operation := range value.Operations {
 		key := strings.ToLower(operation.Method) + " " + operation.Path

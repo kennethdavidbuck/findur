@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -380,6 +381,62 @@ func TestInclusionPOSTReturnsSafeConflictWithoutMutationDetail(t *testing.T) {
 	portfolioHandler(&sessionLifecycleStub{}, &inventoryLifecycleStub{}, inclusion, "https://findur.example").ServeHTTP(response, request)
 	if response.Code != http.StatusConflict || strings.Contains(response.Body.String(), "foreign-account") || !strings.Contains(response.Body.String(), "invalid_selection") {
 		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
+}
+
+func TestInclusionPOSTAcceptsLargeSelectionsWithinInventoryLimit(t *testing.T) {
+	for _, count := range []int{1000, 5000, 5001} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			ids := make([]string, count)
+			for index := range ids {
+				ids[index] = fmt.Sprintf(`"synthetic-account-%04d"`, index)
+			}
+			inclusion := &inclusionLifecycleStub{}
+			request := httptest.NewRequest(http.MethodPost, "/api/portfolio/inclusion", strings.NewReader(`{"accountIds":[`+strings.Join(ids, ",")+`]}`))
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session"})
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "https://findur.example")
+			request.Header.Set("Sec-Fetch-Site", "same-origin")
+			request.Header.Set("X-CSRF-Token", "csrf")
+			request.Header.Set("X-Inclusion-Version", "0")
+			request.Header.Set("Idempotency-Key", "large-selection")
+			response := httptest.NewRecorder()
+			portfolioHandler(&sessionLifecycleStub{}, &inventoryLifecycleStub{}, inclusion, "https://findur.example").ServeHTTP(response, request)
+			if count > 5000 {
+				if response.Code != http.StatusBadRequest || inclusion.confirmCalls != 0 {
+					t.Fatalf("oversized selection: status=%d calls=%d", response.Code, inclusion.confirmCalls)
+				}
+			} else if response.Code != http.StatusOK || inclusion.confirmCalls != 1 || len(inclusion.accountIDs) != count {
+				t.Fatalf("large selection: status=%d calls=%d accounts=%d", response.Code, inclusion.confirmCalls, len(inclusion.accountIDs))
+			}
+		})
+	}
+}
+
+func TestInclusionPOSTEnforcesItsByteLimit(t *testing.T) {
+	for _, size := range []int{inclusionRequestLimit, inclusionRequestLimit + 1} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			body := `{"accountIds":["synthetic-account"]}`
+			body += strings.Repeat(" ", size-len(body))
+			inclusion := &inclusionLifecycleStub{}
+			request := httptest.NewRequest(http.MethodPost, "/api/portfolio/inclusion", strings.NewReader(body))
+			request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "session"})
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("Origin", "https://findur.example")
+			request.Header.Set("Sec-Fetch-Site", "same-origin")
+			request.Header.Set("X-CSRF-Token", "csrf")
+			request.Header.Set("X-Inclusion-Version", "0")
+			request.Header.Set("Idempotency-Key", "large-body")
+			response := httptest.NewRecorder()
+			portfolioHandler(&sessionLifecycleStub{}, &inventoryLifecycleStub{}, inclusion, "https://findur.example").ServeHTTP(response, request)
+			if size > inclusionRequestLimit {
+				if response.Code != http.StatusBadRequest || inclusion.confirmCalls != 0 {
+					t.Fatalf("oversized body: status=%d calls=%d", response.Code, inclusion.confirmCalls)
+				}
+			} else if response.Code != http.StatusOK || inclusion.confirmCalls != 1 {
+				t.Fatalf("bounded body: status=%d calls=%d", response.Code, inclusion.confirmCalls)
+			}
+		})
 	}
 }
 

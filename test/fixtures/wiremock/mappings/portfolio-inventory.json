@@ -25,7 +25,7 @@
     {
       "request": {
         "method": "GET",
-        "urlPath": "/authorizations/0eadf3ab-8daa-4357-9e38-325dbe82f003/accounts",
+        "urlPath": "/accounts",
         "headers": {
           "Authorization": { "equalTo": "Bearer synthetic-access-token" },
           "clientId": { "absent": true },
@@ -39,27 +39,7 @@
       "response": {
         "status": 200,
         "headers": { "Content-Type": "application/json" },
-        "bodyFileName": "inventory/stack-self-directed-accounts.json"
-      }
-    },
-    {
-      "request": {
-        "method": "GET",
-        "urlPath": "/authorizations/12fe591b-344d-4e8c-96e6-98a692f94054/accounts",
-        "headers": {
-          "Authorization": { "equalTo": "Bearer synthetic-access-token" },
-          "clientId": { "absent": true },
-          "consumerKey": { "absent": true },
-          "userId": { "absent": true },
-          "userSecret": { "absent": true },
-          "timestamp": { "absent": true },
-          "Signature": { "absent": true }
-        }
-      },
-      "response": {
-        "status": 200,
-        "headers": { "Content-Type": "application/json" },
-        "bodyFileName": "inventory/success-cash-accounts.json"
+        "bodyFileName": "inventory/stack-accounts.json"
       }
     },
     {

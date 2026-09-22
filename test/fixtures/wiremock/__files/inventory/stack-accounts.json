@@ -1,0 +1,119 @@
+[
+  {
+    "id": "03867fbb-41b4-4a05-8815-c96f94f8ba6b",
+    "brokerage_authorization": "0eadf3ab-8daa-4357-9e38-325dbe82f003",
+    "portfolio_group": "e7ebacd2-5446-4209-9bb2-7acb7bf997e8",
+    "name": "Individual",
+    "number": "SANDBOX-001",
+    "institution_account_id": "SANDBOX-001",
+    "institution_name": "sandbox",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "sandbox"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08.507145Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09.712561+00:00",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 25000,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Individual",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "7e7dcb86-7d52-4f46-8fcf-91d5c9f81629",
+    "brokerage_authorization": "0eadf3ab-8daa-4357-9e38-325dbe82f003",
+    "portfolio_group": "ce3fc7b3-928a-49fe-8cd6-025738a45b9d",
+    "name": "IRA",
+    "number": "SANDBOX-002",
+    "institution_account_id": "SANDBOX-002",
+    "institution_name": "sandbox",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "sandbox"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08.513493Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09.060679+00:00",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-22",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 12500,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "IRA",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "50bb0405-5efd-473f-a742-78a82bb1db53",
+    "brokerage_authorization": "12fe591b-344d-4e8c-96e6-98a692f94054",
+    "portfolio_group": "e18ff2d3-b3b7-4a26-9795-c89f0bfbb342",
+    "name": "Cash Account",
+    "number": "SANDBOX-CASH",
+    "institution_account_id": "SANDBOX-CASH",
+    "institution_name": "sandbox",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "sandbox"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:43:14.957948Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:43:15.209868+00:00",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-09-14",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 5000,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Individual",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  }
+]
