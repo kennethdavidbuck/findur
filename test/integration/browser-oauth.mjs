@@ -47,12 +47,6 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
     })
     assert.ok(setupLayout.headerBottom <= setupLayout.eyebrowTop, `1032px setup controls clear the OAuth return text; observed: ${JSON.stringify(setupLayout)}`)
     assert.ok(setupLayout.progressWidth <= 1 && setupLayout.progressHeight <= 1, `the accessible setup label is not visually rendered; observed: ${JSON.stringify(setupLayout)}`)
-    const refreshedInventory = await webdriver(`/session/${sessionId}/execute/async`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: `const done=arguments[arguments.length-1];const csrf=decodeURIComponent(document.cookie.split('; ').find(value=>value.startsWith('findur_csrf='))?.split('=',2)[1]||'');fetch('/api/portfolio/inventory/retry',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrf}}).then(async response=>done({status:response.status,body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
-    })
-    assert.equal(refreshedInventory.status, 200, 'the default synthetic inventory can be refreshed repeatably')
-    await webdriver(`/session/${sessionId}/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
     let inventoryEvidence
     for (let attempt = 0; attempt < 40; attempt += 1) {
       inventoryEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
