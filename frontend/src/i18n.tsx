@@ -21,26 +21,26 @@ const copy = {
     },
     meta: {
       home: {
-        title: 'Findur — Portfolio-first dating',
+        title: 'Findur — A dating app for investors',
         description:
-          'A portfolio-first dating experience where investing patterns shape first impressions and mutual matches reveal photos.',
+          'A dating app where investing patterns create a different first impression, start conversations, and lead to mutual matches.',
       },
       about: {
-        title: 'About Findur',
+        title: 'About Findur — Dating for investors',
         description:
-          'Learn how Findur uses investing patterns as conversation starters without treating wealth as compatibility.',
+          'Learn how Findur uses portfolio-led dating profiles to start conversations without treating wealth as compatibility.',
       },
       connect: {
         title: 'Log in to Findur',
-        description: 'Log in to the private Findur demo securely with SnapTrade.',
+        description: 'Log in to Findur’s private dating demo securely with SnapTrade.',
       },
     },
     home: {
       eyebrow: 'Portfolio-first dating',
-      titleBefore: 'Find a different pattern in the',
-      titleAccent: 'same sky.',
+      titleBefore: 'A dating app where portfolios',
+      titleAccent: 'start the conversation.',
       intro:
-        'Meet the person behind the portfolio. Findur turns investing patterns into a new kind of first impression, then reveals photos when the feeling is mutual.',
+        'Meet people for dates through a different kind of first impression. Findur uses investing patterns to start conversations, then reveals photos when a match is mutual.',
       demoLabel: 'Private 18+ demo',
       loginAction: 'Log in',
       aboutAction: 'How Findur works',
@@ -64,8 +64,8 @@ const copy = {
         },
         {
           number: '02',
-          title: 'Meet the portfolio first',
-          body: 'Discover people through investing patterns and choose what your own profile may show.',
+          title: 'Meet through dating profiles',
+          body: 'Meet people through portfolio-led dating profiles, then choose what your own profile may show.',
         },
         {
           number: '03',
@@ -80,15 +80,15 @@ const copy = {
       boundaryLink: 'Learn more about Findur',
     },
     about: {
-      eyebrow: 'Why Findur',
-      titleBefore: 'There’s more to investing than',
-      titleAccent: 'the balance.',
+      eyebrow: 'Why date on Findur',
+      titleBefore: 'A dating app with a different',
+      titleAccent: 'first impression.',
       intro:
-        'A portfolio can hint at patience, curiosity, concentration, and an appetite for change. Findur uses those patterns as conversation starters—not as proof of compatibility or worth.',
+        'Findur is a dating app for people who want investing alignment to be part of romantic connection. A portfolio can start a conversation—not prove compatibility or worth.',
       thesisLabel: 'What changes',
-      thesisTitle: 'The portfolio becomes the first impression.',
+      thesisTitle: 'Dating profiles lead with the portfolio.',
       thesisBody:
-        'Findur looks at the mix of holdings, diversification, recent activity, and account coverage a person chooses to include. Those signals show where investing styles might align or complement each other. Exact detail stays limited by that person’s disclosure choice, and photos appear only after mutual interest.',
+        'Findur uses the mix of holdings, diversification, recent activity, and account coverage a person chooses to include to help start conversations and show where investing styles might align. Exact detail stays limited by that person’s disclosure choice, and photos appear only after mutual interest.',
       principlesEyebrow: 'How it stays human',
       principlesTitle: 'The numbers never get the last word.',
       principles: [
@@ -112,9 +112,9 @@ const copy = {
       backHome: 'Return home',
     },
     consent: {
-      eyebrow: 'Private demo · 18+',
+      eyebrow: 'Private dating demo · 18+',
       title: 'Log in to Findur.',
-      intro: 'Continue with SnapTrade to connect your brokerage securely. Findur never receives or stores your brokerage credentials.',
+      intro: 'Log in to the private Findur dating demo with SnapTrade. Findur never receives or stores your brokerage credentials.',
       reassurance: 'No account is included by default, and connecting never publishes your portfolio.',
       summaryTitle: 'How your data works',
       summary: [
@@ -268,26 +268,26 @@ const copy = {
     },
     meta: {
       home: {
-        title: 'Findur — Des rencontres axées sur le portefeuille',
+        title: 'Findur — Une application de rencontres pour investisseurs',
         description:
-          'Une expérience de rencontres où les habitudes d’investissement créent la première impression et les matchs mutuels dévoilent les photos.',
+          'Une application de rencontres où les habitudes d’investissement créent une première impression différente, lancent les conversations et mènent à des matchs mutuels.',
       },
       about: {
-        title: 'À propos de Findur',
+        title: 'À propos de Findur — Rencontres pour investisseurs',
         description:
-          'Découvrez comment Findur transforme les habitudes d’investissement en sujets de conversation sans confondre richesse et compatibilité.',
+          'Découvrez comment Findur utilise des profils de rencontre axés sur le portefeuille pour lancer les conversations sans confondre richesse et compatibilité.',
       },
       connect: {
         title: 'Connectez-vous à Findur',
-        description: 'Connectez-vous à la démo privée de Findur de façon sécurisée avec SnapTrade.',
+        description: 'Connectez-vous à la démo privée de rencontres de Findur de façon sécurisée avec SnapTrade.',
       },
     },
     home: {
-      eyebrow: 'Rencontres axées sur le portefeuille',
-      titleBefore: 'Trouvez une autre trajectoire dans le',
-      titleAccent: 'même ciel.',
+      eyebrow: 'Des rencontres axées sur le portefeuille',
+      titleBefore: 'Une application de rencontres où les portefeuilles',
+      titleAccent: 'lancent la conversation.',
       intro:
-        'Rencontrez la personne derrière le portefeuille. Findur transforme les habitudes d’investissement en une nouvelle première impression, puis dévoile les photos lorsque l’intérêt est mutuel.',
+        'Rencontrez des personnes pour des rendez-vous grâce à une première impression différente. Findur utilise les habitudes d’investissement pour lancer les conversations, puis dévoile les photos quand un match est mutuel.',
       demoLabel: 'Démo privée 18+',
       loginAction: 'Se connecter',
       aboutAction: 'Comment fonctionne Findur',
@@ -311,8 +311,8 @@ const copy = {
         },
         {
           number: '02',
-          title: 'Découvrez d’abord le portefeuille',
-          body: 'Rencontrez des personnes par leurs habitudes d’investissement et choisissez ce que votre profil peut montrer.',
+          title: 'Rencontrez-vous par les profils',
+          body: 'Rencontrez des personnes grâce à des profils de rencontre axés sur le portefeuille, puis choisissez ce que votre profil peut montrer.',
         },
         {
           number: '03',
@@ -327,15 +327,15 @@ const copy = {
       boundaryLink: 'En savoir plus sur Findur',
     },
     about: {
-      eyebrow: 'Pourquoi Findur',
-      titleBefore: 'Investir, c’est bien plus que',
-      titleAccent: 'le solde.',
+      eyebrow: 'Pourquoi rencontrer sur Findur',
+      titleBefore: 'Une application de rencontres avec une première impression',
+      titleAccent: 'différente.',
       intro:
-        'Un portefeuille peut suggérer la patience, la curiosité, la concentration et le goût du changement. Findur transforme ces tendances en sujets de conversation, jamais en preuve de compatibilité ou de valeur.',
+        'Findur est une application de rencontres pour les personnes qui souhaitent que leur approche d’investissement fasse partie de leurs affinités amoureuses. Un portefeuille peut lancer une conversation, jamais prouver la compatibilité ou la valeur.',
       thesisLabel: 'Ce qui change',
-      thesisTitle: 'Le portefeuille devient la première impression.',
+      thesisTitle: 'Les profils de rencontre commencent par le portefeuille.',
       thesisBody:
-        'Findur observe la composition des placements, la diversification, l’activité récente et la couverture des comptes qu’une personne choisit d’inclure. Ces signaux montrent où les styles d’investissement peuvent se rejoindre ou se compléter. Le niveau de partage choisi limite les détails exacts, et les photos apparaissent seulement après un intérêt mutuel.',
+        'Findur utilise la composition des placements, la diversification, l’activité récente et la couverture des comptes qu’une personne choisit d’inclure pour lancer les conversations et montrer où les styles d’investissement peuvent se rejoindre. Le niveau de partage choisi limite les détails exacts, et les photos apparaissent seulement après un intérêt mutuel.',
       principlesEyebrow: 'Pour garder l’humain au centre',
       principlesTitle: 'Les chiffres n’ont jamais le dernier mot.',
       principles: [
@@ -359,9 +359,9 @@ const copy = {
       backHome: 'Retour à l’accueil',
     },
     consent: {
-      eyebrow: 'Démo privée · 18+',
+      eyebrow: 'Démo privée de rencontres · 18+',
       title: 'Connectez-vous à Findur.',
-      intro: 'Continuez avec SnapTrade pour connecter votre compte de courtage en toute sécurité. Findur ne reçoit ni ne conserve jamais vos identifiants de courtage.',
+      intro: 'Connectez-vous à la démo privée de rencontres de Findur avec SnapTrade. Findur ne reçoit ni ne conserve jamais vos identifiants de courtage.',
       reassurance: 'Aucun compte n’est inclus par défaut et la connexion ne publie jamais votre portefeuille.',
       summaryTitle: 'Comment vos données sont utilisées',
       summary: [
