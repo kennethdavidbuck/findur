@@ -26,7 +26,7 @@ async function establishSession(webdriver, sessionId, origin) {
   assert.deepEqual(state, { path: '/onboarding/accounts', heading: 'Choose what Findur may use.', focused: true })
 }
 
-async function verifyActiveSessionBypassesConsent(webdriver, sessionId, origin) {
+async function bypassActiveSessionFromLanding(webdriver, sessionId, origin, expected, message) {
   await webdriver(`/session/${sessionId}/url`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: `${origin}/` }),
   })
@@ -41,10 +41,20 @@ async function verifyActiveSessionBypassesConsent(webdriver, sessionId, origin) 
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ script: `const navigation=document.querySelector('.authenticated-nav');return {path:location.pathname,heading:document.querySelector('h1')?.innerText,consentAction:!!document.querySelector('form[action="/api/auth/snaptrade/authorize"] button'),navigationPosition:navigation?getComputedStyle(navigation).position:null}`, args: [] }),
     })
-    if (state.path === '/portfolio' && state.heading === 'Your portfolio') break
+    if (state.path === expected.path && state.heading === expected.heading) break
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
-  assert.deepEqual(state, { path: '/portfolio', heading: 'Your portfolio', consentAction: false, navigationPosition: 'fixed' }, 'an active session bypasses staged consent and renders the authenticated Portfolio shell')
+  assert.deepEqual(state, expected, message)
+}
+
+async function verifyIncompleteActiveSessionBypassesConsent(webdriver, sessionId, origin) {
+  await bypassActiveSessionFromLanding(
+    webdriver,
+    sessionId,
+    origin,
+    { path: '/onboarding/accounts', heading: 'Choose what Findur may use.', consentAction: false, navigationPosition: null },
+    'an incomplete active session bypasses staged consent and renders account setup',
+  )
   await webdriver(`/session/${sessionId}/back`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
   let returnState
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -56,6 +66,16 @@ async function verifyActiveSessionBypassesConsent(webdriver, sessionId, origin) 
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
   assert.deepEqual(returnState, { path: '/onboarding/accounts', heading: 'Choose what Findur may use.' }, 'the active-session redirect replaces staged consent in browser history')
+}
+
+async function verifyCompletedActiveSessionBypassesConsent(webdriver, sessionId, origin) {
+  await bypassActiveSessionFromLanding(
+    webdriver,
+    sessionId,
+    origin,
+    { path: '/portfolio', heading: 'Your portfolio', consentAction: false, navigationPosition: 'fixed' },
+    'a completed active session bypasses staged consent and renders the authenticated Portfolio shell',
+  )
 }
 
 async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
@@ -101,7 +121,7 @@ async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
   }
 }
 
-async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl) {
+async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCommitted) {
   let inventory
   for (let attempt = 0; attempt < 40; attempt += 1) {
     inventory = await webdriver(`/session/${sessionId}/execute/async`, {
@@ -204,6 +224,8 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl) {
   assert.equal(cash?.balances.balances[0].cash, '5000', 'the Cash Account synthetic is fully selectable')
   assert.deepEqual(cash?.activities.activities, [], 'the Cash Account empty activities dataset remains complete')
   assert.doesNotMatch(JSON.stringify(showcase.body), /03867fbb|7e7dcb86|50bb0405|synthetic-access-token/, 'Showcase response omits IDs, raw payload fields, and credentials')
+
+  if (onCommitted) await onCommitted()
 
   const requestsBeforeReload = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
   const providerReadsBeforeReload = requestsBeforeReload.requests.filter(({ request }) => request.url.startsWith('/accounts/')).length
@@ -421,7 +443,7 @@ async function waitForProfileValue(webdriver, sessionId, displayName) {
 export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockUrl }) {
   await withWebDriverSession(browserUrl, async (first) => {
     await establishSession(first.webdriver, first.sessionId, publicOrigin)
-    await verifyActiveSessionBypassesConsent(first.webdriver, first.sessionId, publicOrigin)
+    await verifyIncompleteActiveSessionBypassesConsent(first.webdriver, first.sessionId, publicOrigin)
     const seeded = await first.webdriver(`/session/${first.sessionId}/execute/async`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ script: `const done=arguments[arguments.length-1];localStorage.setItem('findur-locale','en');localStorage.setItem('findur-theme','dark');localStorage.setItem('protected','secret');sessionStorage.setItem('protected','secret');Promise.all([caches.open('findur-protected').then(cache=>cache.put('/protected',new Response('secret'))),new Promise((resolve,reject)=>{const request=indexedDB.open('findur-protected',1);request.onupgradeneeded=()=>request.result.createObjectStore('protected');request.onerror=()=>reject(request.error);request.onsuccess=()=>{request.result.close();resolve()}})]).then(()=>done(true),error=>done(String(error)))`, args: [] }),
@@ -480,7 +502,9 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script: `return getComputedStyle(document.querySelector('.authenticated-header')).position`, args: [] }),
       })
       assert.equal(desktopHeader, 'sticky', 'desktop authenticated header remains visible above the fixed rail')
-      await exerciseAccountInclusion(second.webdriver, second.sessionId, wiremockUrl)
+      await exerciseAccountInclusion(second.webdriver, second.sessionId, wiremockUrl, async () => {
+        await verifyCompletedActiveSessionBypassesConsent(second.webdriver, second.sessionId, publicOrigin)
+      })
       await exercisePersonalProfile(second.webdriver, second.sessionId, publicOrigin)
       await exerciseLargeInventory(second.webdriver, second.sessionId, publicOrigin, wiremockUrl)
       await exerciseInventoryFixtures(second.webdriver, second.sessionId, wiremockUrl)
