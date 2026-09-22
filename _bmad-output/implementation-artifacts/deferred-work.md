@@ -85,3 +85,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-fix-partial-account-selection.md`
   summary: Design account-list rendering and navigation for very large inventories, considering pagination or virtualization.
   evidence: The user explicitly deferred large-list UI work to a follow-up ticket; the current change supplies a 1,000-account WireMock/browser performance scenario to inform that work.
+ - source_spec: `_bmad-output/implementation-artifacts/spec-use-cursor-for-display-preference-saves.md`
+   summary: Make concurrent authenticated display-preference saves retain pending feedback until the latest request resolves.
+   evidence: `AuthenticatedPreferences` has one shared save state, so an earlier PUT response can clear it while a later PUT remains pending.

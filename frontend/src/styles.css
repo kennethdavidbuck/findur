@@ -232,9 +232,7 @@ p { line-height: 1.65; }
 }
 
 .preference-controls { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
-.preference-save-indicator { display: inline-grid; width: 1rem; height: 1rem; place-items: center; }
-.preference-save-indicator__spinner { width: 0.75rem; height: 0.75rem; border: 2px solid var(--border-strong); border-top-color: var(--secondary); border-radius: 50%; animation: preference-save-spin 0.8s linear infinite; }
-@keyframes preference-save-spin { to { transform: rotate(360deg); } }
+.preference-controls--saving, .preference-controls--saving .choice { cursor: progress; }
 .choice-group { display: flex; align-items: stretch; border: 1px solid var(--border-strong); }
 
 .choice {
