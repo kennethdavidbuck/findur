@@ -144,7 +144,7 @@ const copy = {
         states: {
           pending: 'Getting your accounts ready…',
           ready: 'Your accounts are ready.',
-          empty: 'We could not find any connected accounts.',
+          empty: 'No investment accounts are ready to include.',
           disabled: 'Your connection needs attention before we can load your accounts.',
           unauthorized: 'Your connection needs to be renewed before we can load your accounts.',
           rate_limited: 'Your accounts are not ready yet. Check again in a moment.',
@@ -388,7 +388,7 @@ const copy = {
         states: {
           pending: 'Préparation de vos comptes…',
           ready: 'Vos comptes sont prêts.',
-          empty: 'Nous n’avons trouvé aucun compte connecté.',
+          empty: 'Aucun compte de placement n’est prêt à être inclus.',
           disabled: 'Votre connexion nécessite votre attention avant que nous puissions charger vos comptes.',
           unauthorized: 'Votre connexion doit être renouvelée avant que nous puissions charger vos comptes.',
           rate_limited: 'Vos comptes ne sont pas encore prêts. Vérifiez de nouveau dans un instant.',

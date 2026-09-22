@@ -18,6 +18,14 @@ type InventoryRepository struct{ pool *pgxpool.Pool }
 // InventoryClaimLease bounds how long a crashed provider operation can block recovery.
 const InventoryClaimLease = 30 * time.Second
 
+// Read/admission policy must also constrain legacy snapshots whose selectable
+// flag predates brokerage-only filtering. Persisted reasons distinguish open
+// and unspecified status from accounts known to be closed or unavailable.
+const selectableInventoryAccountSQL = `account.selectable AND account.available
+	AND account.category='investment' AND account.sync_state='complete'
+	AND account.usability_reason IN ('ready','provisional_status')
+	AND connection.status='active' AND connection.available`
+
 // NewInventoryRepository constructs the PostgreSQL inventory repository.
 func NewInventoryRepository(pool *pgxpool.Pool) *InventoryRepository {
 	return &InventoryRepository{pool: pool}
@@ -206,11 +214,16 @@ func loadPreparation(ctx context.Context, tx pgx.Tx, owner uuid.UUID) (portfolio
 	if err != nil {
 		return portfolio.Preparation{}, false, err
 	}
+	accountCount := 0
 	for index := range result.Connections {
 		result.Connections[index].Accounts, err = loadInventoryAccounts(ctx, tx, owner, *head, result.Connections[index].ID)
 		if err != nil {
 			return portfolio.Preparation{}, false, err
 		}
+		accountCount += len(result.Connections[index].Accounts)
+	}
+	if result.State == portfolio.StateReady && accountCount == 0 {
+		result.State = portfolio.StateEmpty
 	}
 	return result, true, nil
 }
@@ -245,8 +258,11 @@ func loadInventoryConnections(ctx context.Context, tx pgx.Tx, owner uuid.UUID, g
 }
 
 func loadInventoryAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64, connectionID string) ([]portfolio.Account, error) {
-	rows, err := tx.Query(ctx, `SELECT account_id,category,account_type,masked_label,available,eligible,sync_state,selectable,usability_reason
-		FROM portfolio_inventory_accounts WHERE user_id=$1 AND generation=$2 AND connection_id=$3 ORDER BY account_id`, owner, generation, connectionID)
+	rows, err := tx.Query(ctx, `SELECT account.account_id,account.category,account.account_type,account.masked_label,account.available,account.eligible,account.sync_state,account.selectable,account.usability_reason
+		FROM portfolio_inventory_accounts account
+		JOIN portfolio_inventory_connections connection USING (user_id,generation,connection_id)
+		WHERE account.user_id=$1 AND account.generation=$2 AND account.connection_id=$3
+		AND `+selectableInventoryAccountSQL+` ORDER BY account.account_id`, owner, generation, connectionID)
 	if err != nil {
 		return nil, err
 	}
@@ -257,6 +273,9 @@ func loadInventoryAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, gene
 		if err := rows.Scan(&account.ID, &account.Category, &account.Type, &account.MaskedLabel, &account.Available, &account.Eligible, &account.SyncState, &account.Selectable, &account.UsabilityReason); err != nil {
 			return nil, err
 		}
+		// Matching today's predicate is sufficient, including a legacy null
+		// provider status. Project current semantics without rewriting history.
+		account.Eligible, account.Selectable, account.UsabilityReason = true, true, portfolio.UsabilityReady
 		accounts = append(accounts, account)
 	}
 	return accounts, rows.Err()

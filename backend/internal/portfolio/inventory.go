@@ -203,22 +203,18 @@ func (s *Service) load(ctx context.Context, actor auth.Actor, retry bool) (Snaps
 		if errors.As(providerErr, &categorized) && validFailureState(categorized.State) {
 			state, retryAt = categorized.State, categorized.RetryAt
 		}
-		return s.finalizeFailure(ctx, actor.UserID(), preparation.Generation, state, retryAt, connections)
+		return s.finalizeFailure(ctx, actor.UserID(), preparation.Generation, state, retryAt, nil)
 	}
-	state := StateReady
-	if len(connections) == 0 {
-		state = StateEmpty
-	} else {
-		allDisabled := true
-		for _, connection := range connections {
-			if connection.Status != ConnectionStatusDisabled {
-				allDisabled = false
-				break
-			}
+	state := StateEmpty
+	allDisabled := len(connections) > 0
+	for _, connection := range connections {
+		allDisabled = allDisabled && connection.Status == ConnectionStatusDisabled
+		if len(connection.Accounts) > 0 {
+			state = StateReady
 		}
-		if allDisabled {
-			state = StateDisabled
-		}
+	}
+	if allDisabled {
+		state = StateDisabled
 	}
 	return s.finalize(ctx, actor.UserID(), preparation.Generation, state, nil, connections)
 }

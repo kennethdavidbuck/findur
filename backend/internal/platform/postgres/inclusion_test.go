@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -111,8 +112,14 @@ func TestAccountInclusionMigrationBackfillsExistingInventory(t *testing.T) {
 	if connectionID != "connection" || !identityFirst.Equal(firstSeen) || !identityLast.Equal(lastSeen) {
 		t.Fatalf("backfilled identity connection=%q first=%v last=%v", connectionID, identityFirst, identityLast)
 	}
-	prepared, err := postgresadapter.NewInclusionRepository(fixture.pool).PrepareInclusion(fixture.ctx, owner, 0, "upgraded-selectable", []string{"ready-account", "provisional-category-account", "provisional-status-account"}, fixture.now)
-	if err != nil || !prepared.Claimed || len(prepared.Additions) != 3 {
+	repository := postgresadapter.NewInclusionRepository(fixture.pool)
+	// The historical migration remains unchanged; admission applies the current
+	// investment-only rule even though its legacy unknown-category flag is true.
+	if _, err := repository.PrepareInclusion(fixture.ctx, owner, 0, "reject-upgraded-unknown", []string{"provisional-category-account"}, fixture.now); !errors.Is(err, portfolio.ErrInvalidAccountSelection) {
+		t.Fatalf("legacy unknown-category selection error=%v", err)
+	}
+	prepared, err := repository.PrepareInclusion(fixture.ctx, owner, 0, "upgraded-selectable", []string{"ready-account", "provisional-status-account"}, fixture.now)
+	if err != nil || !prepared.Claimed || len(prepared.Additions) != 2 {
 		t.Fatalf("upgraded selectable accounts remained blocked: preparation=%+v err=%v", prepared, err)
 	}
 }
@@ -518,6 +525,65 @@ func completeRepositoryAccountData(now time.Time) portfolio.AccountData {
 		Balances:   portfolio.BalanceDataset{RetrievedAt: now, Rows: []portfolio.Balance{}},
 		Positions:  portfolio.PositionDataset{ObservedAt: now, RetrievedAt: now, Rows: []portfolio.Position{}},
 		Activities: portfolio.ActivityDataset{RetrievedAt: now, Rows: []portfolio.Activity{}},
+	}
+}
+
+func TestInclusionRepositoryRechecksLegacySelectionAndPreservesCommittedAccounts(t *testing.T) {
+	fixture := newRepositoryFixture(t)
+	fixture.reset(t)
+	owner := inclusionOwnerWithInventory(t, fixture, 201, "legacy-selection-owner")
+	excluded := publishLegacyEligibilityInventory(t, fixture, owner)
+	repository := postgresadapter.NewInclusionRepository(fixture.pool)
+	for _, id := range excluded {
+		t.Run(id, func(t *testing.T) {
+			if _, err := repository.PrepareInclusion(fixture.ctx, owner, 0, "reject-"+id, []string{"open-investment", id}, fixture.now); !errors.Is(err, portfolio.ErrInvalidAccountSelection) {
+				t.Fatalf("legacy selectable account %q admission error=%v", id, err)
+			}
+		})
+	}
+	before, err := repository.GetInclusion(fixture.ctx, owner)
+	if err != nil || before.Version != 0 || len(before.Committed) != 0 {
+		t.Fatalf("rejected selections changed membership: %+v err=%v", before, err)
+	}
+	targets := []string{"open-investment", "unspecified-status-investment"}
+	prepared, err := repository.PrepareInclusion(fixture.ctx, owner, 0, "admit-investments", targets, fixture.now)
+	if err != nil || !prepared.Claimed || len(prepared.Additions) != 2 {
+		t.Fatalf("approved investments preparation=%+v err=%v", prepared, err)
+	}
+	data := map[string]portfolio.AccountData{}
+	for _, id := range targets {
+		data[id] = completeRepositoryAccountData(fixture.now)
+	}
+	committed, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, data, "", fixture.now)
+	if err != nil || !accepted || !slices.Equal(committed.Committed, targets) {
+		t.Fatalf("approved investments committed=%+v accepted=%v err=%v", committed, accepted, err)
+	}
+
+	// An existing choice may become ineligible under a later policy/snapshot.
+	// Hide it from inventory, but preserve membership and removal-only changes.
+	if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_inventory_accounts SET category='unknown' WHERE user_id=$1 AND account_id=ANY($2)`, owner, targets); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := postgresadapter.NewInventoryRepository(fixture.pool).Prepare(fixture.ctx, owner, false, fixture.now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, connection := range reloaded.Connections {
+		if len(connection.Accounts) != 0 {
+			t.Fatalf("excluded committed accounts remained in inventory: %+v", connection.Accounts)
+		}
+	}
+	retained, err := repository.PrepareInclusion(fixture.ctx, owner, committed.Version, "retain-existing", targets, fixture.now)
+	if err != nil || retained.Claimed || !slices.Equal(retained.Committed, targets) {
+		t.Fatalf("existing selection was not preserved: %+v err=%v", retained, err)
+	}
+	removed, err := repository.PrepareInclusion(fixture.ctx, owner, retained.Version, "remove-existing", []string{}, fixture.now)
+	if err != nil || removed.Claimed || len(removed.Committed) != 0 || removed.Change.Status != portfolio.InclusionCommitted {
+		t.Fatalf("removal-only cleanup failed: %+v err=%v", removed, err)
+	}
+	assertNoPublishedInclusionRows(t, fixture, owner)
+	if _, err := repository.PrepareInclusion(fixture.ctx, owner, removed.Version, "reject-readmission", targets, fixture.now); !errors.Is(err, portfolio.ErrInvalidAccountSelection) {
+		t.Fatalf("excluded accounts could be re-added after removal: %v", err)
 	}
 }
 

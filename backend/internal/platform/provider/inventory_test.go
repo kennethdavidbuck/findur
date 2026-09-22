@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -12,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	providergenerated "github.com/kennethdavidbuck/findur/backend/internal/generated/providerapi"
 	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
 )
 
@@ -42,7 +45,7 @@ func TestInventoryListsConnectionsBeforeAccountsAndMinimizesOutput(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(paths, ",") != "/authorizations,/authorizations/87b24961-b51e-4db8-9226-f198f6518a89/accounts" {
+	if strings.Join(paths, ",") != "/authorizations,/accounts" {
 		t.Fatalf("request order = %v", paths)
 	}
 	if len(connections) != 1 || len(connections[0].Accounts) != 1 {
@@ -106,8 +109,8 @@ func TestInventoryPreservesAccountUsabilityPrecedence(t *testing.T) {
 		want           portfolio.UsabilityReason
 		selectable     bool
 	}{
-		{name: "missing status", accounts: strings.Replace(accounts, `"status": "open",`, "", 1), want: portfolio.UsabilityProvisionalStatus, selectable: true},
-		{name: "missing category", accounts: strings.Replace(accounts, `"account_category": "INVESTMENT",`, "", 1), want: portfolio.UsabilityProvisionalCategory, selectable: true},
+		{name: "missing status", accounts: strings.Replace(accounts, `"status": "open",`, "", 1), want: portfolio.UsabilityReady, selectable: true},
+		{name: "missing category", accounts: strings.Replace(accounts, `"account_category": "INVESTMENT",`, "", 1), want: portfolio.UsabilityProvisionalCategory},
 		{
 			name: "closed before unavailable holdings",
 			accounts: strings.NewReplacer(
@@ -131,41 +134,18 @@ func TestInventoryPreservesAccountUsabilityPrecedence(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			baseURL, _ := url.Parse("https://api.snaptrade.example")
-			client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
-				if strings.HasSuffix(request.URL.Path, "/accounts") {
-					return jsonResponse(http.StatusOK, test.accounts), nil
-				}
-				return jsonResponse(http.StatusOK, fixtureBody(t, "success-connections.json")), nil
-			}), time.Now)
-			connections, err := client.Load(context.Background(), "access-token")
-			if err != nil || len(connections) != 1 || len(connections[0].Accounts) != 1 {
-				t.Fatalf("connections=%+v err=%v", connections, err)
+			var rows []providergenerated.Account
+			if err := json.Unmarshal([]byte(test.accounts), &rows); err != nil || len(rows) != 1 {
+				t.Fatalf("decode test account: %v", err)
 			}
-			account := connections[0].Accounts[0]
-			if account.Selectable != test.selectable || account.Eligible || account.UsabilityReason != test.want {
+			account, valid := normalizeAccount(rows[0], rows[0].BrokerageAuthorization.String())
+			if !valid {
+				t.Fatal("account failed normalization")
+			}
+			if account.Selectable != test.selectable || account.Eligible != test.selectable || account.UsabilityReason != test.want {
 				t.Fatalf("account=%+v want reason=%s", account, test.want)
 			}
 		})
-	}
-}
-
-func TestInventoryMakesMissingInitialHoldingsUnselectable(t *testing.T) {
-	accounts := strings.Replace(fixtureBody(t, "success-accounts.json"), `"initial_sync_completed": true`, `"initial_sync_completed": false`, 1)
-	baseURL, _ := url.Parse("https://api.snaptrade.example")
-	client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if strings.HasSuffix(request.URL.Path, "/accounts") {
-			return jsonResponse(http.StatusOK, accounts), nil
-		}
-		return jsonResponse(http.StatusOK, fixtureBody(t, "success-connections.json")), nil
-	}), time.Now)
-	connections, err := client.Load(context.Background(), "access-token")
-	if err != nil || len(connections) != 1 || len(connections[0].Accounts) != 1 {
-		t.Fatalf("connections=%+v err=%v", connections, err)
-	}
-	account := connections[0].Accounts[0]
-	if account.Selectable || account.Eligible || account.UsabilityReason != portfolio.UsabilitySyncPending {
-		t.Fatalf("pending initial holdings account=%+v", account)
 	}
 }
 
@@ -287,38 +267,352 @@ func TestInventoryNormalizesMaskingFreshnessAndRejectsDuplicateIDs(t *testing.T)
 	}
 }
 
-func TestInventoryPreservesAllValidConnectionLifecycleRowsAfterFirstAccountFailure(t *testing.T) {
-	baseURL, _ := url.Parse("https://api.snaptrade.example")
-	connectionsJSON := `[
-		{"id":"87b24961-b51e-4db8-9226-f198f6518a89","disabled":false,"brokerage":{"display_name":"First"}},
-		{"disabled":false,"brokerage":{"display_name":"Malformed"}},
-		{"id":"28d80e82-a089-4956-933a-efb7f6b8e099","disabled":false,"brokerage":{"display_name":"Later"}},
-		{"id":"28d80e82-a089-4956-933a-efb7f6b8e099","disabled":false,"brokerage":{"display_name":"Duplicate"}},
-		{"id":"a877a12a-bf36-414e-b41e-3c20b6866928","disabled":true,"brokerage":{"display_name":"Disabled"}}
-	]`
-	var paths []string
-	client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		paths = append(paths, request.URL.Path)
-		if request.URL.Path == "/authorizations" {
-			return jsonResponse(http.StatusOK, connectionsJSON), nil
+func TestInventorySelectsInvestmentAccountsWithProviderMaskedNumbers(t *testing.T) {
+	var rows []string
+	for index, accountType := range []string{"NP", "Fidelity Credit Card", "NP", "TODJ"} {
+		status, category := `"open"`, "INVESTMENT"
+		if index == 1 {
+			status, category = "null", "LOC"
 		}
-		return jsonResponse(http.StatusServiceUnavailable, `{}`), nil
+		rows = append(rows, fmt.Sprintf(`{
+			"id":"10000000-0000-4000-8000-%012d",
+			"brokerage_authorization":"87b24961-b51e-4db8-9226-f198f6518a89",
+			"name":"Synthetic account %d","number":"*****%04d",
+			"created_date":"2026-05-09T01:44:59.843365Z","funding_date":null,"opening_date":null,
+			"sync_status":{"holdings":{"last_successful_sync":"2026-09-21T10:45:43.428758+00:00","initial_sync_completed":true},
+			"transactions":{"last_successful_sync":"2026-09-20","first_transaction_date":null,"initial_sync_completed":true}},
+			"balance":{"total":{"amount":100,"currency":"USD"}},"raw_data":null,
+			"raw_type":%q,"status":%s,"is_paper":false,"account_category":%q
+		}`, index+1, index+1, 1001+index, accountType, status, category))
+	}
+	baseURL, _ := url.Parse("https://api.snaptrade.example")
+	client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/accounts") {
+			return jsonResponse(http.StatusOK, "["+strings.Join(rows, ",")+"]"), nil
+		}
+		return jsonResponse(http.StatusOK, fixtureBody(t, "success-connections.json")), nil
 	}), time.Now)
 	connections, err := client.Load(context.Background(), "access-token")
-	var providerErr *portfolio.ProviderError
-	if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateUnavailable {
-		t.Fatalf("error=%v", err)
+	if err != nil || len(connections) != 1 || len(connections[0].Accounts) != 3 {
+		t.Fatalf("connections=%+v error=%v", connections, err)
 	}
-	if len(connections) != 3 || connections[0].BrokerageLabel != "First" || connections[1].BrokerageLabel != "Later" || connections[2].Status != portfolio.ConnectionStatusDisabled {
-		t.Fatalf("connections=%+v", connections)
-	}
-	if connections[0].Status != portfolio.ConnectionStatusUnavailable || connections[1].Status != portfolio.ConnectionStatusUnavailable {
-		t.Fatalf("incomplete active connections=%+v", connections)
-	}
-	if len(paths) != 2 || !strings.HasSuffix(paths[1], "/87b24961-b51e-4db8-9226-f198f6518a89/accounts") {
-		t.Fatalf("provider calls=%v", paths)
+	for index, account := range connections[0].Accounts {
+		sourceIndex := []int{0, 2, 3}[index]
+		wantLabel := fmt.Sprintf("Synthetic account %d (•••• %04d)", sourceIndex+1, 1001+sourceIndex)
+		if account.ID != globalAccountID(sourceIndex+1) || account.MaskedLabel != wantLabel || !account.Selectable || !account.Eligible || account.UsabilityReason != portfolio.UsabilityReady {
+			t.Fatalf("account=%+v want label=%q", account, wantLabel)
+		}
 	}
 }
+
+func TestInventoryGroupsGlobalAccountsInTwoRequests(t *testing.T) {
+	// More than 500 accounts and more than 1 MiB exercise the global inventory
+	// bounds without increasing the bounds on other provider responses.
+	var rows []string
+	for index := range maxAccounts {
+		connection := index%3 + 1
+		rows = append(rows, globalAccountRow(index+1, connection, strings.Repeat("Synthetic ", 40)))
+	}
+	body := "[" + strings.Join(rows, ",") + "]"
+	if len(body) <= providerResponseLimit {
+		t.Fatal("large global fixture must exceed the ordinary response limit")
+	}
+	client, paths := globalInventoryClient(t, globalConnections(), body, http.StatusOK)
+	connections, err := client.Load(context.Background(), "access-token")
+	if err != nil || len(connections) != 4 || strings.Join(*paths, ",") != "/authorizations,/accounts" {
+		t.Fatalf("connections=%d paths=%v err=%v", len(connections), *paths, err)
+	}
+	count := 0
+	for index, connection := range connections {
+		if index == 3 {
+			if connection.Status != portfolio.ConnectionStatusDisabled || len(connection.Accounts) != 0 {
+				t.Fatalf("disabled connection=%+v", connection)
+			}
+			continue
+		}
+		if connection.Status != portfolio.ConnectionStatusActive {
+			t.Fatalf("healthy connection=%+v", connection)
+		}
+		for _, account := range connection.Accounts {
+			if !account.Selectable || account.UsabilityReason != portfolio.UsabilityReady {
+				t.Fatalf("account=%+v", account)
+			}
+			count++
+		}
+	}
+	if count != maxAccounts {
+		t.Fatalf("account count=%d want=%d", count, maxAccounts)
+	}
+}
+
+func TestInventoryPublishesOnlyUsableInvestmentAccounts(t *testing.T) {
+	base := globalAccountRow(20, 1, "Synthetic candidate")
+	for _, test := range []struct {
+		name, row string
+		accepted  bool
+	}{
+		{name: "open investment", row: base, accepted: true},
+		{name: "cash investment", row: strings.Replace(base, `"name":`, `"raw_type":"Cash","name":`, 1), accepted: true},
+		{name: "transactions pending with usable holdings", row: strings.Replace(base, `"holdings":`, `"transactions":{"initial_sync_completed":false},"holdings":`, 1), accepted: true},
+		{name: "holdings explicitly available", row: strings.Replace(base, `"initial_sync_completed":true`, `"initial_sync_completed":true,"holdings_unavailable":false`, 1), accepted: true},
+		{name: "null status investment", row: strings.Replace(base, `"open"`, `null`, 1), accepted: true},
+		{name: "null status and null category", row: strings.NewReplacer(`"open"`, `null`, `"INVESTMENT"`, `null`).Replace(base)},
+		{name: "null status and missing category", row: strings.NewReplacer(`"open"`, `null`, `"account_category":"INVESTMENT",`, ``).Replace(base)},
+		{name: "null status and future category", row: strings.NewReplacer(`"open"`, `null`, `"INVESTMENT"`, `"FUTURE"`).Replace(base)},
+		{name: "missing status investment", row: strings.Replace(base, `"status":"open",`, ``, 1), accepted: true},
+		{name: "closed", row: strings.Replace(base, `"open"`, `"closed"`, 1)},
+		{name: "archived", row: strings.Replace(base, `"open"`, `"archived"`, 1)},
+		{name: "unavailable", row: strings.Replace(base, `"open"`, `"unavailable"`, 1)},
+		{name: "deposit", row: strings.Replace(base, `"INVESTMENT"`, `"DEPOSIT"`, 1)},
+		{name: "credit", row: strings.Replace(base, `"INVESTMENT"`, `"LOC"`, 1)},
+		{name: "null category", row: strings.Replace(base, `"INVESTMENT"`, `null`, 1)},
+		{name: "future category", row: strings.Replace(base, `"INVESTMENT"`, `"FUTURE"`, 1)},
+		{name: "missing category", row: strings.Replace(base, `"account_category":"INVESTMENT",`, ``, 1)},
+		{name: "missing holdings", row: strings.Replace(base, `"holdings":{"initial_sync_completed":true}`, ``, 1)},
+		{name: "missing initial sync flag", row: strings.Replace(base, `"initial_sync_completed":true`, ``, 1)},
+		{name: "null initial sync flag", row: strings.Replace(base, `"initial_sync_completed":true`, `"initial_sync_completed":null`, 1)},
+		{name: "pending holdings", row: strings.Replace(base, `"initial_sync_completed":true`, `"initial_sync_completed":false`, 1)},
+		{name: "unavailable holdings despite complete sync", row: strings.Replace(base, `"initial_sync_completed":true`, `"initial_sync_completed":true,"holdings_unavailable":true`, 1)},
+		{name: "null status and pending holdings", row: strings.NewReplacer(`"open"`, `null`, `"initial_sync_completed":true`, `"initial_sync_completed":false`).Replace(base)},
+		{name: "disabled connection", row: strings.Replace(base, globalConnectionID(1), globalConnectionID(4), 1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := "[" + globalAccountRow(1, 1, "Healthy baseline") + "," + test.row + "]"
+			client, paths := globalInventoryClient(t, globalConnections(), body, http.StatusOK)
+			connections, err := client.Load(context.Background(), "access-token")
+			wantCount := 1
+			if test.accepted {
+				wantCount++
+			}
+			if err != nil || len(connections) != 4 || len(connections[0].Accounts) != wantCount || len(connections[3].Accounts) != 0 || strings.Join(*paths, ",") != "/authorizations,/accounts" {
+				t.Fatalf("connections=%+v paths=%v err=%v", connections, *paths, err)
+			}
+			for index, account := range connections[0].Accounts {
+				wantID := globalAccountID(1)
+				if index == 1 {
+					wantID = globalAccountID(20)
+				}
+				if account.ID != wantID || !account.Selectable || !account.Eligible || account.UsabilityReason != portfolio.UsabilityReady {
+					t.Fatalf("accepted account=%+v", account)
+				}
+			}
+		})
+	}
+}
+
+func TestInventoryRejectsMalformedGlobalAccountsAtomically(t *testing.T) {
+	base := globalAccountRow(20, 2, "Malformed candidate")
+	for _, test := range []struct {
+		name, rows string
+	}{
+		{name: "unknown connection", rows: strings.Replace(base, globalConnectionID(2), globalConnectionID(9), 1)},
+		{name: "invalid connection UUID", rows: strings.Replace(base, globalConnectionID(2), "not-a-uuid", 1)},
+		{name: "invalid account UUID", rows: strings.Replace(base, globalAccountID(20), "not-a-uuid", 1)},
+		{name: "zero account UUID", rows: strings.Replace(base, globalAccountID(20), "00000000-0000-0000-0000-000000000000", 1)},
+		{name: "invalid date", rows: strings.Replace(base, `"name":`, `"created_date":"not-a-date","name":`, 1)},
+		{name: "invalid number type", rows: strings.Replace(base, `"number":"*****1001"`, `"number":1001`, 1)},
+		{name: "unknown status", rows: strings.Replace(base, `"open"`, `"invented"`, 1)},
+		{name: "duplicate account", rows: base + "," + base},
+		{name: "duplicate across connections", rows: base + "," + strings.Replace(base, globalConnectionID(2), globalConnectionID(3), 1)},
+		{name: "duplicate excluded account", rows: base + "," + strings.Replace(base, `"INVESTMENT"`, `"LOC"`, 1)},
+		{name: "malformed disabled row", rows: strings.NewReplacer(globalConnectionID(2), globalConnectionID(4), globalAccountID(20), "not-a-uuid").Replace(base)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := "[" + globalAccountRow(1, 1, "Healthy first") + "," + test.rows + "," + globalAccountRow(3, 3, "Healthy last") + "]"
+			client, paths := globalInventoryClient(t, globalConnections(), body, http.StatusOK)
+			connections, err := client.Load(context.Background(), "access-token")
+			var providerErr *portfolio.ProviderError
+			if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateMalformed || len(connections) != 0 || strings.Join(*paths, ",") != "/authorizations,/accounts" {
+				t.Fatalf("partial inventory escaped: connections=%+v paths=%v err=%v", connections, *paths, err)
+			}
+		})
+	}
+}
+
+func TestInventoryGlobalAccountFetchFailuresPublishNothing(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		status int
+		body   string
+		want   portfolio.State
+	}{
+		{name: "unauthorized", status: http.StatusUnauthorized, want: portfolio.StateUnauthorized},
+		{name: "rate limited", status: http.StatusTooManyRequests, want: portfolio.StateRateLimited},
+		{name: "forbidden", status: http.StatusForbidden, want: portfolio.StateUnavailable},
+		{name: "transient", status: http.StatusServiceUnavailable, want: portfolio.StateUnavailable},
+		{name: "transport", want: portfolio.StateUnavailable},
+		{name: "null", status: http.StatusOK, body: `null`, want: portfolio.StateMalformed},
+		{name: "malformed", status: http.StatusOK, body: `{}`, want: portfolio.StateMalformed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client, paths := globalInventoryClient(t, globalConnections(), test.body, test.status)
+			connections, err := client.Load(context.Background(), "access-token")
+			var providerErr *portfolio.ProviderError
+			if !errors.As(err, &providerErr) || providerErr.State != test.want || len(connections) != 0 || strings.Join(*paths, ",") != "/authorizations,/accounts" {
+				t.Fatalf("connections=%+v paths=%v error=%v", connections, *paths, err)
+			}
+			if test.want == portfolio.StateRateLimited && providerErr.RetryAt == nil {
+				t.Fatal("missing provider retry timing")
+			}
+
+		})
+	}
+}
+
+func TestInventoryGlobalAccountBounds(t *testing.T) {
+	t.Run("account count", func(t *testing.T) {
+		rows := make([]string, maxAccounts+1)
+		for index := range rows {
+			rows[index] = globalAccountRow(index+1, 1, "Synthetic")
+		}
+		assertMalformedGlobalInventory(t, globalConnections(), "["+strings.Join(rows, ",")+"]")
+	})
+	t.Run("account pagination envelope", func(t *testing.T) {
+		assertMalformedGlobalInventory(t, globalConnections(), `{"results":[`+globalAccountRow(1, 1, "First page")+`],"next":"next-page","pagination":{"has_more":true}}`)
+	})
+	t.Run("connection pagination envelope", func(t *testing.T) {
+		assertMalformedGlobalInventory(t, `{"results":`+globalConnections()+`,"next":"next-page","pagination":{"has_more":true}}`, `[]`)
+	})
+}
+
+func TestInventoryResponseByteBoundaries(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		accounts bool
+		limit    int
+	}{
+		{name: "connections", limit: providerResponseLimit},
+		{name: "accounts", accounts: true, limit: accountListResponseLimit},
+	} {
+		for _, extra := range []int{0, 1} {
+			t.Run(fmt.Sprintf("%s limit plus %d", test.name, extra), func(t *testing.T) {
+				connectionsBody := globalConnections()
+				accountsBody := "[" + globalAccountRow(1, 1, "Valid account") + "]"
+				if test.accounts {
+					accountsBody += strings.Repeat(" ", test.limit+extra-len(accountsBody))
+				} else {
+					connectionsBody += strings.Repeat(" ", test.limit+extra-len(connectionsBody))
+				}
+				client, paths := globalInventoryClient(t, connectionsBody, accountsBody, http.StatusOK)
+				connections, err := client.Load(context.Background(), "access-token")
+				if extra == 0 {
+					if err != nil || len(connections) != 4 || len(connections[0].Accounts) != 1 || !connections[0].Accounts[0].Selectable || strings.Join(*paths, ",") != "/authorizations,/accounts" {
+						t.Fatalf("exact-boundary valid response rejected: connections=%+v paths=%v err=%v", connections, *paths, err)
+					}
+					return
+				}
+				wantPaths := "/authorizations"
+				if test.accounts {
+					wantPaths += ",/accounts"
+				}
+				var providerErr *portfolio.ProviderError
+				if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateMalformed || len(connections) != 0 || strings.Join(*paths, ",") != wantPaths {
+					t.Fatalf("over-boundary response accepted: connections=%+v paths=%v err=%v", connections, *paths, err)
+				}
+			})
+		}
+	}
+}
+
+func TestInventoryConnectionCountBoundaries(t *testing.T) {
+	for _, count := range []int{maxConnections, maxConnections + 1} {
+		t.Run(fmt.Sprintf("%d connections", count), func(t *testing.T) {
+			rows := make([]string, count)
+			for index := range rows {
+				rows[index] = fmt.Sprintf(`{"id":%q,"disabled":false}`, globalConnectionID(index+1))
+			}
+			client, paths := globalInventoryClient(t, "["+strings.Join(rows, ",")+"]", "["+globalAccountRow(1, count, "Last connection account")+"]", http.StatusOK)
+			connections, err := client.Load(context.Background(), "access-token")
+			if count == maxConnections {
+				if err != nil || len(connections) != count || len(connections[count-1].Accounts) != 1 || !connections[count-1].Accounts[0].Selectable || strings.Join(*paths, ",") != "/authorizations,/accounts" {
+					t.Fatalf("valid connection limit rejected: count=%d paths=%v err=%v", len(connections), *paths, err)
+				}
+				return
+			}
+			var providerErr *portfolio.ProviderError
+			if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateMalformed || len(connections) != 0 || strings.Join(*paths, ",") != "/authorizations" {
+				t.Fatalf("connection overflow was not rejected before accounts: count=%d paths=%v err=%v", len(connections), *paths, err)
+			}
+		})
+	}
+}
+
+func TestInventoryRejectsAmbiguousConnectionsAtomically(t *testing.T) {
+	for _, test := range []struct {
+		name, row string
+	}{
+		{name: "duplicate connection", row: fmt.Sprintf(`{"id":%q,"disabled":true}`, globalConnectionID(1))},
+		{name: "missing connection ID", row: `{"disabled":false}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			connectionsBody := strings.TrimSuffix(globalConnections(), "]") + "," + test.row + "]"
+			client, paths := globalInventoryClient(t, connectionsBody, `[]`, http.StatusOK)
+			connections, err := client.Load(context.Background(), "access-token")
+			var providerErr *portfolio.ProviderError
+			if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateMalformed || len(connections) != 0 || strings.Join(*paths, ",") != "/authorizations" {
+				t.Fatalf("connections=%+v paths=%v err=%v", connections, *paths, err)
+			}
+		})
+	}
+}
+
+func assertMalformedGlobalInventory(t *testing.T, connectionsBody, accountsBody string) {
+	t.Helper()
+	client, _ := globalInventoryClient(t, connectionsBody, accountsBody, http.StatusOK)
+	connections, err := client.Load(context.Background(), "access-token")
+	var providerErr *portfolio.ProviderError
+	if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateMalformed {
+		t.Fatalf("error=%v", err)
+	}
+	for _, connection := range connections {
+		if len(connection.Accounts) != 0 {
+			t.Fatalf("out-of-bounds inventory retained accounts: %+v", connection)
+		}
+	}
+}
+
+func globalInventoryClient(t *testing.T, connectionsBody, accountsBody string, accountsStatus int) (*InventoryClient, *[]string) {
+	t.Helper()
+	baseURL, _ := url.Parse("https://api.snaptrade.example")
+	var paths []string
+	client, err := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		paths = append(paths, request.URL.Path)
+		if request.Header.Get("Authorization") != "Bearer access-token" || request.URL.RawQuery != "" {
+			t.Fatalf("unexpected request credentials or query")
+		}
+		switch request.URL.Path {
+		case "/authorizations":
+			return jsonResponse(http.StatusOK, connectionsBody), nil
+		case "/accounts":
+			if accountsStatus == 0 {
+				return nil, errors.New("synthetic transport failure")
+			}
+			return jsonResponse(accountsStatus, accountsBody), nil
+		default:
+			t.Fatalf("unexpected provider path=%q", request.URL.Path)
+			return nil, errors.New("unexpected provider path")
+		}
+	}), time.Now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return client, &paths
+}
+
+func globalConnections() string {
+	var rows []string
+	for index := range 4 {
+		rows = append(rows, fmt.Sprintf(`{"id":%q,"disabled":%t}`, globalConnectionID(index+1), index == 3))
+	}
+	return "[" + strings.Join(rows, ",") + "]"
+}
+
+func globalAccountRow(id, connection int, name string) string {
+	return fmt.Sprintf(`{"id":%q,"brokerage_authorization":%q,"name":%q,"number":"*****1001","status":"open","account_category":"INVESTMENT","sync_status":{"holdings":{"initial_sync_completed":true}}}`, globalAccountID(id), globalConnectionID(connection), name)
+}
+
+func globalAccountID(index int) string    { return fmt.Sprintf("10000000-0000-4000-8000-%012d", index) }
+func globalConnectionID(index int) string { return fmt.Sprintf("00000000-0000-4000-8000-%012d", index) }
 
 func TestInventoryRejectsNullListsAndUnknownAccountStatus(t *testing.T) {
 	baseURL, _ := url.Parse("https://api.snaptrade.example")
@@ -342,41 +636,14 @@ func TestInventoryRejectsNullListsAndUnknownAccountStatus(t *testing.T) {
 			if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateMalformed {
 				t.Fatalf("connections=%+v err=%v", connections, err)
 			}
-			if test.name == "unknown account status" && (len(connections) != 1 || connections[0].Status != portfolio.ConnectionStatusUnavailable) {
+			if len(connections) != 0 {
 				t.Fatalf("unknown status connection=%+v", connections)
 			}
 		})
 	}
 }
 
-func TestInventoryMakesEveryRetainedAccountUnavailableWhenMalformedRowComesFirst(t *testing.T) {
-	baseURL, _ := url.Parse("https://api.snaptrade.example")
-	accounts := `[
-		{"id":"00000000-0000-0000-0000-000000000000","brokerage_authorization":"87b24961-b51e-4db8-9226-f198f6518a89","name":"Malformed","number":"12345","institution_name":"Broker","status":"open","sync_status":{},"balance":{},"is_paper":false},
-		{"id":"917c8734-8470-4a3e-a18f-57c3f2ee6631","brokerage_authorization":"87b24961-b51e-4db8-9226-f198f6518a89","name":"Valid","number":"67890","institution_name":"Broker","account_category":"INVESTMENT","raw_type":"Margin","status":"open","sync_status":{"holdings":{"initial_sync_completed":true}},"balance":{},"is_paper":false}
-	]`
-	client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		if strings.HasSuffix(request.URL.Path, "/accounts") {
-			return jsonResponse(http.StatusOK, accounts), nil
-		}
-		return jsonResponse(http.StatusOK, fixtureBody(t, "success-connections.json")), nil
-	}), time.Now)
-
-	connections, err := client.Load(context.Background(), "access-token")
-	var providerErr *portfolio.ProviderError
-	if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateMalformed {
-		t.Fatalf("error=%v", err)
-	}
-	if len(connections) != 1 || connections[0].Status != portfolio.ConnectionStatusUnavailable || len(connections[0].Accounts) != 1 {
-		t.Fatalf("connections=%+v", connections)
-	}
-	account := connections[0].Accounts[0]
-	if account.Selectable || account.Eligible || account.UsabilityReason != portfolio.UsabilityConnectionUnavailable {
-		t.Fatalf("retained account remained usable after partial normalization: %+v", account)
-	}
-}
-
-func TestInventoryReturnsTrustworthyPartialConnectionWithCategoricalAccountFailure(t *testing.T) {
+func TestInventoryAccountFailurePublishesNoPartialConnections(t *testing.T) {
 	baseURL, _ := url.Parse("https://api.snaptrade.example")
 	for _, test := range []struct {
 		name   string
@@ -396,7 +663,7 @@ func TestInventoryReturnsTrustworthyPartialConnectionWithCategoricalAccountFailu
 			}), time.Now)
 			connections, err := client.Load(context.Background(), "access-token")
 			var providerErr *portfolio.ProviderError
-			if !errors.As(err, &providerErr) || providerErr.State != test.want || len(connections) != 1 || connections[0].Status != portfolio.ConnectionStatusUnavailable {
+			if !errors.As(err, &providerErr) || providerErr.State != test.want || len(connections) != 0 {
 				t.Fatalf("connections=%+v err=%v", connections, err)
 			}
 		})

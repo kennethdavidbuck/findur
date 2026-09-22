@@ -81,3 +81,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-inspect-the-private-portfolio-showcase.md`
   summary: Expand Showcase recovery and lifecycle regression coverage.
   evidence: Current tests do not click the Showcase retry action, show populated stale rows, or independently exercise every fail-closed lifecycle predicate; deferred at the human's request to keep moving.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-partial-account-selection.md`
+  summary: Design account-list rendering and navigation for very large inventories, considering pagination or virtualization.
+  evidence: The user explicitly deferred large-list UI work to a follow-up ticket; the current change supplies a 1,000-account WireMock/browser performance scenario to inform that work.

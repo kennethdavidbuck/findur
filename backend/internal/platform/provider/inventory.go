@@ -19,20 +19,21 @@ import (
 )
 
 const (
-	providerResponseLimit  = 1 << 20
-	conservativeRetryDelay = time.Minute
-	maxConnections         = 100
-	maxAccounts            = 500
-	retryAfterHeader       = "Retry-After"
-	accountRemainingHeader = "X-RateLimit-Account-Remaining"
-	accountResetHeader     = "X-RateLimit-Account-Reset"
-	authorizationHeader    = "Authorization"
-	acceptHeader           = "Accept"
-	bearerPrefix           = "Bearer "
-	jsonMediaType          = "application/json"
-	unknownValue           = "unknown"
-	defaultAccountLabel    = "Account"
-	defaultBrokerageLabel  = "Connected institution"
+	providerResponseLimit    = 1 << 20
+	accountListResponseLimit = 8 << 20
+	conservativeRetryDelay   = time.Minute
+	maxConnections           = 100
+	maxAccounts              = 5000
+	retryAfterHeader         = "Retry-After"
+	accountRemainingHeader   = "X-RateLimit-Account-Remaining"
+	accountResetHeader       = "X-RateLimit-Account-Reset"
+	authorizationHeader      = "Authorization"
+	acceptHeader             = "Accept"
+	bearerPrefix             = "Bearer "
+	jsonMediaType            = "application/json"
+	unknownValue             = "unknown"
+	defaultAccountLabel      = "Account"
+	defaultBrokerageLabel    = "Connected institution"
 )
 
 // InventoryClient is the purpose-limited OAuth bearer adapter generated from
@@ -43,11 +44,6 @@ type InventoryClient struct {
 	clock   func() time.Time
 }
 
-type normalizedConnection struct {
-	id         uuid.UUID
-	connection portfolio.Connection
-}
-
 // NewInventoryClient validates and constructs the purpose-limited bearer client.
 func NewInventoryClient(baseURL *url.URL, httpClient doer, clock func() time.Time) (*InventoryClient, error) {
 	if baseURL == nil || httpClient == nil || clock == nil || baseURL.Scheme == "" || baseURL.Host == "" {
@@ -56,7 +52,8 @@ func NewInventoryClient(baseURL *url.URL, httpClient doer, clock func() time.Tim
 	return &InventoryClient{baseURL: strings.TrimRight(baseURL.String(), "/"), http: httpClient, clock: clock}, nil
 }
 
-// Load lists connections first, then only the accounts belonging to each usable connection.
+// Load fetches the complete connection and account arrays, then groups accounts
+// locally. The pinned endpoints have no paging parameters; envelopes fail closed.
 func (c *InventoryClient) Load(ctx context.Context, bearer string) ([]portfolio.Connection, error) {
 	if bearer == "" {
 		return nil, &portfolio.ProviderError{State: portfolio.StateUnauthorized}
@@ -86,60 +83,50 @@ func (c *InventoryClient) fetchConnections(ctx context.Context, bearer string) (
 }
 
 func (c *InventoryClient) loadConnectionAccounts(ctx context.Context, bearer string, rawConnections []providergenerated.BrokerageAuthorization) ([]portfolio.Connection, error) {
-	normalized, partialErr := normalizeConnections(rawConnections)
-	connections := make([]portfolio.Connection, 0, len(normalized))
-	accountIDs := make(map[string]struct{})
-	fetchFailed := false
-	for _, candidate := range normalized {
-		connection := candidate.connection
-		if connection.Status == portfolio.ConnectionStatusDisabled {
-			connections = append(connections, connection)
-			continue
-		}
-		if fetchFailed {
-			connections = append(connections, unavailableConnection(connection))
-			continue
-		}
-		rawAccounts, err := c.fetchAccounts(ctx, bearer, candidate.id)
-		if err != nil {
-			connections = append(connections, unavailableConnection(connection))
-			partialErr = err
-			fetchFailed = true
-			continue
-		}
-		connection, err = normalizeAccounts(connection, rawAccounts, accountIDs)
-		if err != nil {
-			partialErr = err
-		}
-		connections = append(connections, connection)
+	connections, err := normalizeConnections(rawConnections)
+	if err != nil {
+		return nil, err
 	}
-	return connections, partialErr
+	usable := false
+	for _, connection := range connections {
+		usable = usable || connection.Status == portfolio.ConnectionStatusActive
+	}
+	if !usable {
+		return connections, nil
+	}
+	rawAccounts, err := c.fetchAccounts(ctx, bearer)
+	if err != nil {
+		return nil, err
+	}
+	if err := groupAccounts(connections, rawAccounts); err != nil {
+		return nil, err
+	}
+	return connections, nil
 }
 
-func normalizeConnections(rawConnections []providergenerated.BrokerageAuthorization) ([]normalizedConnection, error) {
-	connections := make([]normalizedConnection, 0, len(rawConnections))
-	connectionIDs := make(map[string]struct{}, len(rawConnections))
-	var partialErr error
+func normalizeConnections(rawConnections []providergenerated.BrokerageAuthorization) ([]portfolio.Connection, error) {
+	connections := make([]portfolio.Connection, 0, len(rawConnections))
+	connectionIDs := make(map[string]bool, len(rawConnections))
 	for _, raw := range rawConnections {
 		connection, usable := normalizeConnection(raw)
-		if !usable || !rememberUnique(connectionIDs, connection.ID) {
-			partialErr = &portfolio.ProviderError{State: portfolio.StateMalformed}
-			continue
+		if !usable || connectionIDs[connection.ID] {
+			return nil, &portfolio.ProviderError{State: portfolio.StateMalformed}
 		}
-		connections = append(connections, normalizedConnection{id: *raw.Id, connection: connection})
+		connectionIDs[connection.ID] = true
+		connections = append(connections, connection)
 	}
-	return connections, partialErr
+	return connections, nil
 }
 
-func (c *InventoryClient) fetchAccounts(ctx context.Context, bearer string, connectionID uuid.UUID) ([]providergenerated.Account, error) {
-	request, err := providergenerated.NewConnectionsListBrokerageAuthorizationAccountsRequest(c.baseURL, connectionID)
+func (c *InventoryClient) fetchAccounts(ctx context.Context, bearer string) ([]providergenerated.Account, error) {
+	request, err := providergenerated.NewAccountInformationListUserAccountsRequest(c.baseURL)
 	if err != nil {
 		return nil, err
 	}
 	request = request.WithContext(ctx)
 	setBearer(request, bearer)
 	var accounts []providergenerated.Account
-	if err := c.doJSON(request, &accounts); err != nil {
+	if err := c.doJSONLimit(request, &accounts, accountListResponseLimit); err != nil {
 		return nil, err
 	}
 	if accounts == nil || len(accounts) > maxAccounts {
@@ -148,53 +135,47 @@ func (c *InventoryClient) fetchAccounts(ctx context.Context, bearer string, conn
 	return accounts, nil
 }
 
-func normalizeAccounts(connection portfolio.Connection, rawAccounts []providergenerated.Account, accountIDs map[string]struct{}) (portfolio.Connection, error) {
-	var partialErr error
+// Validate every row before publishing any accounts. Disabled or unsupported
+// rows cannot bypass identity checks, and malformed lists never publish partially.
+func groupAccounts(connections []portfolio.Connection, rawAccounts []providergenerated.Account) error {
+	indices := make(map[string]int, len(connections))
+	for index, connection := range connections {
+		indices[connection.ID] = index
+	}
+	seen := make(map[uuid.UUID]bool, len(rawAccounts))
 	for _, raw := range rawAccounts {
-		account, ok := normalizeAccount(raw, connection.ID)
-		if !ok || !rememberUnique(accountIDs, account.ID) {
-			connection = unavailableConnection(connection)
-			partialErr = &portfolio.ProviderError{State: portfolio.StateMalformed}
+		index, known := indices[raw.BrokerageAuthorization.String()]
+		if !known || seen[raw.Id] {
+			return &portfolio.ProviderError{State: portfolio.StateMalformed}
+		}
+		seen[raw.Id] = true
+		account, valid := normalizeAccount(raw, connections[index].ID)
+		if !valid {
+			return &portfolio.ProviderError{State: portfolio.StateMalformed}
+		}
+		if connections[index].Status != portfolio.ConnectionStatusActive || !account.Selectable {
 			continue
 		}
-		connection.Accounts = append(connection.Accounts, account)
+		connections[index].Accounts = append(connections[index].Accounts, account)
 	}
-	if partialErr != nil {
-		connection = unavailableConnection(connection)
-	}
-	return connection, partialErr
-}
-
-func rememberUnique(seen map[string]struct{}, id string) bool {
-	if _, duplicate := seen[id]; duplicate {
-		return false
-	}
-	seen[id] = struct{}{}
-	return true
-}
-
-func unavailableConnection(connection portfolio.Connection) portfolio.Connection {
-	connection.Status, connection.Available, connection.Eligible = portfolio.ConnectionStatusUnavailable, false, false
-	for index := range connection.Accounts {
-		connection.Accounts[index].Available = false
-		connection.Accounts[index].Eligible = false
-		connection.Accounts[index].Selectable = false
-		connection.Accounts[index].UsabilityReason = portfolio.UsabilityConnectionUnavailable
-	}
-	return connection
+	return nil
 }
 
 func (c *InventoryClient) doJSON(request *http.Request, target any) error {
+	return c.doJSONLimit(request, target, providerResponseLimit)
+}
+
+func (c *InventoryClient) doJSONLimit(request *http.Request, target any, limit int64) error {
 	response, err := c.http.Do(request)
 	if err != nil {
 		return &portfolio.ProviderError{State: portfolio.StateUnavailable}
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, providerResponseLimit))
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, limit))
 		return c.responseError(response)
 	}
-	limited := &io.LimitedReader{R: response.Body, N: providerResponseLimit + 1}
+	limited := &io.LimitedReader{R: response.Body, N: limit + 1}
 	decoder := json.NewDecoder(limited)
 	if err := decoder.Decode(target); err != nil {
 		return &portfolio.ProviderError{State: portfolio.StateMalformed}
@@ -303,13 +284,14 @@ func normalizeAccount(raw providergenerated.Account, connectionID string) (portf
 		}
 	}
 
-	result.Eligible = result.Available && statusOpen &&
-		result.Category == portfolio.AccountCategoryInvestment && result.SyncState == portfolio.AccountSyncStateComplete
 	result.Selectable = result.Available && (statusOpen || !statusKnown) &&
-		(result.Category == portfolio.AccountCategoryInvestment || result.Category == portfolio.AccountCategoryUnknown) &&
-		result.SyncState == portfolio.AccountSyncStateComplete
+		result.Category == portfolio.AccountCategoryInvestment && result.SyncState == portfolio.AccountSyncStateComplete
+	result.Eligible = result.Selectable
 	closed := raw.Status != nil && *raw.Status == providergenerated.Closed
 	result.UsabilityReason = accountUsabilityReason(result, statusKnown, closed)
+	if result.Selectable {
+		result.UsabilityReason = portfolio.UsabilityReady
+	}
 	return result, true
 }
 
@@ -376,7 +358,7 @@ func maskedSuffix(value string) string {
 			safe = append(safe, character)
 		}
 	}
-	if len(safe) <= 4 {
+	if len(safe) < 4 || len(safe) == 4 && !strings.ContainsAny(value, "*•") {
 		return ""
 	}
 	return string(safe[len(safe)-4:])

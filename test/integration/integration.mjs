@@ -126,15 +126,12 @@ await verifyBrowserOAuth({ browserUrl: browser, oauthOrigin: 'http://127.0.0.1:8
 await verifyBrowserSession({ browserUrl: browser, publicOrigin: 'http://127.0.0.1:8080', wiremockUrl: wiremock })
 
 const journal = await (await fetch(`${wiremock}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
-const inventoryAccountPaths = [
-  '/authorizations/0eadf3ab-8daa-4357-9e38-325dbe82f003/accounts',
-  '/authorizations/12fe591b-344d-4e8c-96e6-98a692f94054/accounts',
-]
 const inventoryEvents = journal.requests
-  .filter(({ request }) => request.url === '/authorizations' || inventoryAccountPaths.includes(request.url))
+  .filter(({ request }) => request.url === '/authorizations' || request.url === '/accounts')
 const inventoryRequests = inventoryEvents.map(({ request }) => request)
 assert.ok(inventoryRequests.filter(({ url }) => url === '/authorizations').length >= 7, 'success and every categorical fixture executed through WireMock')
-for (const path of inventoryAccountPaths) assert.ok(inventoryRequests.some(({ url }) => url === path), `successful bootstrap reaches ${path}`)
+assert.ok(inventoryRequests.some(({ url }) => url === '/accounts'), 'successful bootstrap reaches the global account inventory')
+assert.ok(!journal.requests.some(({ request }) => /^\/authorizations\/[^/]+\/accounts/.test(request.url)), 'inventory never fans out into per-connection account requests')
 for (const providerRequest of inventoryRequests) {
   assert.equal(providerRequest.headers.Authorization, 'Bearer synthetic-access-token')
   for (const forbidden of ['clientId', 'consumerKey', 'userId', 'userSecret', 'timestamp', 'Signature']) assert.equal(providerRequest.headers[forbidden], undefined)
