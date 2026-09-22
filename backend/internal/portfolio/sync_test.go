@@ -19,7 +19,8 @@ func TestSyncServiceRunPassDrainsClaimsAndLogsSafeOutcome(t *testing.T) {
 	owner := uuid.New()
 	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{2}, 64)))
 	encrypted, _ := tokens.EncryptAccess(owner, "secret-access-token")
-	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: "account-sensitive", EncryptedToken: encrypted, TokenVersion: 1, Resource: AccountResourceBalances}}}
+	accountID := uuid.New()
+	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: accountID.String(), EncryptedToken: encrypted, TokenVersion: 1, Resource: AccountResourceBalances}}}
 	provider := &accountDataProviderStub{data: completeTestAccountData(now)}
 	var logs bytes.Buffer
 	service, err := NewSyncService(repository, provider, tokens, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
@@ -32,7 +33,7 @@ func TestSyncServiceRunPassDrainsClaimsAndLogsSafeOutcome(t *testing.T) {
 		t.Fatalf("providerCalls=%d finishes=%d failure=%q data=%v", provider.calls, repository.finishes, repository.failure, repository.data)
 	}
 	output := logs.String()
-	if !strings.Contains(output, `"msg":"portfolio sync completed"`) || strings.Contains(output, "secret-access-token") || strings.Contains(output, "account-sensitive") {
+	if !strings.Contains(output, `"msg":"portfolio sync completed"`) || !strings.Contains(output, `"user_id":"`+owner.String()+`"`) || !strings.Contains(output, `"snaptrade_account_id":"`+accountID.String()+`"`) || strings.Contains(output, "secret-access-token") {
 		t.Fatalf("unsafe or incomplete logs: %s", output)
 	}
 }
@@ -53,11 +54,32 @@ func TestSyncServiceCategorizesProviderFailureForDurableRetry(t *testing.T) {
 	}
 }
 
+func TestSyncServiceOmitsMalformedPersistedAccountIDFromLogs(t *testing.T) {
+	now := time.Now().UTC()
+	owner := uuid.New()
+	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{5}, 64)))
+	encrypted, _ := tokens.EncryptAccess(owner, "access-token")
+	const malformedAccountID = "private-persisted-account-reference"
+	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: malformedAccountID, EncryptedToken: encrypted, TokenVersion: 1, Resource: AccountResourceBalances}}}
+	var logs bytes.Buffer
+	service, err := NewSyncService(repository, &accountDataProviderStub{data: completeTestAccountData(now)}, tokens, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	service.RunPass(context.Background())
+	output := logs.String()
+	if strings.Contains(output, malformedAccountID) || strings.Contains(output, `"snaptrade_account_id"`) {
+		t.Fatalf("malformed account ID leaked into logs: %s", output)
+	}
+}
+
 func TestRunSyncWorkerStopsPromptlyOnCancellation(t *testing.T) {
 	now := time.Now().UTC()
 	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{4}, 64)))
 	repository := &syncRepositoryStub{}
-	service, _ := NewSyncService(repository, &accountDataProviderStub{}, tokens, func() time.Time { return now }, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	var logs bytes.Buffer
+	service, _ := NewSyncService(repository, &accountDataProviderStub{}, tokens, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); RunSyncWorker(ctx, time.Millisecond, service) }()
@@ -66,6 +88,15 @@ func TestRunSyncWorkerStopsPromptlyOnCancellation(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("worker did not stop after cancellation")
+	}
+	if !strings.Contains(logs.String(), `"reason":"canceled"`) {
+		t.Fatalf("worker stop reason missing from logs: %s", logs.String())
+	}
+}
+
+func TestWorkerStopReasonCategorizesDeadline(t *testing.T) {
+	if actual := workerStopReason(context.DeadlineExceeded); actual != "deadline_exceeded" {
+		t.Fatalf("deadline reason = %q", actual)
 	}
 }
 

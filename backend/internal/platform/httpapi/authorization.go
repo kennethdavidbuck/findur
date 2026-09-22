@@ -12,6 +12,7 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/google/uuid"
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 	"github.com/kennethdavidbuck/findur/backend/internal/generated"
 	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
@@ -131,7 +132,8 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 			}
 			writeGeneratedError(w, http.StatusBadRequest, generated.ErrorCodeInvalidRequest)
 		},
-		ResponseErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, _ error) {
+		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
+			logger.ErrorContext(r.Context(), "http handler failure", "failure", "handler_failure")
 			writeGeneratedError(w, http.StatusServiceUnavailable, generated.ErrorCodeInitializationFailed)
 		},
 	})
@@ -240,6 +242,7 @@ func (a *authorizationAPI) PutPersonalProfile(ctx context.Context, request gener
 	if err != nil {
 		return nil, err
 	}
+	setFindurUserID(ctx, actor)
 	if request.Body == nil {
 		return profileValidation([]string{"displayName"}), nil
 	}
@@ -296,6 +299,7 @@ func (a *authorizationAPI) PutDisplayPreferences(ctx context.Context, request ge
 	if err != nil {
 		return nil, err
 	}
+	setFindurUserID(ctx, actor)
 	if request.Body == nil {
 		return generated.PutDisplayPreferences400JSONResponse{ProfileValidationJSONResponse: profileValidation([]string{localeField}).(generated.PutPersonalProfile400JSONResponse).ProfileValidationJSONResponse}, nil
 	}
@@ -437,6 +441,7 @@ func (a *authorizationAPI) RetryPortfolioInventory(ctx context.Context, request 
 		}
 		return nil, err
 	}
+	setFindurUserID(ctx, actor)
 	snapshot, err := a.inventory.Retry(ctx, actor)
 	if err != nil {
 		return nil, err
@@ -493,9 +498,11 @@ func (a *authorizationAPI) ConfirmPortfolioInclusion(ctx context.Context, reques
 		}
 		return nil, err
 	}
+	setFindurUserID(ctx, actor)
 	if request.Body == nil {
 		return inclusionConflict(generated.ErrorCodeInvalidSelection), nil
 	}
+	setSnapTradeAccountIDs(ctx, boundedSnapTradeAccountIDs(request.Body.AccountIds))
 	snapshot, err := a.inclusion.Confirm(ctx, actor, request.Params.XInclusionVersion, request.Params.IdempotencyKey, request.Body.AccountIds)
 	if err != nil {
 		switch {
@@ -523,7 +530,28 @@ func (a *authorizationAPI) portfolioActor(ctx context.Context, available bool) (
 	if a.sessions == nil || !available || cookies.session == "" {
 		return auth.Actor{}, auth.ErrUnauthenticated
 	}
-	return a.sessions.Authenticate(ctx, cookies.session)
+	actor, err := a.sessions.Authenticate(ctx, cookies.session)
+	if err == nil {
+		setFindurUserID(ctx, actor)
+	}
+	return actor, err
+}
+
+const maxLoggedSnapTradeAccountIDs = 100
+
+func boundedSnapTradeAccountIDs(values []string) []string {
+	accountIDs := make([]string, 0, min(len(values), maxLoggedSnapTradeAccountIDs))
+	for _, value := range values {
+		if len(accountIDs) == maxLoggedSnapTradeAccountIDs {
+			break
+		}
+		parsed, err := uuid.Parse(value)
+		if err != nil || parsed == uuid.Nil {
+			continue
+		}
+		accountIDs = append(accountIDs, parsed.String())
+	}
+	return accountIDs
 }
 
 func inventoryUnauthorized() generated.InventoryUnauthorizedJSONResponse {
@@ -669,16 +697,19 @@ func (a *authorizationAPI) GetAuthorizationStatus(ctx context.Context, _ generat
 	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
 	status := auth.AuthorizationStatus{AuthorizationAvailable: a.authorizationAvailable}
 	if a.sessions != nil {
-		_, err := a.sessions.Authenticate(ctx, cookies.session)
+		actor, err := a.sessions.Authenticate(ctx, cookies.session)
 		status.Authenticated = err == nil
+		if err == nil {
+			setFindurUserID(ctx, actor)
+		}
 		if err != nil && !errors.Is(err, auth.ErrUnauthenticated) {
-			a.logger.WarnContext(ctx, "authorization status unavailable", "request_id", requestIDFromContext(ctx), "category", sessionCheckCategory)
+			a.logger.WarnContext(ctx, "authorization status unavailable", "category", sessionCheckCategory)
 		}
 	} else if a.status != nil {
 		var err error
 		status, err = a.status.Status(ctx, cookies.session)
 		if err != nil {
-			a.logger.WarnContext(ctx, "authorization status unavailable", "request_id", requestIDFromContext(ctx), "category", sessionCheckCategory)
+			a.logger.WarnContext(ctx, "authorization status unavailable", "category", sessionCheckCategory)
 		}
 	}
 	return generated.GetAuthorizationStatus200JSONResponse{Body: generated.AuthorizationStatus{AuthorizationAvailable: status.AuthorizationAvailable, Authenticated: status.Authenticated}, Headers: generated.GetAuthorizationStatus200ResponseHeaders{CacheControl: noStoreDirective}}, nil
@@ -720,7 +751,8 @@ func (a *authorizationAPI) LogoutCurrentSession(ctx context.Context, request gen
 	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != secFetchSameOrigin {
 		return logoutForbidden(), nil
 	}
-	if _, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, request.Params.XCSRFToken); err != nil {
+	actor, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, request.Params.XCSRFToken)
+	if err != nil {
 		switch {
 		case errors.Is(err, auth.ErrUnauthenticated):
 			return logoutUnauthorized(), nil
@@ -730,6 +762,7 @@ func (a *authorizationAPI) LogoutCurrentSession(ctx context.Context, request gen
 			return nil, err
 		}
 	}
+	setFindurUserID(ctx, actor)
 	if err := a.sessions.RevokeCurrent(ctx, cookies.session); err != nil {
 		if errors.Is(err, auth.ErrUnauthenticated) {
 			return logoutUnauthorized(), nil
@@ -788,7 +821,7 @@ func (a *authorizationAPI) CompleteSnapTradeAuthorization(ctx context.Context, r
 	if err == nil && result.Success {
 		category = callbackSucceededCategory
 	}
-	a.logger.InfoContext(ctx, "authorization callback completed", "request_id", requestIDFromContext(ctx), "category", category)
+	a.logger.InfoContext(ctx, "authorization callback completed", "category", category)
 	return callbackRedirect{location: result.Route, cookies: set}, nil
 }
 
@@ -810,7 +843,6 @@ func (a *authorizationAPI) BeginSnapTradeAuthorization(ctx context.Context, requ
 			category = deadlineExceededCategory
 		}
 		a.logger.WarnContext(ctx, "authorization initiation refused",
-			"request_id", requestIDFromContext(ctx),
 			"category", category,
 			"stage", auth.InitializationStageOf(err),
 		)

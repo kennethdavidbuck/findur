@@ -56,7 +56,7 @@ func execute() error {
 		}
 		return nil
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := slog.New(httpapi.NewRequestLogHandler(slog.NewJSONHandler(os.Stdout, nil)))
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
