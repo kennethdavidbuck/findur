@@ -26,6 +26,38 @@ async function establishSession(webdriver, sessionId, origin) {
   assert.deepEqual(state, { path: '/onboarding/accounts', heading: 'Choose what Findur may use.', focused: true })
 }
 
+async function verifyActiveSessionBypassesConsent(webdriver, sessionId, origin) {
+  await webdriver(`/session/${sessionId}/url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: `${origin}/` }),
+  })
+  const openedConsent = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const link=document.querySelector('.public-header .owner-button[href="/connect"]');link?.click();return Boolean(link)`, args: [] }),
+  })
+  assert.equal(openedConsent, true, 'the landing-page Login link opens staged consent')
+  let state
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    state = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const navigation=document.querySelector('.authenticated-nav');return {path:location.pathname,heading:document.querySelector('h1')?.innerText,consentAction:!!document.querySelector('form[action="/api/auth/snaptrade/authorize"] button'),navigationPosition:navigation?getComputedStyle(navigation).position:null}`, args: [] }),
+    })
+    if (state.path === '/portfolio' && state.heading === 'Your portfolio') break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.deepEqual(state, { path: '/portfolio', heading: 'Your portfolio', consentAction: false, navigationPosition: 'fixed' }, 'an active session bypasses staged consent and renders the authenticated Portfolio shell')
+  await webdriver(`/session/${sessionId}/back`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+  let returnState
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    returnState = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `return {path:location.pathname,heading:document.querySelector('h1')?.innerText}`, args: [] }),
+    })
+    if (returnState.path === '/onboarding/accounts' && returnState.heading === 'Choose what Findur may use.') break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.deepEqual(returnState, { path: '/onboarding/accounts', heading: 'Choose what Findur may use.' }, 'the active-session redirect replaces staged consent in browser history')
+}
+
 async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
   const fixtures = [
     { name: 'empty', status: 200, bodyFileName: 'inventory/empty.json', want: 'empty' },
@@ -389,6 +421,7 @@ async function waitForProfileValue(webdriver, sessionId, displayName) {
 export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockUrl }) {
   await withWebDriverSession(browserUrl, async (first) => {
     await establishSession(first.webdriver, first.sessionId, publicOrigin)
+    await verifyActiveSessionBypassesConsent(first.webdriver, first.sessionId, publicOrigin)
     const seeded = await first.webdriver(`/session/${first.sessionId}/execute/async`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ script: `const done=arguments[arguments.length-1];localStorage.setItem('findur-locale','en');localStorage.setItem('findur-theme','dark');localStorage.setItem('protected','secret');sessionStorage.setItem('protected','secret');Promise.all([caches.open('findur-protected').then(cache=>cache.put('/protected',new Response('secret'))),new Promise((resolve,reject)=>{const request=indexedDB.open('findur-protected',1);request.onupgradeneeded=()=>request.result.createObjectStore('protected');request.onerror=()=>reject(request.error);request.onsuccess=()=>{request.result.close();resolve()}})]).then(()=>done(true),error=>done(String(error)))`, args: [] }),
