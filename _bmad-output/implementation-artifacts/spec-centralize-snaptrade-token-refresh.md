@@ -47,7 +47,7 @@ context:
 - `backend/internal/portfolio/inventory.go` and `sync.go` -- remove direct `DecryptAccess` ownership and depend on the common credential-backed safe-read seam.
 - `backend/internal/platform/provider/{inventory.go,account_data.go}` -- preserve strict response normalization and unauthorized classification while allowing one authorized safe-read retry through the shared source.
 - `backend/cmd/findur/main.go` -- construct one credential source and inject it into inventory bootstrap and scheduled sync.
-- `backend/internal/{auth,portfolio,platform/oidc,platform/postgres,platform/provider}/*_test.go` and `test/integration/**` -- cover expiry, rotation, contention, fail-closed outcomes, and one-401 retry behavior, including WireMock request and token-call counts.
+- `backend/internal/{auth,portfolio,platform/oidc,platform/postgres,platform/provider}/*_test.go` and `test/integration/**` -- cover expiry, rotation, contention, fail-closed outcomes, and one-401 retry behavior. The credential-source behavior uses table-driven unit tests; the existing Compose suite covers browser and provider contracts.
 - `_bmad-output/planning-artifacts/architecture/architecture-findur-2026-09-19/ARCHITECTURE-SPINE.md` -- record the 15-minute refresh window, shared caller boundary, and worker authorization pause.
 
 ## Tasks & Acceptance
@@ -59,7 +59,7 @@ context:
 - [x] Gate scheduled claims on usable authorization, and make a fresh OAuth grant resume pending account work.
 - [x] Add structured, secret-free operational logs for refresh coordination and recovery.
 - [x] Update AD-4 and related architecture notes for the implemented refresh policy and worker behavior.
-- [x] Wire the common source in the composition root and add focused unit/repository tests plus WireMock integration scenarios for every matrix scenario, using an expired test token to trigger proactive refresh.
+- [x] Wire the common source in the composition root and add table-driven credential-source unit tests plus PostgreSQL repository tests for expiry, rotation, contention, and failure paths.
 
 **Acceptance Criteria:**
 - Given any portfolio caller needs a SnapTrade credential, when it requests one, then it uses the same per-user credential source and never reads/decrypts the access-token column itself.
@@ -72,6 +72,8 @@ context:
 ## Implementation Notes
 
 The refresh lease and credential version are stored with the encrypted authorization row. The token exchange runs after the lease transaction commits; a guarded update installs both rotated envelopes. A stale or expired lease cannot replay the old refresh token. Discovery failures known to precede the exchange receive bounded retry and guarded lease release; ambiguous refresh outcomes and unreadable credentials require a fresh OAuth grant. The callback restores active status, advances the lifecycle, and makes pending sync work eligible again.
+
+The earlier WireMock credential test called the source directly with an in-memory repository, so it did not prove a request-driven application flow. It was removed from the current test gate. A backend-request-to-PostgreSQL-to-WireMock refresh scenario remains future work; the existing provider and browser Compose tests remain in place.
 
 ## Spec Change Log
 
@@ -111,3 +113,7 @@ The credential source is a domain boundary, not an HTTP middleware concern: sync
 - `docker compose -p findur-refresh-reviewed --profile test run --rm integration-go` -- passed after correcting the mapping priority; all WireMock credential scenarios passed, including one token exchange for six concurrent callers and no exchange during discovery outage.
 - `env COMPOSE_PROJECT_NAME=findur-refresh-rebased POSTGRES_HOST_PORT=5439 ./scripts/compose-test.sh` -- passed on the feature branch rebased onto `origin/main`; browser contracts and all WireMock credential scenarios passed.
 - `cd backend && go test ./internal/auth -run TestCredentialSource -count=1` -- passed after the final log assertion.
+- `GOCACHE=/private/tmp/findur-go-cache go test -race ./internal/auth -run TestCredentialSource -count=1` -- passed after replacing the direct WireMock credential test with table-driven unit cases and a two-source concurrency case.
+- `GOCACHE=/private/tmp/findur-go-cache go test ./internal/platform/postgres -count=1` -- passed with Docker access after formatting credential, callback, and sync SQL.
+- `cd backend && golangci-lint run` -- passed with `0 issues.` after setting writable Go and golangci-lint caches in this sandbox.
+- `git diff --check` and `git diff origin/main --check` -- passed after the SQL and test changes.

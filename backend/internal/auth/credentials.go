@@ -9,8 +9,18 @@ import (
 	"github.com/google/uuid"
 )
 
-// RefreshEarlyWindow is the shared buffer before access-token expiry.
-const RefreshEarlyWindow = 15 * time.Minute
+const (
+	// RefreshEarlyWindow is the shared buffer before access-token expiry.
+	RefreshEarlyWindow = 15 * time.Minute
+	// CredentialStatusActive permits provider reads and refreshes.
+	CredentialStatusActive = "active"
+	// CredentialStatusReauthorizationRequired blocks provider reads until a new grant.
+	CredentialStatusReauthorizationRequired = "reauthorization-required"
+	refreshMaxAttempts                      = 3
+	refreshRetryBaseDelay                   = 100 * time.Millisecond
+	refreshWaitInitialDelay                 = 10 * time.Millisecond
+	refreshWaitMaxDelay                     = 100 * time.Millisecond
+)
 
 // ErrReauthorizationRequired means no safely usable provider credential remains.
 var ErrReauthorizationRequired = errors.New("provider authorization must be restarted")
@@ -122,14 +132,14 @@ func isUnauthorized(err error) bool {
 
 func (s *Source) access(ctx context.Context, owner uuid.UUID, force bool, failedVersion int64) (string, int64, error) {
 	deadline := s.clock().UTC().Add(s.wait)
-	delay := 10 * time.Millisecond
+	delay := refreshWaitInitialDelay
 	for {
 		now := s.clock().UTC()
 		credential, found, err := s.repo.ReadCredential(ctx, owner)
 		if err != nil {
 			return "", 0, err
 		}
-		if !found || credential.Status != "active" {
+		if !found || credential.Status != CredentialStatusActive {
 			return "", 0, ErrReauthorizationRequired
 		}
 		if credential.LeaseID == nil && ((!force || credential.Version != failedVersion) && credential.ExpiresAt.After(now.Add(RefreshEarlyWindow)) || force && credential.Version != failedVersion && credential.ExpiresAt.After(now)) {
@@ -160,7 +170,7 @@ func (s *Source) access(ctx context.Context, owner uuid.UUID, force bool, failed
 		case <-time.After(delay):
 			s.logger.Debug("provider credential refresh contention wait", "event", "credential_refresh_wait", "user_id", owner.String())
 		}
-		if delay < 100*time.Millisecond {
+		if delay < refreshWaitMaxDelay {
 			delay *= 2
 		}
 	}
@@ -187,13 +197,13 @@ func (s *Source) refreshClaim(ctx context.Context, claim Credential) (string, er
 	opCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	var result TokenSet
-	for attempt := range 3 {
+	for attempt := range refreshMaxAttempts {
 		result, err = s.refresh.Refresh(opCtx, refreshToken)
 		var preSend *RefreshPreSendError
 		if !errors.As(err, &preSend) {
 			break
 		}
-		if attempt == 2 || opCtx.Err() != nil {
+		if attempt == refreshMaxAttempts-1 || opCtx.Err() != nil {
 			releaseCtx, releaseCancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout)
 			released, releaseErr := s.repo.ReleaseRefresh(releaseCtx, claim, s.clock().UTC())
 			releaseCancel()
@@ -207,7 +217,7 @@ func (s *Source) refreshClaim(ctx context.Context, claim Credential) (string, er
 		select {
 		case <-opCtx.Done():
 			continue
-		case <-time.After(time.Duration(1<<attempt) * 100 * time.Millisecond):
+		case <-time.After(time.Duration(1<<attempt) * refreshRetryBaseDelay):
 		}
 	}
 	if err != nil || result.AccessToken == "" || result.RefreshToken == "" || !result.Expiry.After(s.clock().UTC()) {

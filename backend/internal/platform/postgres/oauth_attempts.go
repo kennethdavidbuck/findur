@@ -40,8 +40,8 @@ func (r *OAuthAttemptRepository) ClaimCallback(ctx context.Context, stateHash, b
 	var terminalOutcome, terminalRoute *string
 	var userID *uuid.UUID
 	err = tx.QueryRow(ctx, `SELECT state_hash, nonce_hash, pkce_verifier_encrypted, return_route, status, terminal_outcome, terminal_route, user_id
-		FROM oauth_attempts WHERE state_hash=$1 AND browser_binding_hash=$2
-		AND (status IN ($4,$5) OR expires_at>$3) FOR UPDATE`, stateHash, bindingHash, now, attemptSucceeded, attemptRestartRequired).
+        FROM oauth_attempts WHERE state_hash=$1 AND browser_binding_hash=$2
+        AND (status IN ($4,$5) OR expires_at>$3) FOR UPDATE`, stateHash, bindingHash, now, attemptSucceeded, attemptRestartRequired).
 		Scan(&claim.StateHash, &claim.NonceHash, &claim.EncryptedVerifier, &claim.ReturnRoute, &status, &terminalOutcome, &terminalRoute, &userID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return auth.CallbackClaim{}, auth.ErrNotClaimable
@@ -126,7 +126,7 @@ func upsertActiveIdentity(ctx context.Context, tx pgx.Tx, value auth.Finalizatio
 	}
 	var owner uuid.UUID
 	err := tx.QueryRow(ctx, `INSERT INTO external_identities(provider,subject,user_id) VALUES($1,$2,$3)
-		ON CONFLICT(provider,subject) DO UPDATE SET subject=EXCLUDED.subject RETURNING user_id`, value.Provider, value.Subject, value.UserID).Scan(&owner)
+        ON CONFLICT(provider,subject) DO UPDATE SET subject=EXCLUDED.subject RETURNING user_id`, value.Provider, value.Subject, value.UserID).Scan(&owner)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -144,35 +144,60 @@ func upsertActiveIdentity(ctx context.Context, tx pgx.Tx, value auth.Finalizatio
 }
 
 func storeAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value auth.Finalization) error {
-	_, err := tx.Exec(ctx, `INSERT INTO provider_authorizations(user_id,provider,access_token_encrypted,refresh_token_encrypted,envelope_version,token_expires_at)
-		VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,provider) DO UPDATE SET access_token_encrypted=EXCLUDED.access_token_encrypted,
-		refresh_token_encrypted=EXCLUDED.refresh_token_encrypted,envelope_version=EXCLUDED.envelope_version,token_expires_at=EXCLUDED.token_expires_at,
-		lifecycle_status='active',lifecycle_generation=provider_authorizations.lifecycle_generation+1,
-		credential_version=provider_authorizations.credential_version+1,refresh_lease_id=NULL,refresh_lease_expires_at=NULL,updated_at=now()`,
+	_, err := tx.Exec(ctx, `INSERT INTO provider_authorizations (
+            user_id,
+            provider,
+            access_token_encrypted,
+            refresh_token_encrypted,
+            envelope_version,
+            token_expires_at
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (user_id, provider) DO UPDATE
+        SET access_token_encrypted = EXCLUDED.access_token_encrypted,
+            refresh_token_encrypted = EXCLUDED.refresh_token_encrypted,
+            envelope_version = EXCLUDED.envelope_version,
+            token_expires_at = EXCLUDED.token_expires_at,
+            lifecycle_status = 'active',
+            lifecycle_generation = provider_authorizations.lifecycle_generation + 1,
+            credential_version = provider_authorizations.credential_version + 1,
+            refresh_lease_id = NULL,
+            refresh_lease_expires_at = NULL,
+            updated_at = now()`,
 		owner, value.Provider, value.AccessToken, nullableBytes(value.RefreshToken), value.EnvelopeVersion, nullableTime(value.TokenExpiresAt))
 	if err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE portfolio_inclusion_state
-		SET lifecycle_generation=lifecycle_generation+1,updated_at=$2 WHERE user_id=$1`, owner, value.CompletedAt); err != nil {
+        SET lifecycle_generation = lifecycle_generation + 1,
+            updated_at = $2
+        WHERE user_id = $1`, owner, value.CompletedAt); err != nil {
 		return err
 	}
 	// The requested selection remains durable across reauthorization. Move its
 	// pending worker change to the new lifecycle while old in-flight finalizers
 	// retain their previous generation and fail their publication guard.
 	if _, err = tx.Exec(ctx, `UPDATE portfolio_inclusion_changes change
-		SET lifecycle_generation=inclusion.lifecycle_generation,updated_at=$2
-		FROM portfolio_inclusion_state inclusion
-		WHERE change.user_id=$1 AND inclusion.user_id=change.user_id
-		AND change.status='pending' AND change.result_version=inclusion.version`, owner, value.CompletedAt); err != nil {
+        SET lifecycle_generation = inclusion.lifecycle_generation,
+            updated_at = $2
+        FROM portfolio_inclusion_state inclusion
+        WHERE change.user_id = $1
+            AND inclusion.user_id = change.user_id
+            AND change.status = 'pending'
+            AND change.result_version = inclusion.version`, owner, value.CompletedAt); err != nil {
 		return err
 	}
 	// A prior authorization failure may have left account resources in backoff.
 	// Fresh credentials make that delay obsolete; the worker may claim them again.
 	if _, err = tx.Exec(ctx, `UPDATE portfolio_account_sync_state
-		SET next_attempt_at=NULL,failure_count=0,claim_id=NULL,claim_expires_at=NULL,
-		claimed_resource=NULL,claimed_change_id=NULL,updated_at=$2
-		WHERE user_id=$1 AND (next_attempt_at IS NOT NULL OR claim_id IS NOT NULL)`, owner, value.CompletedAt); err != nil {
+        SET next_attempt_at = NULL,
+            failure_count = 0,
+            claim_id = NULL,
+            claim_expires_at = NULL,
+            claimed_resource = NULL,
+            claimed_change_id = NULL,
+            updated_at = $2
+        WHERE user_id = $1
+            AND (next_attempt_at IS NOT NULL OR claim_id IS NOT NULL)`, owner, value.CompletedAt); err != nil {
 		return err
 	}
 	// Returning logins rotate credentials and fence in-flight portfolio work, but
@@ -193,7 +218,7 @@ func completeAttempt(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value auth
 // FailCallback makes an exchanging callback terminal and restartable.
 func (r *OAuthAttemptRepository) FailCallback(ctx context.Context, stateHash []byte, now time.Time) error {
 	_, err := r.pool.Exec(ctx, `UPDATE oauth_attempts SET status=$3,terminal_outcome=$3,terminal_route=$4,completed_at=$2
-		WHERE state_hash=$1 AND status=$5`, stateHash, now, attemptRestartRequired, auth.AuthorizationResultRoute, attemptExchanging)
+        WHERE state_hash=$1 AND status=$5`, stateHash, now, attemptRestartRequired, auth.AuthorizationResultRoute, attemptExchanging)
 	return err
 }
 
@@ -220,9 +245,9 @@ func nullableTime(value time.Time) any {
 // Create persists a new encrypted authorization attempt.
 func (r *OAuthAttemptRepository) Create(ctx context.Context, attempt auth.Attempt) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO oauth_attempts
-			(state_hash, nonce_hash, browser_binding_hash, pkce_verifier_encrypted, return_route, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)`,
+        INSERT INTO oauth_attempts
+            (state_hash, nonce_hash, browser_binding_hash, pkce_verifier_encrypted, return_route, expires_at)
+        VALUES ($1, $2, $3, $4, $5, $6)`,
 		attempt.StateHash, attempt.NonceHash, attempt.BrowserBindingHash, attempt.EncryptedVerifier,
 		attempt.ReturnRoute, attempt.ExpiresAt)
 	return err
@@ -238,11 +263,11 @@ func (r *OAuthAttemptRepository) Delete(ctx context.Context, stateHash []byte) e
 func (r *OAuthAttemptRepository) Claim(ctx context.Context, stateHash, bindingHash []byte, now time.Time) error {
 	var claimed time.Time
 	err := r.pool.QueryRow(ctx, `
-		UPDATE oauth_attempts
-		SET claimed_at = $3, status = $4
-		WHERE state_hash = $1 AND browser_binding_hash = $2
-		  AND status = $5 AND claimed_at IS NULL AND expires_at > $3
-		RETURNING claimed_at`, stateHash, bindingHash, now, attemptExchanging, attemptPending).Scan(&claimed)
+        UPDATE oauth_attempts
+        SET claimed_at = $3, status = $4
+        WHERE state_hash = $1 AND browser_binding_hash = $2
+          AND status = $5 AND claimed_at IS NULL AND expires_at > $3
+        RETURNING claimed_at`, stateHash, bindingHash, now, attemptExchanging, attemptPending).Scan(&claimed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return auth.ErrNotClaimable
 	}
@@ -252,9 +277,9 @@ func (r *OAuthAttemptRepository) Claim(ctx context.Context, stateHash, bindingHa
 // Cleanup removes expired, abandoned, and old terminal authorization attempts.
 func (r *OAuthAttemptRepository) Cleanup(ctx context.Context, now time.Time) (int64, error) {
 	command, err := r.pool.Exec(ctx, `
-		DELETE FROM oauth_attempts
-		WHERE (status = $2 AND expires_at <= $1)
-		   OR (status = $3 AND claimed_at <= $1 - interval '10 minutes')
-		   OR (status IN ($4, $5) AND completed_at <= $1 - interval '10 minutes')`, now, attemptPending, attemptExchanging, attemptSucceeded, attemptRestartRequired)
+        DELETE FROM oauth_attempts
+        WHERE (status = $2 AND expires_at <= $1)
+           OR (status = $3 AND claimed_at <= $1 - interval '10 minutes')
+           OR (status IN ($4, $5) AND completed_at <= $1 - interval '10 minutes')`, now, attemptPending, attemptExchanging, attemptSucceeded, attemptRestartRequired)
 	return command.RowsAffected(), err
 }
