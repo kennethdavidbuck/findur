@@ -133,7 +133,10 @@ assert.ok(inventoryRequests.filter(({ url }) => url === '/authorizations').lengt
 assert.ok(inventoryRequests.some(({ url }) => url === '/accounts'), 'successful bootstrap reaches the global account inventory')
 assert.ok(!journal.requests.some(({ request }) => /^\/authorizations\/[^/]+\/accounts/.test(request.url)), 'inventory never fans out into per-connection account requests')
 for (const providerRequest of inventoryRequests) {
-  assert.equal(providerRequest.headers.Authorization, 'Bearer synthetic-access-token')
+  assert.ok(
+    ['Bearer synthetic-access-token', 'Bearer synthetic-access-token-refreshed'].includes(providerRequest.headers.Authorization),
+    'inventory uses only server-held initial or rotated bearer tokens',
+  )
   for (const forbidden of ['clientId', 'consumerKey', 'userId', 'userSecret', 'timestamp', 'Signature']) assert.equal(providerRequest.headers[forbidden], undefined)
 }
 const accountDataRequests = journal.requests

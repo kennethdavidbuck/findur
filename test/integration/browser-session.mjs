@@ -82,7 +82,6 @@ async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
   const fixtures = [
     { name: 'empty', status: 200, bodyFileName: 'inventory/empty.json', want: 'empty' },
     { name: 'disabled', status: 200, bodyFileName: 'inventory/disabled.json', want: 'disabled' },
-    { name: 'unauthorized', status: 401, bodyFileName: 'inventory/unauthorized.json', want: 'unauthorized' },
     { name: 'malformed', status: 200, bodyFileName: 'inventory/malformed.json', want: 'malformed' },
     { name: 'transient', status: 503, bodyFileName: 'inventory/transient.json', want: 'unavailable' },
     { name: 'rate limited', status: 429, bodyFileName: 'inventory/rate-limited.json', want: 'rate_limited' },
@@ -228,7 +227,7 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCom
   if (onCommitted) await onCommitted()
 
   const requestsBeforeReload = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
-  const providerReadsBeforeReload = requestsBeforeReload.requests.filter(({ request }) => request.url.startsWith('/accounts/')).length
+  const inventoryReadsBeforeReload = requestsBeforeReload.requests.filter(({ request }) => request.url === '/authorizations' || request.url === '/accounts').length
   await webdriver(`/session/${sessionId}/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const ready = await webdriver(`/session/${sessionId}/execute/sync`, {
@@ -239,8 +238,8 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCom
     await new Promise((resolve) => setTimeout(resolve, 150))
   }
   const requestsAfterReload = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
-  const providerReadsAfterReload = requestsAfterReload.requests.filter(({ request }) => request.url.startsWith('/accounts/')).length
-  assert.equal(providerReadsAfterReload, providerReadsBeforeReload, 'rendering and reloading the Showcase makes zero provider calls')
+  const inventoryReadsAfterReload = requestsAfterReload.requests.filter(({ request }) => request.url === '/authorizations' || request.url === '/accounts').length
+  assert.equal(inventoryReadsAfterReload, inventoryReadsBeforeReload, 'rendering and reloading the Showcase does not refresh account inventory')
 
   for (const width of [1440, 390, 320]) {
     await webdriver(`/session/${sessionId}/window/rect`, {

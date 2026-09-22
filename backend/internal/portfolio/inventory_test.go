@@ -1,7 +1,6 @@
 package portfolio
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -13,11 +12,9 @@ import (
 
 func TestServiceClaimsOncePublishesAndServesPersistedSnapshot(t *testing.T) {
 	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
-	encrypted, _ := tokens.EncryptAccess(uuid.Nil, "access-token")
-	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1, UpdatedAt: now}, Claimed: true, EncryptedToken: encrypted, TokenVersion: 1}}
+	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1, UpdatedAt: now}, Claimed: true}}
 	provider := &providerStub{connections: []Connection{{ID: "connection", BrokerageLabel: "Broker", Status: "active", SyncMode: "delayed", Available: true, Accounts: []Account{{ID: "account"}}}}}
-	service, err := NewService(repository, provider, tokens, func() time.Time { return now }, time.Second)
+	service, err := NewService(repository, provider, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,11 +36,9 @@ func TestServicePersistsCategoricalProviderFailures(t *testing.T) {
 	for _, state := range []State{StateDisabled, StateUnauthorized, StateRateLimited, StateUnavailable, StateMalformed} {
 		t.Run(string(state), func(t *testing.T) {
 			now := time.Now().UTC()
-			tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
-			encrypted, _ := tokens.EncryptAccess(uuid.Nil, "access-token")
 			retryAt := now.Add(time.Minute)
-			repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1}, Claimed: true, EncryptedToken: encrypted, TokenVersion: 1}}
-			service, _ := NewService(repository, &providerStub{err: &ProviderError{State: state, RetryAt: &retryAt}}, tokens, func() time.Time { return now }, time.Second)
+			repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1}, Claimed: true}}
+			service, _ := NewService(repository, &providerStub{err: &ProviderError{State: state, RetryAt: &retryAt}}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second)
 			got, err := service.Get(context.Background(), auth.Actor{})
 			if err != nil || got.State != state {
 				t.Fatalf("snapshot=%+v err=%v", got, err)
@@ -57,11 +52,9 @@ func TestServicePersistsCategoricalProviderFailures(t *testing.T) {
 
 func TestServiceDiscardsPartialRowsOnBulkFailure(t *testing.T) {
 	now := time.Now().UTC()
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
-	encrypted, _ := tokens.EncryptAccess(uuid.Nil, "access-token")
-	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1}, Claimed: true, EncryptedToken: encrypted, TokenVersion: 1}}
+	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1}, Claimed: true}}
 	partial := []Connection{{ID: "connection", BrokerageLabel: "Broker", Status: "unavailable", SyncMode: "delayed"}}
-	service, _ := NewService(repository, &providerStub{connections: partial, err: &ProviderError{State: StateMalformed}}, tokens, func() time.Time { return now }, time.Second)
+	service, _ := NewService(repository, &providerStub{connections: partial, err: &ProviderError{State: StateMalformed}}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second)
 	got, err := service.Get(context.Background(), auth.Actor{})
 	if err != nil || got.State != StateMalformed || len(got.Connections) != 0 {
 		t.Fatalf("snapshot=%+v err=%v", got, err)
@@ -70,22 +63,19 @@ func TestServiceDiscardsPartialRowsOnBulkFailure(t *testing.T) {
 
 func TestServicePublishesEmptyWhenNoAccountsPassTheServerRules(t *testing.T) {
 	now := time.Now().UTC()
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
-	encrypted, _ := tokens.EncryptAccess(uuid.Nil, "access-token")
-	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1}, Claimed: true, EncryptedToken: encrypted, TokenVersion: 1}}
+	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1}, Claimed: true}}
 	provider := &providerStub{connections: []Connection{{ID: "connection", Status: ConnectionStatusActive, Available: true}}}
-	service, _ := NewService(repository, provider, tokens, func() time.Time { return now }, time.Second)
+	service, _ := NewService(repository, provider, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second)
 	got, err := service.Get(context.Background(), auth.Actor{})
 	if err != nil || got.State != StateEmpty || len(got.Connections) != 1 {
 		t.Fatalf("snapshot=%+v err=%v", got, err)
 	}
 }
 
-func TestServiceTreatsBadTokenEnvelopeAsUnauthorizedWithoutProviderCall(t *testing.T) {
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
-	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1}, Claimed: true, EncryptedToken: []byte("bad"), TokenVersion: 1}}
+func TestServiceTreatsCredentialFailureAsUnauthorizedWithoutProviderCall(t *testing.T) {
+	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 1}, Claimed: true}}
 	provider := &providerStub{}
-	service, _ := NewService(repository, provider, tokens, time.Now, time.Second)
+	service, _ := NewService(repository, provider, &credentialStub{err: auth.ErrReauthorizationRequired}, time.Now, time.Second)
 	got, err := service.Get(context.Background(), auth.Actor{})
 	if err != nil || got.State != StateUnauthorized || provider.calls != 0 {
 		t.Fatalf("snapshot=%+v calls=%d err=%v", got, provider.calls, err)
@@ -115,6 +105,18 @@ type providerStub struct {
 	err         error
 	calls       int
 	token       string
+}
+
+type credentialStub struct {
+	token string
+	err   error
+}
+
+func (s *credentialStub) Read(ctx context.Context, _ uuid.UUID, read func(context.Context, string) error) error {
+	if s.err != nil {
+		return s.err
+	}
+	return read(ctx, s.token)
 }
 
 func (p *providerStub) Load(_ context.Context, token string) ([]Connection, error) {

@@ -231,7 +231,12 @@ func buildPortfolioServices(cfg config.Config, pool *pgxpool.Pool, logger *slog.
 	if err != nil {
 		return portfolioComponents{}, err
 	}
-	inventory, err := portfolio.NewService(postgresadapter.NewInventoryRepository(pool), providerClient, tokens, time.Now, config.ProviderTimeout)
+	discovery := oidc.NewDiscoveryClient(cfg.Authorization.Issuer, &http.Client{Timeout: config.ProviderTimeout})
+	credentials, err := auth.NewCredentialSource(postgresadapter.NewCredentialRepository(pool), tokens, oidc.NewCallbackClient(discovery, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL), logger, time.Now, config.AuthorizationTimeout, 30*time.Second, config.AuthorizationTimeout)
+	if err != nil {
+		return portfolioComponents{}, err
+	}
+	inventory, err := portfolio.NewService(postgresadapter.NewInventoryRepository(pool), providerClient, credentials, time.Now, config.ProviderTimeout)
 	if err != nil {
 		return portfolioComponents{}, err
 	}
@@ -239,7 +244,7 @@ func buildPortfolioServices(cfg config.Config, pool *pgxpool.Pool, logger *slog.
 	if err != nil {
 		return portfolioComponents{}, err
 	}
-	syncService, err := portfolio.NewSyncService(postgresadapter.NewSyncRepository(pool), providerClient, tokens, time.Now, config.ProviderTimeout, logger)
+	syncService, err := portfolio.NewSyncService(postgresadapter.NewSyncRepository(pool), providerClient, credentials, time.Now, config.ProviderTimeout, logger)
 	if err != nil {
 		return portfolioComponents{}, err
 	}
@@ -258,7 +263,12 @@ func buildInventory(cfg config.Config, pool *pgxpool.Pool) (*portfolio.Service, 
 	if err != nil {
 		return nil, err
 	}
-	return portfolio.NewService(postgresadapter.NewInventoryRepository(pool), providerClient, tokens, time.Now, config.ProviderTimeout)
+	discovery := oidc.NewDiscoveryClient(cfg.Authorization.Issuer, &http.Client{Timeout: config.ProviderTimeout})
+	credentials, err := auth.NewCredentialSource(postgresadapter.NewCredentialRepository(pool), tokens, oidc.NewCallbackClient(discovery, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL), slog.Default(), time.Now, config.AuthorizationTimeout, 30*time.Second, config.AuthorizationTimeout)
+	if err != nil {
+		return nil, err
+	}
+	return portfolio.NewService(postgresadapter.NewInventoryRepository(pool), providerClient, credentials, time.Now, config.ProviderTimeout)
 }
 
 type authorizationComponents struct {

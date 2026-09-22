@@ -133,8 +133,6 @@ type Snapshot struct {
 type Preparation struct {
 	Snapshot
 	Claimed        bool
-	EncryptedToken []byte
-	TokenVersion   int
 	ClaimExpiresAt *time.Time
 }
 
@@ -149,6 +147,11 @@ type Provider interface {
 	Load(context.Context, string) ([]Connection, error)
 }
 
+// CredentialReader centrally supplies tokens and retries one safe unauthorized read.
+type CredentialReader interface {
+	Read(context.Context, uuid.UUID, func(context.Context, string) error) error
+}
+
 // ProviderError contains only a categorical failure and safe retry timing.
 type ProviderError struct {
 	State   State
@@ -157,21 +160,24 @@ type ProviderError struct {
 
 func (e *ProviderError) Error() string { return "portfolio provider " + string(e.State) }
 
+// Unauthorized lets the credential source classify a safe provider-read 401.
+func (e *ProviderError) Unauthorized() bool { return e != nil && e.State == StateUnauthorized }
+
 // Service coordinates claim, provider work outside a transaction, and guarded publication.
 type Service struct {
-	repository Repository
-	provider   Provider
-	tokens     *auth.TokenCipher
-	clock      func() time.Time
-	timeout    time.Duration
+	repository  Repository
+	provider    Provider
+	credentials CredentialReader
+	clock       func() time.Time
+	timeout     time.Duration
 }
 
 // NewService validates and constructs the portfolio inventory orchestrator.
-func NewService(repository Repository, provider Provider, tokens *auth.TokenCipher, clock func() time.Time, timeout time.Duration) (*Service, error) {
-	if repository == nil || provider == nil || tokens == nil || clock == nil || timeout <= 0 {
+func NewService(repository Repository, provider Provider, credentials CredentialReader, clock func() time.Time, timeout time.Duration) (*Service, error) {
+	if repository == nil || provider == nil || credentials == nil || clock == nil || timeout <= 0 {
 		return nil, errors.New("incomplete portfolio service configuration")
 	}
-	return &Service{repository: repository, provider: provider, tokens: tokens, clock: clock, timeout: timeout}, nil
+	return &Service{repository: repository, provider: provider, credentials: credentials, clock: clock, timeout: timeout}, nil
 }
 
 // Get returns a persisted snapshot, claiming the first bootstrap only when none exists.
@@ -190,15 +196,20 @@ func (s *Service) load(ctx context.Context, actor auth.Actor, retry bool) (Snaps
 	if err != nil || !preparation.Claimed {
 		return preparation.Snapshot, err
 	}
-	token, err := s.tokens.DecryptAccess(actor.UserID(), preparation.TokenVersion, preparation.EncryptedToken)
-	if err != nil || token == "" {
-		return s.finalizeFailure(ctx, actor.UserID(), preparation.Generation, StateUnauthorized, nil, nil)
-	}
 	opCtx, cancel := context.WithTimeout(ctx, s.timeout)
-	connections, providerErr := s.provider.Load(opCtx, token)
+	var connections []Connection
+	read := func(callCtx context.Context, token string) error {
+		var loadErr error
+		connections, loadErr = s.provider.Load(callCtx, token)
+		return loadErr
+	}
+	providerErr := s.credentials.Read(opCtx, actor.UserID(), read)
 	cancel()
 	if providerErr != nil {
 		state, retryAt := StateUnavailable, (*time.Time)(nil)
+		if errors.Is(providerErr, auth.ErrReauthorizationRequired) {
+			state = StateUnauthorized
+		}
 		var categorized *ProviderError
 		if errors.As(providerErr, &categorized) && validFailureState(categorized.State) {
 			state, retryAt = categorized.State, categorized.RetryAt

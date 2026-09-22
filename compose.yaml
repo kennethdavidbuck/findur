@@ -148,6 +148,21 @@ services:
       browser:
         condition: service_healthy
 
+  integration-go:
+    build:
+      context: .
+      target: backend-build
+      args:
+        BUILD_SHA: ${BUILD_SHA:-0123456789abcdef0123456789abcdef01234567}
+    profiles: ["test"]
+    working_dir: /src/backend
+    command: ["go", "test", "-count=1", "-run", "TestWireMockCredential", "./internal/platform/oidc"]
+    environment:
+      WIREMOCK_URL: http://wiremock:8080
+    depends_on:
+      wiremock:
+        condition: service_healthy
+
   browser:
     image: selenium/standalone-chromium:4.29.0-20250222
     profiles: ["test"]

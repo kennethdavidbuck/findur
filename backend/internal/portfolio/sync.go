@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 )
 
 const (
@@ -29,8 +28,6 @@ type SyncClaim struct {
 	InclusionVersion    int64
 	LifecycleGeneration int64
 	InventoryGeneration int64
-	EncryptedToken      []byte
-	TokenVersion        int
 	Resource            AccountResource
 	ChangeID            *uuid.UUID
 }
@@ -45,20 +42,20 @@ type SyncRepository interface {
 
 // SyncService drains due account work within a bounded pass.
 type SyncService struct {
-	repository SyncRepository
-	provider   AccountDataProvider
-	tokens     *auth.TokenCipher
-	clock      func() time.Time
-	timeout    time.Duration
-	logger     *slog.Logger
+	repository  SyncRepository
+	provider    AccountDataProvider
+	credentials CredentialReader
+	clock       func() time.Time
+	timeout     time.Duration
+	logger      *slog.Logger
 }
 
 // NewSyncService validates and constructs the scheduled synchronization service.
-func NewSyncService(repository SyncRepository, provider AccountDataProvider, tokens *auth.TokenCipher, clock func() time.Time, timeout time.Duration, logger *slog.Logger) (*SyncService, error) {
-	if repository == nil || provider == nil || tokens == nil || clock == nil || timeout <= 0 || logger == nil {
+func NewSyncService(repository SyncRepository, provider AccountDataProvider, credentials CredentialReader, clock func() time.Time, timeout time.Duration, logger *slog.Logger) (*SyncService, error) {
+	if repository == nil || provider == nil || credentials == nil || clock == nil || timeout <= 0 || logger == nil {
 		return nil, errors.New("incomplete portfolio sync configuration")
 	}
-	return &SyncService{repository: repository, provider: provider, tokens: tokens, clock: clock, timeout: timeout, logger: logger}, nil
+	return &SyncService{repository: repository, provider: provider, credentials: credentials, clock: clock, timeout: timeout, logger: logger}, nil
 }
 
 // RunPass serially drains work until empty, canceled, or the pass deadline.
@@ -104,24 +101,24 @@ func (s *SyncService) syncClaim(ctx context.Context, claim SyncClaim) {
 	started := s.clock().UTC()
 	claimAttrs := syncClaimAttributes(claim)
 	s.logger.Info("portfolio sync claimed", append([]any{"event", "portfolio_sync_claimed"}, claimAttrs...)...)
-	token, err := s.tokens.DecryptAccess(claim.Owner, claim.TokenVersion, claim.EncryptedToken)
 	var data *AccountData
 	failure := ""
 	var retryAt *time.Time
-	if err != nil || token == "" {
-		failure = "authorization_required"
-	} else {
-		opCtx, cancel := context.WithTimeout(ctx, s.timeout)
-		loaded, providerErr := s.provider.LoadAccountResource(opCtx, token, claim.AccountID, claim.Resource, s.clock().UTC())
-		cancel()
-		if providerErr != nil {
-			failure = inclusionFailureReason(providerErr)
-			var categorized *ProviderError
-			if errors.As(providerErr, &categorized) {
-				retryAt = categorized.RetryAt
-			}
-		} else {
+	opCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	read := func(callCtx context.Context, token string) error {
+		loaded, loadErr := s.provider.LoadAccountResource(callCtx, token, claim.AccountID, claim.Resource, s.clock().UTC())
+		if loadErr == nil {
 			data = &loaded
+		}
+		return loadErr
+	}
+	providerErr := s.credentials.Read(opCtx, claim.Owner, read)
+	cancel()
+	if providerErr != nil {
+		failure = inclusionFailureReason(providerErr)
+		var categorized *ProviderError
+		if errors.As(providerErr, &categorized) {
+			retryAt = categorized.RetryAt
 		}
 	}
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout)

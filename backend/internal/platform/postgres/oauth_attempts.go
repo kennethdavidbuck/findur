@@ -146,13 +146,33 @@ func upsertActiveIdentity(ctx context.Context, tx pgx.Tx, value auth.Finalizatio
 func storeAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value auth.Finalization) error {
 	_, err := tx.Exec(ctx, `INSERT INTO provider_authorizations(user_id,provider,access_token_encrypted,refresh_token_encrypted,envelope_version,token_expires_at)
 		VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,provider) DO UPDATE SET access_token_encrypted=EXCLUDED.access_token_encrypted,
-		refresh_token_encrypted=EXCLUDED.refresh_token_encrypted,envelope_version=EXCLUDED.envelope_version,token_expires_at=EXCLUDED.token_expires_at,updated_at=now()`,
+		refresh_token_encrypted=EXCLUDED.refresh_token_encrypted,envelope_version=EXCLUDED.envelope_version,token_expires_at=EXCLUDED.token_expires_at,
+		lifecycle_status='active',lifecycle_generation=provider_authorizations.lifecycle_generation+1,
+		credential_version=provider_authorizations.credential_version+1,refresh_lease_id=NULL,refresh_lease_expires_at=NULL,updated_at=now()`,
 		owner, value.Provider, value.AccessToken, nullableBytes(value.RefreshToken), value.EnvelopeVersion, nullableTime(value.TokenExpiresAt))
 	if err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE portfolio_inclusion_state
 		SET lifecycle_generation=lifecycle_generation+1,updated_at=$2 WHERE user_id=$1`, owner, value.CompletedAt); err != nil {
+		return err
+	}
+	// The requested selection remains durable across reauthorization. Move its
+	// pending worker change to the new lifecycle while old in-flight finalizers
+	// retain their previous generation and fail their publication guard.
+	if _, err = tx.Exec(ctx, `UPDATE portfolio_inclusion_changes change
+		SET lifecycle_generation=inclusion.lifecycle_generation,updated_at=$2
+		FROM portfolio_inclusion_state inclusion
+		WHERE change.user_id=$1 AND inclusion.user_id=change.user_id
+		AND change.status='pending' AND change.result_version=inclusion.version`, owner, value.CompletedAt); err != nil {
+		return err
+	}
+	// A prior authorization failure may have left account resources in backoff.
+	// Fresh credentials make that delay obsolete; the worker may claim them again.
+	if _, err = tx.Exec(ctx, `UPDATE portfolio_account_sync_state
+		SET next_attempt_at=NULL,failure_count=0,claim_id=NULL,claim_expires_at=NULL,
+		claimed_resource=NULL,claimed_change_id=NULL,updated_at=$2
+		WHERE user_id=$1 AND (next_attempt_at IS NOT NULL OR claim_id IS NOT NULL)`, owner, value.CompletedAt); err != nil {
 		return err
 	}
 	// Returning logins rotate credentials and fence in-flight portfolio work, but

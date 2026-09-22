@@ -79,7 +79,7 @@ func selectDueSyncClaim(ctx context.Context, tx pgx.Tx, now time.Time, refreshAg
 func selectPendingInclusionClaim(ctx context.Context, tx pgx.Tx, now time.Time) (portfolio.SyncClaim, error) {
 	var claim portfolio.SyncClaim
 	err := tx.QueryRow(ctx, `SELECT sync.user_id,sync.account_id,change.result_version,change.lifecycle_generation,
-		inventory.current_generation,provider_auth.access_token_encrypted,provider_auth.envelope_version,
+		inventory.current_generation,
 		CASE
 			WHEN balance.version_id IS NULL OR sync.balances_success_at IS NULL THEN 'balances'
 			WHEN position.version_id IS NULL OR sync.positions_success_at IS NULL THEN 'positions'
@@ -96,7 +96,7 @@ func selectPendingInclusionClaim(ctx context.Context, tx pgx.Tx, now time.Time) 
 		JOIN portfolio_inventory_connections connection
 		  ON connection.user_id=account.user_id AND connection.generation=account.generation AND connection.connection_id=account.connection_id
 		JOIN users app_user ON app_user.id=sync.user_id AND app_user.active
-		JOIN provider_authorizations provider_auth ON provider_auth.user_id=sync.user_id AND provider_auth.provider=$1
+		JOIN provider_authorizations provider_auth ON provider_auth.user_id=sync.user_id AND provider_auth.provider=$1 AND provider_auth.lifecycle_status='active'
 		LEFT JOIN portfolio_balance_heads balance ON balance.user_id=sync.user_id AND balance.account_id=sync.account_id
 		LEFT JOIN portfolio_position_heads position ON position.user_id=sync.user_id AND position.account_id=sync.account_id
 		WHERE change.status='pending' AND sync.initialized_at IS NULL
@@ -105,14 +105,14 @@ func selectPendingInclusionClaim(ctx context.Context, tx pgx.Tx, now time.Time) 
 		AND (sync.claim_expires_at IS NULL OR sync.claim_expires_at<=$2)
 		ORDER BY change.created_at,sync.updated_at
 		FOR UPDATE OF sync SKIP LOCKED LIMIT 1`, auth.SnapTradeProvider, now).Scan(
-		&claim.Owner, &claim.AccountID, &claim.InclusionVersion, &claim.LifecycleGeneration, &claim.InventoryGeneration, &claim.EncryptedToken, &claim.TokenVersion, &claim.Resource, &claim.ChangeID)
+		&claim.Owner, &claim.AccountID, &claim.InclusionVersion, &claim.LifecycleGeneration, &claim.InventoryGeneration, &claim.Resource, &claim.ChangeID)
 	return claim, err
 }
 
 func selectScheduledSyncClaim(ctx context.Context, tx pgx.Tx, now time.Time, refreshAge time.Duration) (portfolio.SyncClaim, error) {
 	var claim portfolio.SyncClaim
 	err := tx.QueryRow(ctx, `SELECT sync.user_id,sync.account_id,included.inclusion_version,inclusion.lifecycle_generation,
-		inventory.current_generation,provider_auth.access_token_encrypted,provider_auth.envelope_version,
+		inventory.current_generation,
 		CASE
 			WHEN balance.version_id IS NULL OR sync.balances_success_at IS NULL OR sync.balances_success_at<=sync.last_success_at THEN 'balances'
 			WHEN position.version_id IS NULL OR sync.positions_success_at IS NULL OR sync.positions_success_at<=sync.last_success_at THEN 'positions'
@@ -127,7 +127,7 @@ func selectScheduledSyncClaim(ctx context.Context, tx pgx.Tx, now time.Time, ref
 		JOIN portfolio_inventory_connections connection
 		  ON connection.user_id=account.user_id AND connection.generation=account.generation AND connection.connection_id=account.connection_id
 		JOIN users app_user ON app_user.id=sync.user_id AND app_user.active
-		JOIN provider_authorizations provider_auth ON provider_auth.user_id=sync.user_id AND provider_auth.provider=$1
+		JOIN provider_authorizations provider_auth ON provider_auth.user_id=sync.user_id AND provider_auth.provider=$1 AND provider_auth.lifecycle_status='active'
 		LEFT JOIN portfolio_balance_heads balance ON balance.user_id=sync.user_id AND balance.account_id=sync.account_id
 		LEFT JOIN portfolio_position_heads position ON position.user_id=sync.user_id AND position.account_id=sync.account_id
 		LEFT JOIN portfolio_activity_heads activity ON activity.user_id=sync.user_id AND activity.account_id=sync.account_id
@@ -137,7 +137,7 @@ func selectScheduledSyncClaim(ctx context.Context, tx pgx.Tx, now time.Time, ref
 		AND (sync.last_success_at IS NULL OR sync.last_success_at<=$3 OR balance.version_id IS NULL OR position.version_id IS NULL OR activity.version_id IS NULL)
 		ORDER BY sync.last_success_at NULLS FIRST,sync.updated_at
 		FOR UPDATE OF sync SKIP LOCKED LIMIT 1`, auth.SnapTradeProvider, now, now.Add(-refreshAge)).Scan(
-		&claim.Owner, &claim.AccountID, &claim.InclusionVersion, &claim.LifecycleGeneration, &claim.InventoryGeneration, &claim.EncryptedToken, &claim.TokenVersion, &claim.Resource, &claim.ChangeID)
+		&claim.Owner, &claim.AccountID, &claim.InclusionVersion, &claim.LifecycleGeneration, &claim.InventoryGeneration, &claim.Resource, &claim.ChangeID)
 	return claim, err
 }
 

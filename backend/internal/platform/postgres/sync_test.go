@@ -163,6 +163,54 @@ func TestSyncRepositoryLeasesGloballyRetriesAndPublishesAccumulatedData(t *testi
 	}
 }
 
+func TestSyncRepositoryPausesReauthorizationAndFreshCallbackResumesPendingClaim(t *testing.T) {
+	fixture := newRepositoryFixture(t)
+	fixture.reset(t)
+	owner := inclusionOwnerWithInventory(t, fixture, 247, "refresh-paused-owner")
+	publishInclusionInventory(t, fixture, owner, []portfolio.Account{{ID: "account-1", Category: portfolio.AccountCategoryInvestment, Type: "Margin", MaskedLabel: "First (•••• 1001)", Available: true, Eligible: true, Selectable: true, UsabilityReason: portfolio.UsabilityReady, SyncState: portfolio.AccountSyncStateComplete}})
+	prepared, err := postgresadapter.NewInclusionRepository(fixture.pool).PrepareInclusion(fixture.ctx, owner, 0, "paused-refresh", []string{"account-1"}, fixture.now)
+	if err != nil || !prepared.Claimed {
+		t.Fatalf("prepared=%+v err=%v", prepared, err)
+	}
+	if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_account_sync_state
+		SET next_attempt_at=$3,failure_count=3 WHERE user_id=$1 AND account_id=$2`,
+		owner, "account-1", fixture.now.Add(30*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	credential, found, err := postgresadapter.NewCredentialRepository(fixture.pool).ReadCredential(fixture.ctx, owner)
+	if err != nil || !found {
+		t.Fatalf("credential found=%v err=%v", found, err)
+	}
+	if err := postgresadapter.NewCredentialRepository(fixture.pool).RequireReauthorization(fixture.ctx, owner, nil, credential.Version, fixture.now); err != nil {
+		t.Fatal(err)
+	}
+	syncRepository := postgresadapter.NewSyncRepository(fixture.pool)
+	if claim, err := syncRepository.ClaimDue(fixture.ctx, fixture.now, 24*time.Hour, time.Minute); err != nil || claim != nil {
+		t.Fatalf("paused claim=%+v err=%v", claim, err)
+	}
+
+	attempt := fixture.createAttempt(t, 248, fixture.now.Add(10*time.Minute))
+	fixture.claimCallback(t, attempt)
+	fresh := finalization(attempt.StateHash, owner, fixture.now.Add(time.Minute), 249)
+	fresh.Subject = "refresh-paused-owner"
+	if err := fixture.repository.FinalizeCallback(fixture.ctx, fresh); err != nil {
+		t.Fatal(err)
+	}
+	var nextAttempt *time.Time
+	var failures int
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT next_attempt_at,failure_count FROM portfolio_account_sync_state
+		WHERE user_id=$1 AND account_id=$2`, owner, "account-1").Scan(&nextAttempt, &failures); err != nil {
+		t.Fatal(err)
+	}
+	if nextAttempt != nil || failures != 0 {
+		t.Fatalf("fresh grant retained sync backoff: next=%v failures=%d", nextAttempt, failures)
+	}
+	claim, err := syncRepository.ClaimDue(fixture.ctx, fixture.now.Add(time.Minute), 24*time.Hour, time.Minute)
+	if err != nil || claim == nil || claim.ChangeID == nil || *claim.ChangeID != prepared.ChangeID {
+		t.Fatalf("resumed claim=%+v err=%v", claim, err)
+	}
+}
+
 func activityRange(start time.Time, first, end int) []portfolio.Activity {
 	activities := make([]portfolio.Activity, 0, end-first)
 	for index := first; index < end; index++ {
