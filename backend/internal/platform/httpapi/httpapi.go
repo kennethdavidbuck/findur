@@ -66,14 +66,6 @@ func requestLogMetadataFromContext(ctx context.Context) *requestLogMetadata {
 	return metadata
 }
 
-func requestIDFromContext(ctx context.Context) string {
-	metadata := requestLogMetadataFromContext(ctx)
-	if metadata == nil {
-		return ""
-	}
-	return metadata.snapshot().requestID
-}
-
 func (m *requestLogMetadata) snapshot() requestLogMetadataSnapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -106,19 +98,20 @@ func setSnapTradeAccountIDs(ctx context.Context, accountIDs []string) {
 	metadata.mu.Unlock()
 }
 
-// RequestLogHandler adds approved request metadata to context-aware slog records.
+// requestLogHandler adds approved request metadata to context-aware slog records.
 // Its reserved keys cannot be supplied by callers on request-scoped records.
-type RequestLogHandler struct{ next slog.Handler }
+type requestLogHandler struct{ next slog.Handler }
 
-func NewRequestLogHandler(next slog.Handler) *RequestLogHandler {
-	return &RequestLogHandler{next: next}
+// NewRequestLogHandler wraps a slog handler with approved request metadata enrichment.
+func NewRequestLogHandler(next slog.Handler) slog.Handler {
+	return &requestLogHandler{next: next}
 }
 
-func (h *RequestLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+func (h *requestLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	return h.next.Enabled(ctx, level)
 }
 
-func (h *RequestLogHandler) Handle(ctx context.Context, record slog.Record) error {
+func (h *requestLogHandler) Handle(ctx context.Context, record slog.Record) error {
 	metadata := requestLogMetadataFromContext(ctx)
 	if metadata == nil {
 		return h.next.Handle(ctx, record)
@@ -137,12 +130,12 @@ func (h *RequestLogHandler) Handle(ctx context.Context, record slog.Record) erro
 	return h.next.Handle(ctx, record)
 }
 
-func (h *RequestLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &RequestLogHandler{next: h.next.WithAttrs(withoutReservedAttributes(attrs))}
+func (h *requestLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &requestLogHandler{next: h.next.WithAttrs(withoutReservedAttributes(attrs))}
 }
 
-func (h *RequestLogHandler) WithGroup(name string) slog.Handler {
-	return &RequestLogHandler{next: h.next.WithGroup(name)}
+func (h *requestLogHandler) WithGroup(name string) slog.Handler {
+	return &requestLogHandler{next: h.next.WithGroup(name)}
 }
 
 func withoutReservedRequestLogAttributes(record slog.Record) slog.Record {
