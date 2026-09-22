@@ -334,13 +334,13 @@ describe('public site', () => {
   })
 
   it('enables staged consent only after the server reports authorization available', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: false })))
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
 
     fireEvent.click(screen.getAllByRole('link', { name: 'Log in' })[0])
 
-    const heading = screen.getByRole('heading', { level: 1, name: 'Log in to Findur.' })
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Log in to Findur.' })
     await waitFor(() => expect(heading).toHaveFocus())
     expect(window.location.pathname).toBe('/connect')
     expect(screen.getByText(/No account is included by default/)).toBeVisible()
@@ -354,6 +354,45 @@ describe('public site', () => {
     expect(screen.getByText(/deletes your complete account from app-controlled active storage/)).toBeVisible()
 	await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with SnapTrade' })).toBeEnabled())
 	expect(fetchMock).toHaveBeenCalledWith('/api/auth/status', expect.objectContaining({ cache: 'no-store', credentials: 'same-origin' }))
+  })
+
+  it('sends an active session from staged consent to the portfolio and removes the authorization action', async () => {
+    window.history.replaceState(null, '', '/connect')
+    const statusResolvers: Array<(response: Response) => void> = []
+    const fetchMock = vi.fn().mockImplementation((path: string) => {
+      if (path === '/api/auth/status') return new Promise<Response>((resolve) => { statusResolvers.push(resolve) })
+      if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 1, name: 'Log in to Findur.' })).not.toBeInTheDocument()
+    await waitFor(() => expect(statusResolvers.length).toBeGreaterThan(0))
+    statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true })))
+    await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+    expect(document.querySelector('form[action="/api/auth/snaptrade/authorize"]')).toBeNull()
+  })
+
+  it('keeps the public page visible while the Login link checks an active session', async () => {
+    const statusResolvers: Array<(response: Response) => void> = []
+    const fetchMock = vi.fn().mockImplementation((path: string) => {
+      if (path === '/api/auth/status') return new Promise<Response>((resolve) => { statusResolvers.push(resolve) })
+      if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    fireEvent.click(screen.getAllByRole('link', { name: 'Log in' })[0])
+
+    expect(window.location.pathname).toBe('/')
+    expect(screen.getByRole('heading', { level: 1, name: 'A dating app where portfolios start the conversation.' })).toBeVisible()
+    await waitFor(() => expect(statusResolvers.length).toBeGreaterThan(0))
+    statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true })))
+    await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
   })
 
 	it('rejects a forged success URL and trusts only server session status', async () => {
@@ -1196,7 +1235,7 @@ describe('public site', () => {
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: false, authenticated: false }), { status: 200 })))
 		window.history.replaceState(null, '', '/connect')
 		render(<App />)
-		const action = screen.getByRole('button', { name: 'Continue with SnapTrade' })
+		const action = await screen.findByRole('button', { name: 'Continue with SnapTrade' })
 		expect(action).toBeDisabled()
 		expect(await screen.findByText(/Login is unavailable right now/)).toBeVisible()
 		expect(action).toHaveAccessibleDescription(/Login is unavailable right now/)
@@ -1226,7 +1265,7 @@ describe('public site', () => {
     window.history.replaceState(null, '', '/connect')
 	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200 })); vi.stubGlobal('fetch', fetchMock)
     render(<App />)
-    fireEvent.click(screen.getByRole('link', { name: 'Return home' }))
+    fireEvent.click(await screen.findByRole('link', { name: 'Return home' }))
     expect(window.location.pathname).toBe('/')
 	await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 	expect(fetchMock).toHaveBeenCalledWith('/api/auth/status', expect.any(Object))

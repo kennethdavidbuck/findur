@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { useAuthorizationStatus } from './auth-status'
+import { getAuthorizationStatus, useAuthorizationStatus } from './auth-status'
 import { AuthenticatedLayout, type ProtectedRoute } from './components/AuthenticatedLayout'
 import { PublicLayout } from './components/PublicLayout'
 import { I18nProvider, useI18n } from './i18n'
@@ -58,11 +58,19 @@ function PublicApp({ route, onNavigate }: { route: PublicRoute; onNavigate: (rou
   }, [route])
 
   if (route === '/__status') return <StatusPage />
-  const navigatePublic = (next: '/' | '/about' | '/connect') => onNavigate(next)
+  const navigatePublic = (next: '/' | '/about' | '/connect') => {
+    if (next !== '/connect') {
+      onNavigate(next)
+      return
+    }
+    void getAuthorizationStatus()
+      .then((status) => onNavigate(status.authenticated ? '/portfolio' : '/connect', status.authenticated))
+      .catch(() => onNavigate('/connect'))
+  }
   return (
     <PublicLayout route={route} onNavigate={navigatePublic}>
       {route === '/about' ? <AboutPage headingRef={headingRef} onNavigate={navigatePublic} />
-        : route === '/connect' ? <ConsentPage headingRef={headingRef} onNavigate={navigatePublic} />
+        : route === '/connect' ? <ConsentPage headingRef={headingRef} onNavigate={navigatePublic} onAuthenticated={() => onNavigate('/portfolio', true)} />
           : <LandingPage headingRef={headingRef} onNavigate={navigatePublic} />}
     </PublicLayout>
   )
