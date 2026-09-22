@@ -284,12 +284,15 @@ func normalizeAccount(raw providergenerated.Account, connectionID string) (portf
 		}
 	}
 
-	result.Selectable = result.Available && (statusOpen || !statusKnown) &&
+	categoryUnspecified := raw.AccountCategory == nil
+	result.Eligible = result.Available && (statusOpen || !statusKnown) &&
 		result.Category == portfolio.AccountCategoryInvestment && result.SyncState == portfolio.AccountSyncStateComplete
-	result.Eligible = result.Selectable
+	result.Selectable = result.Available && (statusOpen || !statusKnown) &&
+		(result.Category == portfolio.AccountCategoryInvestment || categoryUnspecified) &&
+		result.SyncState == portfolio.AccountSyncStateComplete
 	closed := raw.Status != nil && *raw.Status == providergenerated.Closed
 	result.UsabilityReason = accountUsabilityReason(result, statusKnown, closed)
-	if result.Selectable {
+	if result.Eligible {
 		result.UsabilityReason = portfolio.UsabilityReady
 	}
 	return result, true

@@ -38,9 +38,9 @@ export function largeInventoryFixture() {
   }))
   return {
     connections, accounts,
-    expected: { connections: 50, accounts: 1000, normalized: 392, eligible: 392, selectable: 392, visible: 392, disabled: 0, hidden: 608,
+    expected: { connections: 50, accounts: 1000, normalized: 441, eligible: 392, selectable: 441, visible: 441, disabled: 0, hidden: 559,
       // Independent oracle: these slots alone satisfy the documented rules.
-      accountIds: connections.slice(0, 49).flatMap((_, index) => [4, 6, 14, 15, 16, 17, 18, 19].map((slot) => id('b', index * 20 + slot))) },
+      accountIds: connections.slice(0, 49).flatMap((_, index) => [4, 5, 6, 14, 15, 16, 17, 18, 19].map((slot) => id('b', index * 20 + slot))) },
   }
 }
 

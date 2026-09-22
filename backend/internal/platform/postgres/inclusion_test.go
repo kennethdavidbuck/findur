@@ -113,13 +113,8 @@ func TestAccountInclusionMigrationBackfillsExistingInventory(t *testing.T) {
 		t.Fatalf("backfilled identity connection=%q first=%v last=%v", connectionID, identityFirst, identityLast)
 	}
 	repository := postgresadapter.NewInclusionRepository(fixture.pool)
-	// The historical migration remains unchanged; admission applies the current
-	// investment-only rule even though its legacy unknown-category flag is true.
-	if _, err := repository.PrepareInclusion(fixture.ctx, owner, 0, "reject-upgraded-unknown", []string{"provisional-category-account"}, fixture.now); !errors.Is(err, portfolio.ErrInvalidAccountSelection) {
-		t.Fatalf("legacy unknown-category selection error=%v", err)
-	}
-	prepared, err := repository.PrepareInclusion(fixture.ctx, owner, 0, "upgraded-selectable", []string{"ready-account", "provisional-status-account"}, fixture.now)
-	if err != nil || !prepared.Claimed || len(prepared.Additions) != 2 {
+	prepared, err := repository.PrepareInclusion(fixture.ctx, owner, 0, "upgraded-selectable", []string{"ready-account", "provisional-category-account", "provisional-status-account"}, fixture.now)
+	if err != nil || !prepared.Claimed || len(prepared.Additions) != 3 {
 		t.Fatalf("upgraded selectable accounts remained blocked: preparation=%+v err=%v", prepared, err)
 	}
 }
@@ -545,10 +540,10 @@ func TestInclusionRepositoryRechecksLegacySelectionAndPreservesCommittedAccounts
 	if err != nil || before.Version != 0 || len(before.Committed) != 0 {
 		t.Fatalf("rejected selections changed membership: %+v err=%v", before, err)
 	}
-	targets := []string{"open-investment", "unspecified-status-investment"}
+	targets := []string{"open-investment", "unknown", "unspecified-status-investment"}
 	prepared, err := repository.PrepareInclusion(fixture.ctx, owner, 0, "admit-investments", targets, fixture.now)
-	if err != nil || !prepared.Claimed || len(prepared.Additions) != 2 {
-		t.Fatalf("approved investments preparation=%+v err=%v", prepared, err)
+	if err != nil || !prepared.Claimed || len(prepared.Additions) != 3 {
+		t.Fatalf("approved accounts preparation=%+v err=%v", prepared, err)
 	}
 	data := map[string]portfolio.AccountData{}
 	for _, id := range targets {
@@ -556,12 +551,12 @@ func TestInclusionRepositoryRechecksLegacySelectionAndPreservesCommittedAccounts
 	}
 	committed, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, data, "", fixture.now)
 	if err != nil || !accepted || !slices.Equal(committed.Committed, targets) {
-		t.Fatalf("approved investments committed=%+v accepted=%v err=%v", committed, accepted, err)
+		t.Fatalf("approved accounts committed=%+v accepted=%v err=%v", committed, accepted, err)
 	}
 
-	// An existing choice may become ineligible under a later policy/snapshot.
+	// An existing choice may become explicitly ineligible under a later snapshot.
 	// Hide it from inventory, but preserve membership and removal-only changes.
-	if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_inventory_accounts SET category='unknown' WHERE user_id=$1 AND account_id=ANY($2)`, owner, targets); err != nil {
+	if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_inventory_accounts SET category='deposit',usability_reason='unsupported_category' WHERE user_id=$1 AND account_id=ANY($2)`, owner, targets); err != nil {
 		t.Fatal(err)
 	}
 	reloaded, err := postgresadapter.NewInventoryRepository(fixture.pool).Prepare(fixture.ctx, owner, false, fixture.now)
