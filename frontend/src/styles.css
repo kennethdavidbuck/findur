@@ -574,6 +574,7 @@ p { line-height: 1.65; }
   text-decoration: underline;
   text-underline-offset: .2rem;
 }
+.text-link--refreshing, .text-link--refreshing:disabled { cursor: progress; }
 /* Portfolio Showcase follows the reference ledger grammar, not generic cards. */
 .showcase-reference { width: 100%; min-width: 0; }
 .showcase-reference .topline { display: flex; align-items: end; justify-content: space-between; gap: 1.25rem; }.showcase-reference .topline > div { min-width: 0; }.showcase-reference .topline h1 { margin: .45rem 0; font-size: clamp(2rem, 4vw, 2.5rem); font-weight: 400; letter-spacing: -.04em; }.showcase-reference .topline p:not(.eyebrow) { max-width: 34rem; margin: 0; color: var(--text-muted); font-size: .82rem; line-height: 1.55; }
