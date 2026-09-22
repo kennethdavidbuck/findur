@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useAuthorizationStatus } from './auth-status'
 import { AuthenticatedLayout, type ProtectedRoute } from './components/AuthenticatedLayout'
 import { PublicLayout } from './components/PublicLayout'
@@ -147,8 +147,8 @@ function OnboardingAccountSelection({ headingRef, onComplete, onReconnect, onSes
     return () => { active = false }
   }, [onComplete, onSessionExpired])
 
-  useEffect(() => {
-    if (!checking) requestAnimationFrame(() => headingRef.current?.focus())
+  useLayoutEffect(() => {
+    if (!checking) headingRef.current?.focus()
   }, [checking, headingRef])
 
   if (checking) return <main className="session-gate" role="status"><p>{messages.authenticated.checking}</p></main>
