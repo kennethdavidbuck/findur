@@ -29,7 +29,7 @@ slot matrix repeats in each connection so every expected inclusion is explicit:
 | 2 | Deposit account | No |
 | 3 | Initial holdings sync false | No |
 | 4 | Null status, investment, holdings ready, provider-masked number | Yes |
-| 5 | Null category | No |
+| 5 | Null category, otherwise ready | Yes, provisionally |
 | 6 | Null raw type and deprecated metadata | Yes |
 | 7 | Archived investment account | No |
 | 8 | Holdings unavailable, despite completed sync | No |
@@ -42,25 +42,26 @@ slot matrix repeats in each connection so every expected inclusion is explicit:
 | 15 | Investment account with raw type Cash | Yes |
 | 16–19 | Ordinary ready investment accounts | Yes |
 
-The independent expected-ID list contains slots 4, 6, and 14–19 in each of the
-49 active connections: **392 accepted accounts**. All 20 accounts in the disabled
+The independent expected-ID list contains slots 4–6 and 14–19 in each of the
+49 active connections: **441 accepted accounts**. All 20 accounts in the disabled
 connection are excluded.
 
 | Measurement | Expected count |
 | --- | ---: |
 | Provider accounts | 1,000 |
 | Connections | 50 |
-| Returned accounts | 392 |
-| Eligible / selectable / visible accounts | 392 |
+| Returned accounts | 441 |
+| Positively eligible accounts | 392 |
+| Selectable / visible accounts | 441 |
 | Visible disabled rows | 0 |
-| Accounts excluded on the server | 608 |
+| Accounts excluded on the server | 559 |
 
 The test first verifies that active connections containing only excluded accounts
 publish an empty inventory and display the matching empty-state message. It then
 loads the mixed fixture, checks the persisted normalized response,
 checks every account's connection assignment, complete masked label, and brokerage, loads
 the chooser, selects all, deselects all, scrolls to and clicks the last selectable
-account through WebDriver, and reviews all 392 selections. It verifies the request-journal delta is exactly
+account through WebDriver, and reviews all 441 selections. It verifies the request-journal delta is exactly
 two provider calls throughout this journey, with no per-connection account calls
 or financial-data calls. The smaller journey still covers saving through the UI
 and rendering the Showcase. Large-selection confirmation and its provider-call

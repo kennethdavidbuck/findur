@@ -26,8 +26,8 @@ func TestInventoryRepositoryFiltersLegacyCachedAccountsWithoutRetry(t *testing.T
 	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT count(*) FROM portfolio_inventory_accounts WHERE user_id=$1`, owner).Scan(&persistedCount); err != nil {
 		t.Fatal(err)
 	}
-	if persistedCount != len(excluded)+2 {
-		t.Fatalf("persisted accounts=%d, want %d", persistedCount, len(excluded)+2)
+	if persistedCount != len(excluded)+3 {
+		t.Fatalf("persisted accounts=%d, want %d", persistedCount, len(excluded)+3)
 	}
 	reloaded, err := postgresadapter.NewInventoryRepository(fixture.pool).Prepare(fixture.ctx, owner, false, fixture.now)
 	if err != nil || reloaded.Claimed || reloaded.State != portfolio.StateReady {
@@ -37,13 +37,20 @@ func TestInventoryRepositoryFiltersLegacyCachedAccountsWithoutRetry(t *testing.T
 	for _, connection := range reloaded.Connections {
 		for _, account := range connection.Accounts {
 			ids = append(ids, account.ID)
-			if !account.Eligible || !account.Selectable || account.UsabilityReason != portfolio.UsabilityReady {
-				t.Fatalf("accepted cached account does not project current eligibility: %+v", account)
+			if !account.Selectable {
+				t.Fatalf("accepted cached account is not selectable: %+v", account)
+			}
+			if account.Category == portfolio.AccountCategoryUnknown {
+				if account.Eligible || account.UsabilityReason != portfolio.UsabilityProvisionalCategory {
+					t.Fatalf("unknown-category account lost provisional semantics: %+v", account)
+				}
+			} else if !account.Eligible || account.UsabilityReason != portfolio.UsabilityReady {
+				t.Fatalf("investment account does not project current eligibility: %+v", account)
 			}
 		}
 	}
 	slices.Sort(ids)
-	if !slices.Equal(ids, []string{"open-investment", "unspecified-status-investment"}) {
+	if !slices.Equal(ids, []string{"open-investment", "unknown", "unspecified-status-investment"}) {
 		t.Fatalf("cached inventory accounts=%v", ids)
 	}
 	var historicalEligible bool
@@ -61,7 +68,7 @@ func TestInventoryRepositoryProjectsExcludedOnlyCachedHeadAsEmpty(t *testing.T) 
 	fixture.reset(t)
 	owner := inclusionOwnerWithInventory(t, fixture, 203, "excluded-only-inventory-owner")
 	publishLegacyEligibilityInventory(t, fixture, owner)
-	if _, err := fixture.pool.Exec(fixture.ctx, `DELETE FROM portfolio_inventory_accounts WHERE user_id=$1 AND account_id IN ('open-investment','unspecified-status-investment')`, owner); err != nil {
+	if _, err := fixture.pool.Exec(fixture.ctx, `DELETE FROM portfolio_inventory_accounts WHERE user_id=$1 AND account_id IN ('open-investment','unspecified-status-investment','unknown')`, owner); err != nil {
 		t.Fatal(err)
 	}
 	repository := postgresadapter.NewInventoryRepository(fixture.pool)
@@ -95,10 +102,11 @@ func TestInventoryRepositoryProjectsExcludedOnlyCachedHeadAsEmpty(t *testing.T) 
 func publishLegacyEligibilityInventory(t *testing.T, fixture *repositoryFixture, owner uuid.UUID) []string {
 	t.Helper()
 	base := portfolio.Account{Category: portfolio.AccountCategoryInvestment, Type: "Margin", MaskedLabel: "Synthetic investment", Available: true, Eligible: true, Selectable: true, UsabilityReason: portfolio.UsabilityReady, SyncState: portfolio.AccountSyncStateComplete}
-	open, unspecified := base, base
-	open.ID, unspecified.ID = "open-investment", "unspecified-status-investment"
+	open, unspecified, provisionalCategory := base, base, base
+	open.ID, unspecified.ID, provisionalCategory.ID = "open-investment", "unspecified-status-investment", "unknown"
 	unspecified.Eligible, unspecified.UsabilityReason = false, portfolio.UsabilityProvisionalStatus
-	active := portfolio.Connection{ID: "active", BrokerageLabel: "Synthetic Broker", Status: portfolio.ConnectionStatusActive, SyncMode: portfolio.SyncModeRealtime, Available: true, Eligible: true, Accounts: []portfolio.Account{open, unspecified}}
+	provisionalCategory.Category, provisionalCategory.Eligible, provisionalCategory.UsabilityReason = portfolio.AccountCategoryUnknown, false, portfolio.UsabilityProvisionalCategory
+	active := portfolio.Connection{ID: "active", BrokerageLabel: "Synthetic Broker", Status: portfolio.ConnectionStatusActive, SyncMode: portfolio.SyncModeRealtime, Available: true, Eligible: true, Accounts: []portfolio.Account{open, unspecified, provisionalCategory}}
 	var excluded []string
 	add := func(id string, change func(*portfolio.Account)) {
 		account := base
@@ -107,7 +115,7 @@ func publishLegacyEligibilityInventory(t *testing.T, fixture *repositoryFixture,
 		active.Accounts = append(active.Accounts, account)
 		excluded = append(excluded, id)
 	}
-	for _, category := range []portfolio.AccountCategory{portfolio.AccountCategoryUnknown, portfolio.AccountCategoryDeposit, portfolio.AccountCategoryCredit} {
+	for _, category := range []portfolio.AccountCategory{portfolio.AccountCategoryDeposit, portfolio.AccountCategoryCredit} {
 		add(string(category), func(account *portfolio.Account) { account.Category = category })
 	}
 	for _, syncState := range []portfolio.AccountSyncState{portfolio.AccountSyncStatePending, portfolio.AccountSyncStateUnavailable, portfolio.AccountSyncStateUnknown} {

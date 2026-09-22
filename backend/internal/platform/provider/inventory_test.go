@@ -107,10 +107,11 @@ func TestInventoryPreservesAccountUsabilityPrecedence(t *testing.T) {
 	for _, test := range []struct {
 		name, accounts string
 		want           portfolio.UsabilityReason
+		eligible       bool
 		selectable     bool
 	}{
-		{name: "missing status", accounts: strings.Replace(accounts, `"status": "open",`, "", 1), want: portfolio.UsabilityReady, selectable: true},
-		{name: "missing category", accounts: strings.Replace(accounts, `"account_category": "INVESTMENT",`, "", 1), want: portfolio.UsabilityProvisionalCategory},
+		{name: "missing status", accounts: strings.Replace(accounts, `"status": "open",`, "", 1), want: portfolio.UsabilityReady, eligible: true, selectable: true},
+		{name: "missing category", accounts: strings.Replace(accounts, `"account_category": "INVESTMENT",`, "", 1), want: portfolio.UsabilityProvisionalCategory, selectable: true},
 		{
 			name: "closed before unavailable holdings",
 			accounts: strings.NewReplacer(
@@ -142,7 +143,7 @@ func TestInventoryPreservesAccountUsabilityPrecedence(t *testing.T) {
 			if !valid {
 				t.Fatal("account failed normalization")
 			}
-			if account.Selectable != test.selectable || account.Eligible != test.selectable || account.UsabilityReason != test.want {
+			if account.Selectable != test.selectable || account.Eligible != test.eligible || account.UsabilityReason != test.want {
 				t.Fatalf("account=%+v want reason=%s", account, test.want)
 			}
 		})
@@ -348,16 +349,17 @@ func TestInventoryGroupsGlobalAccountsInTwoRequests(t *testing.T) {
 func TestInventoryPublishesOnlyUsableInvestmentAccounts(t *testing.T) {
 	base := globalAccountRow(20, 1, "Synthetic candidate")
 	for _, test := range []struct {
-		name, row string
-		accepted  bool
+		name, row  string
+		accepted   bool
+		wantReason portfolio.UsabilityReason
 	}{
 		{name: "open investment", row: base, accepted: true},
 		{name: "cash investment", row: strings.Replace(base, `"name":`, `"raw_type":"Cash","name":`, 1), accepted: true},
 		{name: "transactions pending with usable holdings", row: strings.Replace(base, `"holdings":`, `"transactions":{"initial_sync_completed":false},"holdings":`, 1), accepted: true},
 		{name: "holdings explicitly available", row: strings.Replace(base, `"initial_sync_completed":true`, `"initial_sync_completed":true,"holdings_unavailable":false`, 1), accepted: true},
 		{name: "null status investment", row: strings.Replace(base, `"open"`, `null`, 1), accepted: true},
-		{name: "null status and null category", row: strings.NewReplacer(`"open"`, `null`, `"INVESTMENT"`, `null`).Replace(base)},
-		{name: "null status and missing category", row: strings.NewReplacer(`"open"`, `null`, `"account_category":"INVESTMENT",`, ``).Replace(base)},
+		{name: "null status and null category", row: strings.NewReplacer(`"open"`, `null`, `"INVESTMENT"`, `null`).Replace(base), accepted: true, wantReason: portfolio.UsabilityProvisionalStatus},
+		{name: "null status and missing category", row: strings.NewReplacer(`"open"`, `null`, `"account_category":"INVESTMENT",`, ``).Replace(base), accepted: true, wantReason: portfolio.UsabilityProvisionalStatus},
 		{name: "null status and future category", row: strings.NewReplacer(`"open"`, `null`, `"INVESTMENT"`, `"FUTURE"`).Replace(base)},
 		{name: "missing status investment", row: strings.Replace(base, `"status":"open",`, ``, 1), accepted: true},
 		{name: "closed", row: strings.Replace(base, `"open"`, `"closed"`, 1)},
@@ -365,9 +367,9 @@ func TestInventoryPublishesOnlyUsableInvestmentAccounts(t *testing.T) {
 		{name: "unavailable", row: strings.Replace(base, `"open"`, `"unavailable"`, 1)},
 		{name: "deposit", row: strings.Replace(base, `"INVESTMENT"`, `"DEPOSIT"`, 1)},
 		{name: "credit", row: strings.Replace(base, `"INVESTMENT"`, `"LOC"`, 1)},
-		{name: "null category", row: strings.Replace(base, `"INVESTMENT"`, `null`, 1)},
+		{name: "null category", row: strings.Replace(base, `"INVESTMENT"`, `null`, 1), accepted: true, wantReason: portfolio.UsabilityProvisionalCategory},
 		{name: "future category", row: strings.Replace(base, `"INVESTMENT"`, `"FUTURE"`, 1)},
-		{name: "missing category", row: strings.Replace(base, `"account_category":"INVESTMENT",`, ``, 1)},
+		{name: "missing category", row: strings.Replace(base, `"account_category":"INVESTMENT",`, ``, 1), accepted: true, wantReason: portfolio.UsabilityProvisionalCategory},
 		{name: "missing holdings", row: strings.Replace(base, `"holdings":{"initial_sync_completed":true}`, ``, 1)},
 		{name: "missing initial sync flag", row: strings.Replace(base, `"initial_sync_completed":true`, ``, 1)},
 		{name: "null initial sync flag", row: strings.Replace(base, `"initial_sync_completed":true`, `"initial_sync_completed":null`, 1)},
@@ -392,7 +394,11 @@ func TestInventoryPublishesOnlyUsableInvestmentAccounts(t *testing.T) {
 				if index == 1 {
 					wantID = globalAccountID(20)
 				}
-				if account.ID != wantID || !account.Selectable || !account.Eligible || account.UsabilityReason != portfolio.UsabilityReady {
+				wantEligible, wantReason := true, portfolio.UsabilityReady
+				if index == 1 && test.wantReason != "" {
+					wantEligible, wantReason = false, test.wantReason
+				}
+				if account.ID != wantID || !account.Selectable || account.Eligible != wantEligible || account.UsabilityReason != wantReason {
 					t.Fatalf("accepted account=%+v", account)
 				}
 			}

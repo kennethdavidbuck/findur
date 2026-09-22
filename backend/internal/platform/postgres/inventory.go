@@ -22,8 +22,9 @@ const InventoryClaimLease = 30 * time.Second
 // flag predates brokerage-only filtering. Persisted reasons distinguish open
 // and unspecified status from accounts known to be closed or unavailable.
 const selectableInventoryAccountSQL = `account.selectable AND account.available
-	AND account.category='investment' AND account.sync_state='complete'
-	AND account.usability_reason IN ('ready','provisional_status')
+	AND account.sync_state='complete'
+	AND ((account.category='investment' AND account.usability_reason IN ('ready','provisional_status'))
+		OR (account.category='unknown' AND account.usability_reason IN ('provisional_category','provisional_status')))
 	AND connection.status='active' AND connection.available`
 
 // NewInventoryRepository constructs the PostgreSQL inventory repository.
@@ -273,9 +274,18 @@ func loadInventoryAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, gene
 		if err := rows.Scan(&account.ID, &account.Category, &account.Type, &account.MaskedLabel, &account.Available, &account.Eligible, &account.SyncState, &account.Selectable, &account.UsabilityReason); err != nil {
 			return nil, err
 		}
-		// Matching today's predicate is sufficient, including a legacy null
-		// provider status. Project current semantics without rewriting history.
-		account.Eligible, account.Selectable, account.UsabilityReason = true, true, portfolio.UsabilityReady
+		// Matching today's predicate is sufficient, including legacy null
+		// provider status/category values. Project current semantics without
+		// rewriting immutable inventory history.
+		account.Selectable = true
+		if account.Category == portfolio.AccountCategoryInvestment {
+			account.Eligible, account.UsabilityReason = true, portfolio.UsabilityReady
+		} else {
+			account.Eligible = false
+			if account.UsabilityReason != portfolio.UsabilityProvisionalStatus {
+				account.UsabilityReason = portfolio.UsabilityProvisionalCategory
+			}
+		}
 		accounts = append(accounts, account)
 	}
 	return accounts, rows.Err()

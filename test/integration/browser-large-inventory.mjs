@@ -72,7 +72,7 @@ export async function exerciseLargeInventory(webdriver, sessionId, origin, wirem
     assert.equal(new Set(normalized.map((account) => account.id)).size, expected.normalized, 'every normalized account remains distinct')
     assert.equal(normalized.filter((account) => account.eligible).length, expected.eligible)
     assert.equal(normalized.filter((account) => account.selectable).length, expected.selectable)
-    assert.deepEqual(normalized.map((account) => account.id).sort(), [...expected.accountIds].sort(), 'exact investment eligibility set matches the independent fixture oracle')
+    assert.deepEqual(normalized.map((account) => account.id).sort(), [...expected.accountIds].sort(), 'exact selectable account set matches the independent fixture oracle')
     const disabledConnection = loaded.body.connections.find((connection) => connection.status === 'disabled')
     assert.equal(disabledConnection?.accounts.length, 0, 'disabled connection accounts are excluded from the selectable inventory')
     for (const connection of fixture.connections) {

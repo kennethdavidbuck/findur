@@ -8,15 +8,17 @@ An account is included only when **all** these conditions hold:
 
 | Field | Required value | Treatment of missing or other values |
 | --- | --- | --- |
-| `account_category` | `INVESTMENT` | Exclude `DEPOSIT`, `LOC`, null, missing, and unrecognized categories. |
+| `account_category` | `INVESTMENT`, null, or missing | Accept null or missing provisionally. Exclude `DEPOSIT`, `LOC`, and unrecognized non-null categories. |
 | `status` | `open` or null | Exclude `closed`, `archived`, and `unavailable`. Missing status is treated as null. An unrecognized non-null status violates the pinned response contract and fails validation. |
 | `sync_status.holdings.initial_sync_completed` | `true` | Exclude false, null, missing flag, or missing holdings metadata. |
 | `sync_status.holdings.holdings_unavailable` | Anything except `true` | Explicit true excludes the account even if initial sync is complete. The optional flag may be absent. |
 | Referenced connection | Known, active, with `disabled: false` | Exclude disabled connections. Missing, duplicate, or invalid connection identity fails validation. |
 
-Null account status is accepted only when every other rule passes. It does not
-make an unknown account category acceptable. Accepted accounts are both eligible
-and selectable, including accepted null-status accounts.
+Null account status is accepted only when every other rule passes. Accounts with
+null or missing category remain provisionally selectable because SnapTrade can
+omit the normalized category for real investment accounts; they are not asserted
+as positively eligible. Explicit deposit and line-of-credit categories remain
+excluded.
 
 The following are **not** eligibility requirements: account name, `raw_type`,
 deprecated `meta`, a positive balance, transaction-sync completion, opening or
@@ -37,8 +39,8 @@ the integration fixture intentionally uses simulated accounts.
 - A failed or malformed bulk request does not publish a partially loaded
   inventory. This includes invalid JSON/field types, invalid or duplicate account
   IDs, mismatched connection references, and unexpected response envelopes.
-- Existing persisted inventory is filtered by its normalized investment category,
-  availability, completed holdings sync, and active connection before display.
+- Existing persisted inventory is filtered by its normalized or provisional
+  category, availability, completed holdings sync, and active connection before display.
   New additions are checked against those same requirements at confirmation so a
   legacy `selectable` flag cannot admit an excluded account.
 - Previously committed membership and API removal behavior are unchanged. This
@@ -55,10 +57,12 @@ disabled connections, malformed payloads, and duplicate identities. Repository
 tests cover older persisted flags and admission of new selections.
 
 The WireMock fixture has 1,000 synthetic accounts across 50 connections, of which
-one is disabled. Exactly eight slots in each of the 49 active connections qualify:
-4, 6, and 14 through 19 (zero-based). Thus **392 accounts are returned and
-selectable; 608 are excluded**. The browser test checks exact IDs and grouping,
-not just counts. See [the integration guide](../test/integration/README.md).
+one is disabled. Exactly nine slots in each of the 49 active connections qualify:
+4 through 6 and 14 through 19 (zero-based). Thus **441 accounts are returned and
+selectable; 559 are excluded**. Of the returned accounts, 392 have an explicit
+investment category and 49 have a provisional null category. The browser test
+checks exact IDs and grouping, not just counts. See the
+[integration guide](../test/integration/README.md).
 
 ## Provider references
 
