@@ -11,6 +11,8 @@ const copy = {
     skipLink: 'Skip to content',
     languageLabel: 'Language',
     themeLabel: 'Theme',
+    preferencesSaving: 'Saving display preferences',
+    preferencesSaveFailed: 'Display preferences could not be saved.',
     themes: { system: 'System', light: 'Light', dark: 'Dark' },
     nav: {
       home: 'Home',
@@ -258,6 +260,8 @@ const copy = {
     skipLink: 'Aller au contenu',
     languageLabel: 'Langue',
     themeLabel: 'Thème',
+    preferencesSaving: 'Enregistrement des préférences d’affichage',
+    preferencesSaveFailed: 'Les préférences d’affichage n’ont pas pu être enregistrées.',
     themes: { system: 'Système', light: 'Clair', dark: 'Sombre' },
     nav: {
       home: 'Accueil',

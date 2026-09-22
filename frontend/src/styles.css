@@ -232,6 +232,9 @@ p { line-height: 1.65; }
 }
 
 .preference-controls { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+.preference-save-indicator { display: inline-grid; width: 1rem; height: 1rem; place-items: center; }
+.preference-save-indicator__spinner { width: 0.75rem; height: 0.75rem; border: 2px solid var(--border-strong); border-top-color: var(--secondary); border-radius: 50%; animation: preference-save-spin 0.8s linear infinite; }
+@keyframes preference-save-spin { to { transform: rotate(360deg); } }
 .choice-group { display: flex; align-items: stretch; border: 1px solid var(--border-strong); }
 
 .choice {
@@ -929,7 +932,7 @@ p { line-height: 1.65; }
   .footer-grid { grid-template-columns: 1fr; }
   .footer-preferences .preference-controls { overflow: visible; }
   .authenticated-header { flex-wrap: wrap; }
-  .authenticated-header .preference-controls { order: 3; width: 100%; margin-left: 0; overflow-x: auto; }
+  .authenticated-header .preference-controls { display: none; }
   .authenticated-shell--setup .authenticated-header {
     min-height: 4.5rem;
     display: grid;

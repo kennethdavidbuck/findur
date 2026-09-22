@@ -62,7 +62,7 @@ export function PreferenceControls({ compact = false }: { compact?: boolean }) {
         <Radio className="choice" value="light">{messages.themes.light}</Radio>
         <Radio className="choice" value="dark">{messages.themes.dark}</Radio>
       </RadioGroup>
-      {authenticated && <span className="preference-save-status" aria-live="polite">{authenticated.state === 'saving' || authenticated.state === 'loading' ? 'Saving display preferences…' : authenticated.state === 'retry' ? 'Display preferences need retrying.' : 'Display preferences saved.'}</span>}
+      {authenticated?.state === 'saving' && <span className="preference-save-indicator" aria-hidden="true"><span className="preference-save-indicator__spinner" /></span>}
     </div>
   )
 }
