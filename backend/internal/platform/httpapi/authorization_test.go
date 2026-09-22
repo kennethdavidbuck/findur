@@ -3,6 +3,8 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
 	"github.com/kennethdavidbuck/findur/backend/internal/profile"
@@ -30,6 +33,27 @@ type sessionLifecycleStub struct {
 	revokeErr      error
 	revoked        []string
 	authorizeCalls int
+}
+
+type sessionRepositoryStub struct {
+	session auth.Session
+	err     error
+}
+
+func (s sessionRepositoryStub) FindActive(context.Context, []byte, time.Time) (auth.Session, error) {
+	return s.session, s.err
+}
+
+func (s sessionRepositoryStub) AuthenticateAndTouch(context.Context, []byte, time.Time, time.Time) (auth.Session, error) {
+	return s.session, s.err
+}
+
+func (s sessionRepositoryStub) RevokeCurrent(context.Context, []byte, time.Time) (bool, error) {
+	return s.err == nil, s.err
+}
+
+func (s sessionRepositoryStub) CleanupSessions(context.Context, time.Time) (int64, error) {
+	return 0, s.err
 }
 
 type inventoryLifecycleStub struct {
@@ -844,7 +868,161 @@ func TestAuthorizationLogsCorrelatedSafeFailure(t *testing.T) {
 	if requestID == "" || strings.Count(logs.String(), requestID) != 2 {
 		t.Fatalf("request ID not shared by warning and completion logs: %s", logs.String())
 	}
-	if !strings.Contains(logs.String(), `"category":"request_canceled"`) {
+	if !strings.Contains(logs.String(), `"CATEGORY":"request_canceled"`) {
 		t.Fatalf("missing safe cancellation category: %s", logs.String())
 	}
+}
+
+func TestBoundedSnapTradeAccountIDsExcludeMalformedValues(t *testing.T) {
+	valid := "6f1ee24e-4f23-4fdd-8d1c-93b51f55580a"
+	actual := boundedSnapTradeAccountIDs([]string{"sensitive-account-number", valid, "00000000-0000-0000-0000-000000000000"})
+	if len(actual) != 1 || actual[0] != valid {
+		t.Fatalf("account IDs = %#v, want only valid UUID", actual)
+	}
+}
+
+func TestUnexpectedHandlerFailureLogsSafeCategoryOnce(t *testing.T) {
+	var logs bytes.Buffer
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	handler := NewHandlerWithProfile(slog.New(slog.NewJSONHandler(&logs, nil)), readiness, "development", nil, nil, nil, &sessionLifecycleStub{}, nil, nil, nil, &profileLifecycleStub{err: errors.New("private database detail")}, false, "https://findur.example")
+	request := httptest.NewRequest(http.MethodGet, profilePath, nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-session"})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	output := logs.String()
+	if response.Code != http.StatusServiceUnavailable || strings.Count(output, `"FAILURE":"handler_failure"`) != 1 || !strings.Contains(output, `"REQUEST_ID":"`) || strings.Contains(output, "private database detail") {
+		t.Fatalf("unsafe or incomplete unexpected-failure logging: status=%d logs=%s", response.Code, output)
+	}
+}
+
+func TestAuthenticatedRequestLogsServerDerivedFindurUserID(t *testing.T) {
+	owner := uuid.New()
+	sessions, err := auth.NewSessionService(auth.SessionConfig{
+		HashKey: bytes.Repeat([]byte{1}, 32),
+		Clock:   time.Now,
+	}, sessionRepositoryStub{session: auth.Session{UserID: owner}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	handler := NewHandlerWithProfile(slog.New(slog.NewJSONHandler(&logs, nil)), readiness, "development", nil, nil, nil, sessions, nil, nil, nil, &profileLifecycleStub{err: errors.New("unavailable")}, false, "https://findur.example")
+	request := httptest.NewRequest(http.MethodGet, profilePath, nil)
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-session"})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	output := logs.String()
+	if response.Code != http.StatusServiceUnavailable || strings.Count(output, `"FINDUR_USER_ID":"`+owner.String()+`"`) != 2 || strings.Count(output, `"REQUEST_ID":"`) != 2 {
+		t.Fatalf("authenticated logs do not share server-derived context: status=%d logs=%s", response.Code, output)
+	}
+}
+
+func TestAnonymousAndForbiddenRequestsOmitFindurUserID(t *testing.T) {
+	owner := uuid.New()
+	sessions, err := auth.NewSessionService(auth.SessionConfig{
+		HashKey: bytes.Repeat([]byte{2}, 32),
+		Clock:   time.Now,
+	}, sessionRepositoryStub{session: auth.Session{UserID: owner}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name    string
+		profile bool
+		session bool
+		request *http.Request
+		status  int
+	}{
+		{
+			name:    "anonymous read",
+			profile: true,
+			request: httptest.NewRequest(http.MethodGet, profilePath, nil),
+			status:  http.StatusUnauthorized,
+		},
+		{
+			name:    "valid session rejected before authorization",
+			session: true,
+			request: httptest.NewRequest(http.MethodPost, logoutPath, nil),
+			status:  http.StatusForbidden,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+			readiness.SetReady(true)
+			var handler http.Handler
+			if test.profile {
+				handler = NewHandlerWithProfile(slog.New(slog.NewJSONHandler(&logs, nil)), readiness, "development", nil, nil, nil, sessions, nil, nil, nil, &profileLifecycleStub{}, false, "https://findur.example")
+			} else {
+				handler = NewHandlerWithSessions(slog.New(slog.NewJSONHandler(&logs, nil)), readiness, "development", nil, nil, nil, sessions, false, "https://findur.example")
+			}
+			response := httptest.NewRecorder()
+			if test.session {
+				test.request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-session"})
+			}
+			handler.ServeHTTP(response, test.request)
+			if response.Code != test.status {
+				t.Fatalf("status=%d, want %d", response.Code, test.status)
+			}
+			if strings.Contains(logs.String(), owner.String()) || strings.Contains(logs.String(), `"FINDUR_USER_ID"`) {
+				t.Fatalf("unauthorized request logged identity: %s", logs.String())
+			}
+		})
+	}
+}
+
+func TestInclusionRequestLogsOnlyBoundedValidSnapTradeAccountIDs(t *testing.T) {
+	owner := uuid.New()
+	hashKey := bytes.Repeat([]byte{3}, 32)
+	sessions, err := auth.NewSessionService(auth.SessionConfig{HashKey: hashKey, Clock: time.Now}, sessionRepositoryStub{session: sessionForLogging(owner, hashKey)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := uuid.New().String()
+	var logs bytes.Buffer
+	readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+	readiness.SetReady(true)
+	inclusion := &inclusionLifecycleStub{snapshot: portfolio.InclusionSnapshot{Version: 1, Committed: []string{}}}
+	handler := NewHandlerWithPortfolio(slog.New(slog.NewJSONHandler(&logs, nil)), readiness, "development", nil, nil, nil, sessions, nil, inclusion, false, "https://findur.example")
+	request := inclusionLoggingRequest(`{"accountIds":["` + valid + `","private-not-a-uuid"]}`)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	output := logs.String()
+	if response.Code != http.StatusOK || !strings.Contains(output, `"FINDUR_USER_ID":"`+owner.String()+`"`) || !strings.Contains(output, `"SNAPTRADE_ACCOUNT_IDS":["`+valid+`"]`) || strings.Contains(output, "private-not-a-uuid") {
+		t.Fatalf("inclusion request log was unsafe or incomplete: status=%d logs=%s", response.Code, output)
+	}
+}
+
+func TestInclusionRequestLogCapsSnapTradeAccountIDs(t *testing.T) {
+	accountIDs := make([]string, maxLoggedSnapTradeAccountIDs+1)
+	for index := range accountIDs {
+		accountIDs[index] = uuid.New().String()
+	}
+	actual := boundedSnapTradeAccountIDs(accountIDs)
+	if len(actual) != maxLoggedSnapTradeAccountIDs || actual[0] != accountIDs[0] || strings.Contains(strings.Join(actual, ","), accountIDs[maxLoggedSnapTradeAccountIDs]) {
+		t.Fatalf("account ID logging cap not enforced: %#v", actual)
+	}
+}
+
+func sessionForLogging(owner uuid.UUID, hashKey []byte) auth.Session {
+	mac := hmac.New(sha256.New, hashKey)
+	_, _ = mac.Write([]byte("csrf"))
+	return auth.Session{UserID: owner, CSRFHash: mac.Sum(nil)}
+}
+
+func inclusionLoggingRequest(body string) *http.Request {
+	request := httptest.NewRequest(http.MethodPost, portfolioInclusionPath, strings.NewReader(body))
+	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "valid-session"})
+	request.Header.Set("Content-Type", jsonMediaType)
+	request.Header.Set("Origin", "https://findur.example")
+	request.Header.Set("Sec-Fetch-Site", secFetchSameOrigin)
+	request.Header.Set(csrfHeaderName, "csrf")
+	request.Header.Set("X-Inclusion-Version", "0")
+	request.Header.Set("Idempotency-Key", "key")
+	return request
 }

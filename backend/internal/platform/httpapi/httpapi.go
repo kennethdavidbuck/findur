@@ -10,8 +10,10 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 )
 
@@ -41,11 +43,145 @@ func (w profileCacheWriter) Write(body []byte) (int, error) {
 
 func (w profileCacheWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-type requestIDContextKey struct{}
+type requestLogMetadataContextKey struct{}
+
+// requestLogMetadata is request-local mutable state. Context values are immutable,
+// so successful authorization records the server-derived identity here for log
+// events emitted later in the same request.
+type requestLogMetadata struct {
+	mu                  sync.RWMutex
+	requestID           string
+	findurUserID        string
+	snapTradeAccountIDs []string
+}
+
+type requestLogMetadataSnapshot struct {
+	requestID           string
+	findurUserID        string
+	snapTradeAccountIDs []string
+}
+
+func requestLogMetadataFromContext(ctx context.Context) *requestLogMetadata {
+	metadata, _ := ctx.Value(requestLogMetadataContextKey{}).(*requestLogMetadata)
+	return metadata
+}
 
 func requestIDFromContext(ctx context.Context) string {
-	requestID, _ := ctx.Value(requestIDContextKey{}).(string)
-	return requestID
+	metadata := requestLogMetadataFromContext(ctx)
+	if metadata == nil {
+		return ""
+	}
+	return metadata.snapshot().requestID
+}
+
+func (m *requestLogMetadata) snapshot() requestLogMetadataSnapshot {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return requestLogMetadataSnapshot{
+		requestID:           m.requestID,
+		findurUserID:        m.findurUserID,
+		snapTradeAccountIDs: append([]string(nil), m.snapTradeAccountIDs...),
+	}
+}
+
+func setFindurUserID(ctx context.Context, actor auth.Actor) {
+	metadata := requestLogMetadataFromContext(ctx)
+	if metadata == nil || actor.UserID() == uuid.Nil {
+		return
+	}
+	metadata.mu.Lock()
+	defer metadata.mu.Unlock()
+	if metadata.findurUserID == "" {
+		metadata.findurUserID = actor.UserID().String()
+	}
+}
+
+func setSnapTradeAccountIDs(ctx context.Context, accountIDs []string) {
+	metadata := requestLogMetadataFromContext(ctx)
+	if metadata == nil {
+		return
+	}
+	metadata.mu.Lock()
+	metadata.snapTradeAccountIDs = append([]string(nil), accountIDs...)
+	metadata.mu.Unlock()
+}
+
+// RequestLogHandler adds approved request metadata to context-aware slog records.
+// Its reserved keys cannot be supplied by callers on request-scoped records.
+type RequestLogHandler struct{ next slog.Handler }
+
+func NewRequestLogHandler(next slog.Handler) *RequestLogHandler {
+	return &RequestLogHandler{next: next}
+}
+
+func (h *RequestLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.next.Enabled(ctx, level)
+}
+
+func (h *RequestLogHandler) Handle(ctx context.Context, record slog.Record) error {
+	metadata := requestLogMetadataFromContext(ctx)
+	if metadata == nil {
+		return h.next.Handle(ctx, record)
+	}
+	record = withoutReservedRequestLogAttributes(record)
+	snapshot := metadata.snapshot()
+	if snapshot.requestID != "" {
+		record.AddAttrs(slog.String("REQUEST_ID", snapshot.requestID))
+	}
+	if snapshot.findurUserID != "" {
+		record.AddAttrs(slog.String("FINDUR_USER_ID", snapshot.findurUserID))
+	}
+	if len(snapshot.snapTradeAccountIDs) > 0 {
+		record.AddAttrs(slog.Any("SNAPTRADE_ACCOUNT_IDS", snapshot.snapTradeAccountIDs))
+	}
+	return h.next.Handle(ctx, record)
+}
+
+func (h *RequestLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &RequestLogHandler{next: h.next.WithAttrs(withoutReservedAttributes(attrs))}
+}
+
+func (h *RequestLogHandler) WithGroup(name string) slog.Handler {
+	return &RequestLogHandler{next: h.next.WithGroup(name)}
+}
+
+func withoutReservedRequestLogAttributes(record slog.Record) slog.Record {
+	filtered := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
+	record.Attrs(func(attr slog.Attr) bool {
+		if filteredAttr, ok := withoutReservedAttribute(attr); ok {
+			filtered.AddAttrs(filteredAttr)
+		}
+		return true
+	})
+	return filtered
+}
+
+func withoutReservedAttributes(attrs []slog.Attr) []slog.Attr {
+	filtered := make([]slog.Attr, 0, len(attrs))
+	for _, attr := range attrs {
+		if filteredAttr, ok := withoutReservedAttribute(attr); ok {
+			filtered = append(filtered, filteredAttr)
+		}
+	}
+	return filtered
+}
+
+func withoutReservedAttribute(attr slog.Attr) (slog.Attr, bool) {
+	if isReservedRequestLogKey(attr.Key) {
+		return slog.Attr{}, false
+	}
+	if attr.Value.Kind() != slog.KindGroup {
+		return attr, true
+	}
+	group := withoutReservedAttributes(attr.Value.Group())
+	if len(group) == 0 {
+		return slog.Attr{}, false
+	}
+	return slog.Attr{Key: attr.Key, Value: slog.GroupValue(group...)}, true
+}
+
+func isReservedRequestLogKey(key string) bool {
+	return key == "REQUEST_ID" || key == "FINDUR_USER_ID" || key == "SNAPTRADE_ACCOUNT_IDS"
 }
 
 func (w *statusWriter) WriteHeader(status int) {
@@ -103,6 +239,7 @@ func NewHandlerWithProfilePreferences(logger *slog.Logger, readiness *Readiness,
 }
 
 func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, preferences preferenceLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
+	logger = slog.New(NewRequestLogHandler(logger.Handler()))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeStatus(w, http.StatusOK, "ok", buildSHA)
@@ -156,14 +293,14 @@ func requestMetadata(logger *slog.Logger, next http.Handler) http.Handler {
 		requestID := newRequestID()
 		w.Header().Set("X-Request-ID", requestID)
 		recorder := &statusWriter{ResponseWriter: w, status: http.StatusOK}
-		r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, requestID))
+		metadata := &requestLogMetadata{requestID: requestID}
+		r = r.WithContext(context.WithValue(r.Context(), requestLogMetadataContextKey{}, metadata))
 		next.ServeHTTP(recorder, r)
 		logger.InfoContext(r.Context(), "http request",
-			"request_id", requestID,
-			"method", r.Method,
-			"route", routeCategory(r.URL.Path),
-			"status", recorder.status,
-			"latency_ms", time.Since(started).Milliseconds(),
+			"METHOD", r.Method,
+			"ROUTE", routeCategory(r.URL.Path),
+			"STATUS", recorder.status,
+			"LATENCY_MS", time.Since(started).Milliseconds(),
 		)
 	})
 }

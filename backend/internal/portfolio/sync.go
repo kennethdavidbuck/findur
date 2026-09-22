@@ -68,41 +68,42 @@ func (s *SyncService) RunPass(ctx context.Context) {
 	defer cancel()
 	workerClaim, acquired, err := s.repository.AcquireWorkerLease(passCtx, started, SyncClaimLease)
 	if err != nil {
-		s.logger.Error("portfolio sync worker lease failed", "event", "portfolio_sync_worker_lease_failed", "error", err)
+		s.logger.Error("portfolio sync worker lease failed", "EVENT", "portfolio_sync_worker_lease_failed", "FAILURE", "worker_lease_failure")
 		return
 	}
 	if !acquired {
-		s.logger.Debug("portfolio sync pass skipped; another worker owns the lease", "event", "portfolio_sync_pass_skipped")
+		s.logger.Debug("portfolio sync pass skipped; another worker owns the lease", "EVENT", "portfolio_sync_pass_skipped")
 		return
 	}
 	defer func() {
 		releaseCtx, releaseCancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout)
 		defer releaseCancel()
 		if err := s.repository.ReleaseWorkerLease(releaseCtx, workerClaim, s.clock().UTC()); err != nil {
-			s.logger.Error("portfolio sync worker lease release failed", "event", "portfolio_sync_worker_lease_release_failed", "error", err)
+			s.logger.Error("portfolio sync worker lease release failed", "EVENT", "portfolio_sync_worker_lease_release_failed", "FAILURE", "worker_lease_release_failure")
 		}
 	}()
-	s.logger.Info("portfolio sync pass started", "event", "portfolio_sync_pass_started")
+	s.logger.Info("portfolio sync pass started", "EVENT", "portfolio_sync_pass_started")
 	processed := 0
 	for passCtx.Err() == nil {
 		claim, err := s.repository.ClaimDue(passCtx, s.clock().UTC(), SyncRefreshAge, SyncClaimLease)
 		if err != nil {
-			s.logger.Error("portfolio sync claim failed", "event", "portfolio_sync_claim_failed", "error", err)
+			s.logger.Error("portfolio sync claim failed", "EVENT", "portfolio_sync_claim_failed", "FAILURE", "claim_failure")
 			break
 		}
 		if claim == nil {
-			s.logger.Debug("portfolio sync queue empty", "event", "portfolio_sync_queue_empty")
+			s.logger.Debug("portfolio sync queue empty", "EVENT", "portfolio_sync_queue_empty")
 			break
 		}
 		processed++
 		s.syncClaim(passCtx, *claim)
 	}
-	s.logger.Info("portfolio sync pass finished", "event", "portfolio_sync_pass_finished", "processed", processed, "elapsed_ms", s.clock().UTC().Sub(started).Milliseconds(), "deadline_reached", errors.Is(passCtx.Err(), context.DeadlineExceeded))
+	s.logger.Info("portfolio sync pass finished", "EVENT", "portfolio_sync_pass_finished", "PROCESSED", processed, "ELAPSED_MS", s.clock().UTC().Sub(started).Milliseconds(), "DEADLINE_REACHED", errors.Is(passCtx.Err(), context.DeadlineExceeded))
 }
 
 func (s *SyncService) syncClaim(ctx context.Context, claim SyncClaim) {
 	started := s.clock().UTC()
-	s.logger.Info("portfolio sync claimed", "event", "portfolio_sync_claimed", "claim_id", claim.ID, "account_ref", shortReference(claim.AccountID), "resource", claim.Resource)
+	claimAttrs := syncClaimAttributes(claim)
+	s.logger.Info("portfolio sync claimed", append([]any{"EVENT", "portfolio_sync_claimed"}, claimAttrs...)...)
 	token, err := s.tokens.DecryptAccess(claim.Owner, claim.TokenVersion, claim.EncryptedToken)
 	var data *AccountData
 	failure := ""
@@ -126,13 +127,14 @@ func (s *SyncService) syncClaim(ctx context.Context, claim SyncClaim) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout)
 	accepted, finishErr := s.repository.FinishSync(cleanupCtx, claim, data, failure, retryAt, s.clock().UTC())
 	cancel()
-	attrs := []any{"event", "portfolio_sync_finished", "claim_id", claim.ID, "account_ref", shortReference(claim.AccountID), "accepted", accepted, "outcome", failure, "elapsed_ms", s.clock().UTC().Sub(started).Milliseconds()}
+	attrs := append([]any{"EVENT", "portfolio_sync_finished"}, claimAttrs...)
+	attrs = append(attrs, "ACCEPTED", accepted, "OUTCOME", syncOutcome(failure), "ELAPSED_MS", s.clock().UTC().Sub(started).Milliseconds())
 	if retryAt != nil {
-		attrs = append(attrs, "provider_retry_at", retryAt.UTC())
+		attrs = append(attrs, "PROVIDER_RETRY_AT", retryAt.UTC())
 	}
 	switch {
 	case finishErr != nil:
-		s.logger.Error("portfolio sync finalization failed", append(attrs, "error", finishErr)...)
+		s.logger.Error("portfolio sync finalization failed", append(attrs, "FAILURE", "finalization_failure")...)
 	case failure != "":
 		s.logger.Warn("portfolio sync scheduled retry", attrs...)
 	case !accepted:
@@ -142,9 +144,19 @@ func (s *SyncService) syncClaim(ctx context.Context, claim SyncClaim) {
 	}
 }
 
-func shortReference(value string) string {
-	id := uuid.NewSHA1(uuid.NameSpaceOID, []byte(value)).String()
-	return id[:8]
+func syncClaimAttributes(claim SyncClaim) []any {
+	attrs := []any{"FINDUR_USER_ID", claim.Owner.String(), "CLAIM_ID", claim.ID.String(), "RESOURCE", claim.Resource}
+	if accountID, err := uuid.Parse(claim.AccountID); err == nil && accountID != uuid.Nil {
+		attrs = append(attrs, "SNAPTRADE_ACCOUNT_ID", accountID.String())
+	}
+	return attrs
+}
+
+func syncOutcome(failure string) string {
+	if failure == "" {
+		return "succeeded"
+	}
+	return failure
 }
 
 // RunSyncWorker starts one immediate pass and then one pass per interval.
@@ -155,7 +167,7 @@ func RunSyncWorker(ctx context.Context, interval time.Duration, service *SyncSer
 	for {
 		select {
 		case <-ctx.Done():
-			service.logger.Info("portfolio sync worker stopped", "event", "portfolio_sync_worker_stopped", "reason", ctx.Err())
+			service.logger.Info("portfolio sync worker stopped", "EVENT", "portfolio_sync_worker_stopped", "OUTCOME", "canceled")
 			return
 		case <-ticker.C:
 			service.RunPass(ctx)
