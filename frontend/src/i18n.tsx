@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
+import { preferenceStorage } from './storage'
 
 export type Locale = 'en' | 'fr'
 
@@ -513,7 +514,7 @@ const I18nContext = createContext<I18nContextValue | null>(null)
 
 function readLocale(): Locale {
   try {
-    const stored = window.localStorage.getItem(localeStorageKey)
+    const stored = preferenceStorage.get(localeStorageKey)
     if (stored === 'en' || stored === 'fr') return stored
   } catch {
     // Browser preference still provides a safe default when storage is unavailable.
@@ -539,11 +540,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       messages: copy[locale] as Messages,
       setLocale: (nextLocale) => {
         setLocaleState(nextLocale)
-        try {
-          window.localStorage.setItem(localeStorageKey, nextLocale)
-        } catch {
-          // Preferences remain usable for this session when storage is unavailable.
-        }
+        preferenceStorage.set(localeStorageKey, nextLocale)
       },
     }),
     [locale],

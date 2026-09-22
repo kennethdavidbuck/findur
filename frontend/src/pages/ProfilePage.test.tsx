@@ -16,6 +16,7 @@ it('loads a blank localized profile and saves the complete draft without changin
   let resolveSave!: (response: Response) => void
   const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
     if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true }))
+    if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
     if (path === '/api/profile' && init?.method === 'GET') return Promise.resolve(json({ locations }))
     if (path === '/api/profile' && init?.method === 'PUT') return new Promise<Response>((resolve) => { resolveSave = resolve })
     return Promise.resolve(new Response(null, { status: 404 }))
@@ -92,6 +93,7 @@ it('focuses linked client errors before sending an incomplete first profile', as
 it('synchronizes a saved French and dark profile with the shared providers', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string, init?: RequestInit) => {
     if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true }))
+    if (path === '/api/preferences/display') return Promise.resolve(json({ locale: 'fr', theme: 'dark', version: 2 }))
     if (path === '/api/profile' && init?.method === 'GET') return Promise.resolve(json({ locations, profile: { displayName: 'Alex', adultAttestedAt: '2026-09-21T12:00:00Z', locationKey: 'halifax-ns', relationshipIntent: 'open-to-long-term', biography: 'Bonjour', avatarKey: 'cedar', locale: 'fr', theme: 'dark', version: 2 } }))
     return Promise.resolve(new Response(null, { status: 404 }))
   }))

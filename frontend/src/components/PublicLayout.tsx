@@ -2,6 +2,7 @@ import type { MouseEvent, ReactNode } from 'react'
 import { Radio, RadioGroup } from 'react-aria-components'
 import { type Locale, useI18n } from '../i18n'
 import { type ThemePreference, useTheme } from '../theme'
+import { useAuthenticatedPreferences } from '../authenticated-preferences'
 
 type PublicRoute = '/' | '/about' | '/connect'
 
@@ -36,6 +37,7 @@ export function PublicLink({ children, className, current, href, onNavigate }: P
 export function PreferenceControls({ compact = false }: { compact?: boolean }) {
   const { locale, messages, setLocale } = useI18n()
   const { preference, setPreference } = useTheme()
+  const authenticated = useAuthenticatedPreferences()
 
   return (
     <div className={`preference-controls${compact ? ' preference-controls--compact' : ''}`}>
@@ -44,7 +46,7 @@ export function PreferenceControls({ compact = false }: { compact?: boolean }) {
         className="choice-group"
         orientation="horizontal"
         value={locale}
-        onChange={(value) => setLocale(value as Locale)}
+        onChange={(value) => authenticated ? authenticated.setLocale(value as Locale) : setLocale(value as Locale)}
       >
         <Radio className="choice" value="en">EN</Radio>
         <Radio className="choice" value="fr">FR</Radio>
@@ -54,12 +56,13 @@ export function PreferenceControls({ compact = false }: { compact?: boolean }) {
         className="choice-group"
         orientation="horizontal"
         value={preference}
-        onChange={(value) => setPreference(value as ThemePreference)}
+        onChange={(value) => authenticated ? authenticated.setTheme(value as ThemePreference) : setPreference(value as ThemePreference)}
       >
         <Radio className="choice choice--wide" value="system">{messages.themes.system}</Radio>
         <Radio className="choice" value="light">{messages.themes.light}</Radio>
         <Radio className="choice" value="dark">{messages.themes.dark}</Radio>
       </RadioGroup>
+      {authenticated && <span className="preference-save-status" aria-live="polite">{authenticated.state === 'saving' || authenticated.state === 'loading' ? 'Saving display preferences…' : authenticated.state === 'retry' ? 'Display preferences need retrying.' : 'Display preferences saved.'}</span>}
     </div>
   )
 }

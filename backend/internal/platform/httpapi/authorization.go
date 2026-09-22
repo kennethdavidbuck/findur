@@ -54,6 +54,10 @@ type profileLifecycle interface {
 	Get(context.Context, auth.Actor) (profile.Snapshot, error)
 	Save(context.Context, auth.Actor, profile.Input) (profile.Profile, error)
 }
+type preferenceLifecycle interface {
+	Get(context.Context, auth.Actor) (*profile.DisplayPreferences, error)
+	Save(context.Context, auth.Actor, profile.DisplayPreferencesInput) (profile.DisplayPreferences, error)
+}
 
 type callbackCookies struct{ attempt, session string }
 type callbackCookieKey struct{}
@@ -79,6 +83,8 @@ const (
 	portfolioInclusionPath      = "/api/portfolio/inclusion"
 	portfolioShowcasePath       = "/api/portfolio/showcase"
 	profilePath                 = "/api/profile"
+	displayPreferencesPath      = "/api/preferences/display"
+	localeField                 = "locale"
 	callbackSucceededCategory   = "succeeded"
 	callbackRestartCategory     = "restart_required"
 	requestCanceledCategory     = "request_canceled"
@@ -103,12 +109,13 @@ type authorizationAPI struct {
 	inclusion              inclusionLifecycle
 	showcase               showcaseLifecycle
 	profile                profileLifecycle
+	preferences            preferenceLifecycle
 	authorizationAvailable bool
 	publicOrigin           string
 }
 
-func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, authorizationAvailable bool, publicOrigin string) {
-	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, inventory: inventory, inclusion: inclusion, showcase: showcase, profile: profiles, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
+func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, preferences preferenceLifecycle, authorizationAvailable bool, publicOrigin string) {
+	api := &authorizationAPI{logger: logger, initiator: initiator, completer: completer, sessions: sessions, inventory: inventory, inclusion: inclusion, showcase: showcase, profile: profiles, preferences: preferences, authorizationAvailable: authorizationAvailable, publicOrigin: publicOrigin}
 	if provider, ok := completer.(authorizationStatusProvider); ok {
 		api.status = provider
 	}
@@ -176,13 +183,13 @@ func noStoreMiddleware(next http.Handler) http.Handler {
 }
 
 func missingRequiredCSRF(r *http.Request) bool {
-	unsafeSessionPath := r.URL.Path == logoutPath || r.URL.Path == portfolioInventoryRetryPath || r.URL.Path == portfolioInclusionPath || r.URL.Path == profilePath
+	unsafeSessionPath := r.URL.Path == logoutPath || r.URL.Path == portfolioInventoryRetryPath || r.URL.Path == portfolioInclusionPath || r.URL.Path == profilePath || r.URL.Path == displayPreferencesPath
 	return (r.Method == http.MethodPost || r.Method == http.MethodPut) && unsafeSessionPath && r.Header.Get(csrfHeaderName) == ""
 }
 
 func callbackContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == logoutPath || strings.HasPrefix(r.URL.Path, portfolioInventoryPath) || r.URL.Path == portfolioInclusionPath || r.URL.Path == portfolioShowcasePath || r.URL.Path == profilePath {
+		if r.URL.Path == auth.SnapTradeCallbackPath || r.URL.Path == authorizationStatusPath || r.URL.Path == logoutPath || strings.HasPrefix(r.URL.Path, portfolioInventoryPath) || r.URL.Path == portfolioInclusionPath || r.URL.Path == portfolioShowcasePath || r.URL.Path == profilePath || r.URL.Path == displayPreferencesPath {
 			cookies := callbackCookies{
 				attempt: cookieValue(r, attemptCookieName),
 				session: cookieValue(r, sessionCookieName),
@@ -250,6 +257,59 @@ func (a *authorizationAPI) PutPersonalProfile(ctx context.Context, request gener
 		}
 	}
 	return generated.PutPersonalProfile200JSONResponse{Body: personalProfileResponse(saved), Headers: generated.PutPersonalProfile200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
+}
+
+func (a *authorizationAPI) GetDisplayPreferences(ctx context.Context, _ generated.GetDisplayPreferencesRequestObject) (generated.GetDisplayPreferencesResponseObject, error) {
+	actor, err := a.portfolioActor(ctx, a.preferences != nil)
+	if errors.Is(err, auth.ErrUnauthenticated) {
+		return generated.GetDisplayPreferences401JSONResponse{ProfileUnauthorizedJSONResponse: profileUnauthorized()}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	value, err := a.preferences.Get(ctx, actor)
+	if err != nil {
+		return nil, err
+	}
+	if value == nil {
+		return generated.GetDisplayPreferences204Response{}, nil
+	}
+	return generated.GetDisplayPreferences200JSONResponse{Body: displayPreferencesResponse(*value), Headers: generated.GetDisplayPreferences200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
+}
+
+func (a *authorizationAPI) PutDisplayPreferences(ctx context.Context, request generated.PutDisplayPreferencesRequestObject) (generated.PutDisplayPreferencesResponseObject, error) {
+	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
+	if a.sessions == nil || a.preferences == nil || cookies.session == "" {
+		return generated.PutDisplayPreferences401JSONResponse{ProfileUnauthorizedJSONResponse: profileUnauthorized()}, nil
+	}
+	httpRequest := requestFromContext(ctx)
+	if httpRequest == nil || !sameOriginRequest(httpRequest, a.publicOrigin) || httpRequest.Header.Get("Sec-Fetch-Site") != secFetchSameOrigin {
+		return generated.PutDisplayPreferences403JSONResponse{ProfileForbiddenJSONResponse: profileForbidden().(generated.PutPersonalProfile403JSONResponse).ProfileForbiddenJSONResponse}, nil
+	}
+	actor, err := a.sessions.AuthorizeUnsafe(ctx, cookies.session, request.Params.XCSRFToken)
+	if errors.Is(err, auth.ErrUnauthenticated) {
+		return generated.PutDisplayPreferences401JSONResponse{ProfileUnauthorizedJSONResponse: profileUnauthorized()}, nil
+	}
+	if errors.Is(err, auth.ErrForbidden) {
+		return generated.PutDisplayPreferences403JSONResponse{ProfileForbiddenJSONResponse: profileForbidden().(generated.PutPersonalProfile403JSONResponse).ProfileForbiddenJSONResponse}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if request.Body == nil {
+		return generated.PutDisplayPreferences400JSONResponse{ProfileValidationJSONResponse: profileValidation([]string{localeField}).(generated.PutPersonalProfile400JSONResponse).ProfileValidationJSONResponse}, nil
+	}
+	saved, err := a.preferences.Save(ctx, actor, profile.DisplayPreferencesInput{Locale: string(request.Body.Locale), Theme: string(request.Body.Theme), ExpectedVersion: request.Body.ExpectedVersion})
+	if errors.Is(err, profile.ErrConflict) {
+		return generated.PutDisplayPreferences409JSONResponse{ProfileConflictJSONResponse: generated.ProfileConflictJSONResponse{Body: generated.Error{Code: generated.ErrorCodeConflict}, Headers: generated.ProfileConflictResponseHeaders{CacheControl: privateNoStoreDirective}}}, nil
+	}
+	if errors.Is(err, profile.ErrInvalid) {
+		return generated.PutDisplayPreferences400JSONResponse{ProfileValidationJSONResponse: profileValidation([]string{"locale", "theme"}).(generated.PutPersonalProfile400JSONResponse).ProfileValidationJSONResponse}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return generated.PutDisplayPreferences200JSONResponse{Body: displayPreferencesResponse(saved), Headers: generated.PutDisplayPreferences200ResponseHeaders{CacheControl: privateNoStoreDirective}}, nil
 }
 
 func profileUnauthorized() generated.ProfileUnauthorizedJSONResponse {
@@ -326,6 +386,10 @@ func profileFieldsFromError(err error) []string {
 }
 func personalProfileResponse(value profile.Profile) generated.PersonalProfile {
 	return generated.PersonalProfile{DisplayName: value.DisplayName, AdultAttestedAt: value.AdultAttestedAt, LocationKey: value.LocationKey, RelationshipIntent: generated.PersonalProfileRelationshipIntent(value.RelationshipIntent), Biography: value.Biography, AvatarKey: generated.PersonalProfileAvatarKey(value.AvatarKey), Locale: generated.PersonalProfileLocale(value.Locale), Theme: generated.PersonalProfileTheme(value.Theme), Version: value.Version}
+}
+
+func displayPreferencesResponse(value profile.DisplayPreferences) generated.DisplayPreferences {
+	return generated.DisplayPreferences{Locale: generated.DisplayPreferencesLocale(value.Locale), Theme: generated.DisplayPreferencesTheme(value.Theme), Version: value.Version}
 }
 func profileSnapshotResponse(value profile.Snapshot) generated.PersonalProfileSnapshot {
 	result := generated.PersonalProfileSnapshot{Locations: make([]generated.ProfileLocation, 0, len(value.Locations))}

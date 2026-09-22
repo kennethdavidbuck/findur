@@ -49,6 +49,84 @@ func (e DatasetContextFreshness) Valid() bool {
 	}
 }
 
+// Defines values for DisplayPreferencesLocale.
+const (
+	DisplayPreferencesLocaleEn DisplayPreferencesLocale = "en"
+	DisplayPreferencesLocaleFr DisplayPreferencesLocale = "fr"
+)
+
+// Valid indicates whether the value is a known member of the DisplayPreferencesLocale enum.
+func (e DisplayPreferencesLocale) Valid() bool {
+	switch e {
+	case DisplayPreferencesLocaleEn:
+		return true
+	case DisplayPreferencesLocaleFr:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DisplayPreferencesTheme.
+const (
+	DisplayPreferencesThemeDark   DisplayPreferencesTheme = "dark"
+	DisplayPreferencesThemeLight  DisplayPreferencesTheme = "light"
+	DisplayPreferencesThemeSystem DisplayPreferencesTheme = "system"
+)
+
+// Valid indicates whether the value is a known member of the DisplayPreferencesTheme enum.
+func (e DisplayPreferencesTheme) Valid() bool {
+	switch e {
+	case DisplayPreferencesThemeDark:
+		return true
+	case DisplayPreferencesThemeLight:
+		return true
+	case DisplayPreferencesThemeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DisplayPreferencesInputLocale.
+const (
+	DisplayPreferencesInputLocaleEn DisplayPreferencesInputLocale = "en"
+	DisplayPreferencesInputLocaleFr DisplayPreferencesInputLocale = "fr"
+)
+
+// Valid indicates whether the value is a known member of the DisplayPreferencesInputLocale enum.
+func (e DisplayPreferencesInputLocale) Valid() bool {
+	switch e {
+	case DisplayPreferencesInputLocaleEn:
+		return true
+	case DisplayPreferencesInputLocaleFr:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DisplayPreferencesInputTheme.
+const (
+	DisplayPreferencesInputThemeDark   DisplayPreferencesInputTheme = "dark"
+	DisplayPreferencesInputThemeLight  DisplayPreferencesInputTheme = "light"
+	DisplayPreferencesInputThemeSystem DisplayPreferencesInputTheme = "system"
+)
+
+// Valid indicates whether the value is a known member of the DisplayPreferencesInputTheme enum.
+func (e DisplayPreferencesInputTheme) Valid() bool {
+	switch e {
+	case DisplayPreferencesInputThemeDark:
+		return true
+	case DisplayPreferencesInputThemeLight:
+		return true
+	case DisplayPreferencesInputThemeSystem:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	ErrorCodeAuthorizationUnavailable ErrorCode = "authorization_unavailable"
@@ -604,6 +682,32 @@ type DatasetContext struct {
 // DatasetContextFreshness defines model for DatasetContext.Freshness.
 type DatasetContextFreshness string
 
+// DisplayPreferences defines model for DisplayPreferences.
+type DisplayPreferences struct {
+	Locale  DisplayPreferencesLocale `json:"locale"`
+	Theme   DisplayPreferencesTheme  `json:"theme"`
+	Version int64                    `json:"version"`
+}
+
+// DisplayPreferencesLocale defines model for DisplayPreferences.Locale.
+type DisplayPreferencesLocale string
+
+// DisplayPreferencesTheme defines model for DisplayPreferences.Theme.
+type DisplayPreferencesTheme string
+
+// DisplayPreferencesInput defines model for DisplayPreferencesInput.
+type DisplayPreferencesInput struct {
+	ExpectedVersion int64                         `json:"expectedVersion"`
+	Locale          DisplayPreferencesInputLocale `json:"locale"`
+	Theme           DisplayPreferencesInputTheme  `json:"theme"`
+}
+
+// DisplayPreferencesInputLocale defines model for DisplayPreferencesInput.Locale.
+type DisplayPreferencesInputLocale string
+
+// DisplayPreferencesInputTheme defines model for DisplayPreferencesInput.Theme.
+type DisplayPreferencesInputTheme string
+
 // Error defines model for Error.
 type Error struct {
 	Code ErrorCode `json:"code"`
@@ -884,6 +988,11 @@ type RetryPortfolioInventoryParams struct {
 	XCSRFToken string `json:"X-CSRF-Token"`
 }
 
+// PutDisplayPreferencesParams defines parameters for PutDisplayPreferences.
+type PutDisplayPreferencesParams struct {
+	XCSRFToken string `json:"X-CSRF-Token"`
+}
+
 // PutPersonalProfileParams defines parameters for PutPersonalProfile.
 type PutPersonalProfileParams struct {
 	XCSRFToken string `json:"X-CSRF-Token"`
@@ -897,6 +1006,9 @@ type BeginSnapTradeAuthorizationFormdataRequestBody = BeginAuthorizationRequest
 
 // ConfirmPortfolioInclusionJSONRequestBody defines body for ConfirmPortfolioInclusion for application/json ContentType.
 type ConfirmPortfolioInclusionJSONRequestBody = ConfirmInclusionRequest
+
+// PutDisplayPreferencesJSONRequestBody defines body for PutDisplayPreferences for application/json ContentType.
+type PutDisplayPreferencesJSONRequestBody = DisplayPreferencesInput
 
 // PutPersonalProfileJSONRequestBody defines body for PutPersonalProfile for application/json ContentType.
 type PutPersonalProfileJSONRequestBody = PersonalProfileInput
@@ -930,6 +1042,12 @@ type ServerInterface interface {
 	// GetPortfolioShowcase Return the authenticated owner's persisted portfolio showcase
 	// (GET /api/portfolio/showcase)
 	GetPortfolioShowcase(w http.ResponseWriter, r *http.Request)
+	// GetDisplayPreferences Return the authenticated owner's display preferences
+	// (GET /api/preferences/display)
+	GetDisplayPreferences(w http.ResponseWriter, r *http.Request)
+	// PutDisplayPreferences Create or replace the authenticated owner's display preferences
+	// (PUT /api/preferences/display)
+	PutDisplayPreferences(w http.ResponseWriter, r *http.Request, params PutDisplayPreferencesParams)
 	// GetPersonalProfile Return the authenticated owner's personal profile and safe catalogues
 	// (GET /api/profile)
 	GetPersonalProfile(w http.ResponseWriter, r *http.Request)
@@ -1270,6 +1388,65 @@ func (siw *ServerInterfaceWrapper) GetPortfolioShowcase(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// GetDisplayPreferences operation middleware
+func (siw *ServerInterfaceWrapper) GetDisplayPreferences(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetDisplayPreferences(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutDisplayPreferences operation middleware
+func (siw *ServerInterfaceWrapper) PutDisplayPreferences(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PutDisplayPreferencesParams
+
+	headers := r.Header
+
+	// ------------- Required header parameter "X-CSRF-Token" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("X-CSRF-Token")]; found {
+		var XCSRFToken string
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "X-CSRF-Token", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "X-CSRF-Token", valueList[0], &XCSRFToken, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "X-CSRF-Token", Err: err})
+			return
+		}
+
+		params.XCSRFToken = XCSRFToken
+
+	} else {
+		err := fmt.Errorf("Header parameter X-CSRF-Token is required, but not found")
+		siw.ErrorHandlerFunc(w, r, &RequiredHeaderError{ParamName: "X-CSRF-Token", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutDisplayPreferences(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetPersonalProfile operation middleware
 func (siw *ServerInterfaceWrapper) GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 
@@ -1449,6 +1626,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/preferences/display", wrapper.GetDisplayPreferences)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/preferences/display", wrapper.PutDisplayPreferences)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/portfolio/showcase", wrapper.GetPortfolioShowcase)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/profile", wrapper.GetPersonalProfile)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/profile", wrapper.PutPersonalProfile)
@@ -2124,6 +2303,183 @@ func (response GetPortfolioShowcase503JSONResponse) VisitGetPortfolioShowcaseRes
 	return err
 }
 
+type GetDisplayPreferencesRequestObject struct {
+}
+
+type GetDisplayPreferencesResponseObject interface {
+	VisitGetDisplayPreferencesResponse(w http.ResponseWriter) error
+}
+
+type GetDisplayPreferences200ResponseHeaders struct {
+	CacheControl string
+}
+
+type GetDisplayPreferences200JSONResponse struct {
+	Body    DisplayPreferences
+	Headers GetDisplayPreferences200ResponseHeaders
+}
+
+func (response GetDisplayPreferences200JSONResponse) VisitGetDisplayPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDisplayPreferences204Response struct {
+}
+
+func (response GetDisplayPreferences204Response) VisitGetDisplayPreferencesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type GetDisplayPreferences401JSONResponse struct {
+	ProfileUnauthorizedJSONResponse
+}
+
+func (response GetDisplayPreferences401JSONResponse) VisitGetDisplayPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetDisplayPreferences503JSONResponse struct{ ProfileUnavailableJSONResponse }
+
+func (response GetDisplayPreferences503JSONResponse) VisitGetDisplayPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutDisplayPreferencesRequestObject struct {
+	Params PutDisplayPreferencesParams
+	Body   *PutDisplayPreferencesJSONRequestBody
+}
+
+type PutDisplayPreferencesResponseObject interface {
+	VisitPutDisplayPreferencesResponse(w http.ResponseWriter) error
+}
+
+type PutDisplayPreferences200ResponseHeaders struct {
+	CacheControl string
+}
+
+type PutDisplayPreferences200JSONResponse struct {
+	Body    DisplayPreferences
+	Headers PutDisplayPreferences200ResponseHeaders
+}
+
+func (response PutDisplayPreferences200JSONResponse) VisitPutDisplayPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutDisplayPreferences400JSONResponse struct{ ProfileValidationJSONResponse }
+
+func (response PutDisplayPreferences400JSONResponse) VisitPutDisplayPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutDisplayPreferences401JSONResponse struct {
+	ProfileUnauthorizedJSONResponse
+}
+
+func (response PutDisplayPreferences401JSONResponse) VisitPutDisplayPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutDisplayPreferences403JSONResponse struct{ ProfileForbiddenJSONResponse }
+
+func (response PutDisplayPreferences403JSONResponse) VisitPutDisplayPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutDisplayPreferences409JSONResponse struct{ ProfileConflictJSONResponse }
+
+func (response PutDisplayPreferences409JSONResponse) VisitPutDisplayPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutDisplayPreferences503JSONResponse struct{ ProfileUnavailableJSONResponse }
+
+func (response PutDisplayPreferences503JSONResponse) VisitPutDisplayPreferencesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", fmt.Sprint(response.Headers.CacheControl))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetPersonalProfileRequestObject struct {
 }
 
@@ -2322,6 +2678,12 @@ type StrictServerInterface interface {
 	// GetPortfolioShowcase Return the authenticated owner's persisted portfolio showcase
 	// (GET /api/portfolio/showcase)
 	GetPortfolioShowcase(ctx context.Context, request GetPortfolioShowcaseRequestObject) (GetPortfolioShowcaseResponseObject, error)
+	// GetDisplayPreferences Return the authenticated owner's display preferences
+	// (GET /api/preferences/display)
+	GetDisplayPreferences(ctx context.Context, request GetDisplayPreferencesRequestObject) (GetDisplayPreferencesResponseObject, error)
+	// PutDisplayPreferences Create or replace the authenticated owner's display preferences
+	// (PUT /api/preferences/display)
+	PutDisplayPreferences(ctx context.Context, request PutDisplayPreferencesRequestObject) (PutDisplayPreferencesResponseObject, error)
 	// GetPersonalProfile Return the authenticated owner's personal profile and safe catalogues
 	// (GET /api/profile)
 	GetPersonalProfile(ctx context.Context, request GetPersonalProfileRequestObject) (GetPersonalProfileResponseObject, error)
@@ -2625,6 +2987,63 @@ func (sh *strictHandler) GetPortfolioShowcase(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// GetDisplayPreferences operation middleware
+func (sh *strictHandler) GetDisplayPreferences(w http.ResponseWriter, r *http.Request) {
+	var request GetDisplayPreferencesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetDisplayPreferences(ctx, request.(GetDisplayPreferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetDisplayPreferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetDisplayPreferencesResponseObject); ok {
+		if err := validResponse.VisitGetDisplayPreferencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutDisplayPreferences operation middleware
+func (sh *strictHandler) PutDisplayPreferences(w http.ResponseWriter, r *http.Request, params PutDisplayPreferencesParams) {
+	var request PutDisplayPreferencesRequestObject
+
+	request.Params = params
+
+	var body PutDisplayPreferencesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutDisplayPreferences(ctx, request.(PutDisplayPreferencesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutDisplayPreferences")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutDisplayPreferencesResponseObject); ok {
+		if err := validResponse.VisitPutDisplayPreferencesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetPersonalProfile operation middleware
 func (sh *strictHandler) GetPersonalProfile(w http.ResponseWriter, r *http.Request) {
 	var request GetPersonalProfileRequestObject
@@ -2687,59 +3106,61 @@ func (sh *strictHandler) PutPersonalProfile(w http.ResponseWriter, r *http.Reque
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"/w==",
+	"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",
+	"M3x894WqgTVbLf0/AAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

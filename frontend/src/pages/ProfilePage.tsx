@@ -2,6 +2,7 @@ import { type FormEvent, type ReactNode, type RefObject, useEffect, useRef, useS
 import { useI18n } from '../i18n'
 import { getPersonalProfile, type PersonalProfile, type PersonalProfileInput, ProfileConflictError, ProfileDefenseError, ProfileSessionExpiredError, ProfileValidationError, putPersonalProfile } from '../profile'
 import { useTheme } from '../theme'
+import { useAuthenticatedPreferences } from '../authenticated-preferences'
 
 type Draft = Omit<PersonalProfileInput, 'adultAttested'> & { adultAttested: boolean }
 type Field = Exclude<keyof Draft, 'expectedVersion'>
@@ -36,6 +37,7 @@ function profileDraft(profile: PersonalProfile): Draft {
 export function ProfilePage({ headingRef, onSessionExpired }: { headingRef: RefObject<HTMLHeadingElement | null>, onSessionExpired: () => void }) {
   const { locale, setLocale } = useI18n()
   const { preference, setPreference } = useTheme()
+  const authenticatedPreferences = useAuthenticatedPreferences()
   const copy = text[locale]
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(locale, preference))
   const [locations, setLocations] = useState<Awaited<ReturnType<typeof getPersonalProfile>>['locations']>([])
@@ -55,8 +57,6 @@ export function ProfilePage({ headingRef, onSessionExpired }: { headingRef: RefO
     setLocations(snapshot.locations)
     if (snapshot.profile) {
       setDraft(profileDraft(snapshot.profile))
-      initial.current.setLocale(snapshot.profile.locale)
-      initial.current.setPreference(snapshot.profile.theme)
     } else {
       setDraft(emptyDraft(initial.current.locale, initial.current.preference))
     }
@@ -106,7 +106,10 @@ export function ProfilePage({ headingRef, onSessionExpired }: { headingRef: RefO
     setErrors((current) => current.filter((item) => item !== field))
   }
   const choosePreference = (field: 'locale' | 'theme', value: Draft[typeof field]) => {
-    if (field === 'locale') setLocale(value as Draft['locale'])
+    if (field === 'locale') {
+      if (authenticatedPreferences) authenticatedPreferences.setLocale(value as Draft['locale'])
+      else setLocale(value as Draft['locale'])
+    } else if (authenticatedPreferences) authenticatedPreferences.setTheme(value as Draft['theme'])
     else setPreference(value as Draft['theme'])
     setDraft((current) => ({ ...current, [field]: value }))
     setStatus('idle')
@@ -126,8 +129,6 @@ export function ProfilePage({ headingRef, onSessionExpired }: { headingRef: RefO
     try {
       const saved = await putPersonalProfile({ ...draft, adultAttested: true, locale, theme: preference })
       setDraft(profileDraft(saved))
-      setLocale(saved.locale)
-      setPreference(saved.theme)
       setStatus('saved')
     } catch (error) {
       if (error instanceof ProfileSessionExpiredError || error instanceof ProfileDefenseError) onSessionExpired()
@@ -195,7 +196,7 @@ export function ProfilePage({ headingRef, onSessionExpired }: { headingRef: RefO
       <ProfileSection number="04" title={copy.settingsTitle} intro={copy.settingsIntro}>
         <fieldset id="locale" className="profile-field profile-choice-field profile-preference-field" aria-invalid={invalid('locale')}>
           <legend><span>{copy.locale}</span><span className="profile-field__annotation">{copy.required} · {copy.private}</span></legend>
-          <p id="locale-help">{copy.preferencesHelp}</p>
+          <p id="locale-help">{copy.preferencesHelp} {authenticatedPreferences && 'Changes save automatically.'}</p>
           <div className="profile-preference-options">
             <label><input type="radio" name="profile-locale" value="en" checked={locale === 'en'} aria-describedby={`locale-help${invalid('locale') ? ' locale-error' : ''}`} onChange={() => choosePreference('locale', 'en')} /><span>English</span></label>
             <label><input type="radio" name="profile-locale" value="fr" checked={locale === 'fr'} aria-describedby={`locale-help${invalid('locale') ? ' locale-error' : ''}`} onChange={() => choosePreference('locale', 'fr')} /><span>Français</span></label>
@@ -204,7 +205,7 @@ export function ProfilePage({ headingRef, onSessionExpired }: { headingRef: RefO
         </fieldset>
         <fieldset id="theme" className="profile-field profile-choice-field profile-preference-field" aria-invalid={invalid('theme')}>
           <legend><span>{copy.theme}</span><span className="profile-field__annotation">{copy.required} · {copy.private}</span></legend>
-          <p id="theme-help">{copy.preferencesHelp}</p>
+          <p id="theme-help">{copy.preferencesHelp} {authenticatedPreferences && 'Changes save automatically.'}</p>
           <div className="profile-preference-options profile-preference-options--theme">
             {(['system', 'light', 'dark'] as const).map((theme) => <label key={theme}><input type="radio" name="profile-theme" value={theme} checked={preference === theme} aria-describedby={`theme-help${invalid('theme') ? ' theme-error' : ''}`} onChange={() => choosePreference('theme', theme)} /><span>{copy[theme]}</span></label>)}
           </div>

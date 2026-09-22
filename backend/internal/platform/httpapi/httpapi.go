@@ -64,40 +64,45 @@ func NewHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diag
 	if len(initiators) > 0 {
 		initiator = initiators[0]
 	}
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, nil, nil, nil, nil, nil, nil, initiator != nil, "")
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, nil, nil, nil, nil, nil, nil, nil, initiator != nil, "")
 }
 
 // NewHandlerWithCallback creates the API handler with optional authorization dependencies.
 func NewHandlerWithCallback(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, nil, nil, nil, nil, nil, initiator != nil, "", integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, nil, nil, nil, nil, nil, nil, initiator != nil, "", integrationFixtures...)
 }
 
 // NewHandlerWithSessions composes OAuth and the independent session lifecycle.
 func NewHandlerWithSessions(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, nil, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, nil, nil, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
 // NewHandlerWithInventory composes OAuth, sessions, and masked portfolio inventory.
 func NewHandlerWithInventory(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, nil, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
 // NewHandlerWithPortfolio composes OAuth, sessions, inventory, and account inclusion.
 func NewHandlerWithPortfolio(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
 // NewHandlerWithShowcase additionally wires the read-only persisted showcase.
 func NewHandlerWithShowcase(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
 // NewHandlerWithProfile composes all owner-private portfolio and profile services.
 func NewHandlerWithProfile(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, profiles, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, profiles, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
-func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
+// NewHandlerWithProfilePreferences also wires owner display preferences.
+func NewHandlerWithProfilePreferences(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, preferences preferenceLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, profiles, preferences, authorizationAvailable, publicOrigin, integrationFixtures...)
+}
+
+func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, preferences preferenceLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeStatus(w, http.StatusOK, "ok", buildSHA)
@@ -120,14 +125,14 @@ func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diag
 	if len(integrationFixtures) > 0 && integrationFixtures[0] != nil {
 		mux.Handle("/api/__fixture/oidc/", integrationFixtures[0])
 	}
-	registerAuthorizationAPI(mux, logger, initiator, completer, sessions, inventory, inclusion, showcase, profiles, authorizationAvailable, publicOrigin)
+	registerAuthorizationAPI(mux, logger, initiator, completer, sessions, inventory, inclusion, showcase, profiles, preferences, authorizationAvailable, publicOrigin)
 
 	return requestMetadata(logger, profileCacheMiddleware(admission(readiness, buildSHA, mux)))
 }
 
 func profileCacheMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == profilePath {
+		if r.URL.Path == profilePath || r.URL.Path == displayPreferencesPath {
 			w.Header().Set(cacheControlHeader, privateNoStoreDirective)
 			w = profileCacheWriter{ResponseWriter: w}
 		}

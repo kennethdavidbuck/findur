@@ -4,6 +4,8 @@ import { csrfToken } from './session'
 export type PersonalProfile = components['schemas']['PersonalProfile']
 export type PersonalProfileInput = components['schemas']['PersonalProfileInput']
 export type PersonalProfileSnapshot = components['schemas']['PersonalProfileSnapshot']
+export type DisplayPreferences = components['schemas']['DisplayPreferences']
+export type DisplayPreferencesInput = components['schemas']['DisplayPreferencesInput']
 
 export class ProfileSessionExpiredError extends Error {}
 export class ProfileDefenseError extends Error {}
@@ -24,6 +26,16 @@ export async function putPersonalProfile(input: PersonalProfileInput): Promise<P
   })
 }
 
+export async function getDisplayPreferences(): Promise<DisplayPreferences | null> {
+  return request<DisplayPreferences | null>('/api/preferences/display', { method: 'GET' })
+}
+
+export async function putDisplayPreferences(input: DisplayPreferencesInput): Promise<DisplayPreferences> {
+  return request<DisplayPreferences>('/api/preferences/display', {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken() }, body: JSON.stringify(input),
+  })
+}
+
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetch(path, { ...init, cache: 'no-store', credentials: 'same-origin' })
   if (response.status === 401) throw new ProfileSessionExpiredError('profile session expired')
@@ -33,6 +45,7 @@ async function request<T>(path: string, init: RequestInit): Promise<T> {
     const body: unknown = await response.json()
     throw new ProfileValidationError(isRecord(body) && Array.isArray(body.fields) ? body.fields.filter((field): field is string => typeof field === 'string') : [])
   }
+  if (response.status === 204) return null as T
   if (!response.ok) throw new Error('profile unavailable')
   return await response.json() as T
 }

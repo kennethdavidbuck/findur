@@ -4,6 +4,24 @@
  */
 
 export interface paths {
+    "/api/preferences/display": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Return the authenticated owner's display preferences */
+        get: operations["getDisplayPreferences"];
+        /** Create or replace the authenticated owner's display preferences */
+        put: operations["putDisplayPreferences"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portfolio/showcase": {
         parameters: {
             query?: never;
@@ -186,6 +204,22 @@ export interface components {
             theme: "system" | "light" | "dark";
             /** Format: int64 */
             version: number;
+        };
+        DisplayPreferences: {
+            /** @enum {string} */
+            locale: "en" | "fr";
+            /** @enum {string} */
+            theme: "system" | "light" | "dark";
+            /** Format: int64 */
+            version: number;
+        };
+        DisplayPreferencesInput: {
+            /** @enum {string} */
+            locale: "en" | "fr";
+            /** @enum {string} */
+            theme: "system" | "light" | "dark";
+            /** Format: int64 */
+            expectedVersion: number;
         };
         PersonalProfileSnapshot: {
             profile?: components["schemas"]["PersonalProfile"];
@@ -455,6 +489,68 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    getDisplayPreferences: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owner-private display preferences */
+            200: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisplayPreferences"];
+                };
+            };
+            /** @description The owner has not saved display preferences yet */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["ProfileUnauthorized"];
+            503: components["responses"]["ProfileUnavailable"];
+        };
+    };
+    putDisplayPreferences: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisplayPreferencesInput"];
+            };
+        };
+        responses: {
+            /** @description Saved owner-private display preferences */
+            200: {
+                headers: {
+                    "Cache-Control": "private, no-store";
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisplayPreferences"];
+                };
+            };
+            400: components["responses"]["ProfileValidation"];
+            401: components["responses"]["ProfileUnauthorized"];
+            403: components["responses"]["ProfileForbidden"];
+            409: components["responses"]["ProfileConflict"];
+            503: components["responses"]["ProfileUnavailable"];
+        };
+    };
     getPortfolioShowcase: {
         parameters: {
             query?: never;

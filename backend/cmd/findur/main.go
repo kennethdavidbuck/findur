@@ -148,7 +148,12 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		pool.Close()
 		return errInvalidConfiguration
 	}
-	server := newServer(cfg.Address, httpapi.NewHandlerWithProfile(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, portfolioServices.inventory, portfolioServices.inclusion, showcaseService, profiles, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
+	preferences, err := profile.NewPreferenceService(postgresadapter.NewPreferenceRepository(pool, time.Now))
+	if err != nil {
+		pool.Close()
+		return errInvalidConfiguration
+	}
+	server := newServer(cfg.Address, httpapi.NewHandlerWithProfilePreferences(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, portfolioServices.inventory, portfolioServices.inclusion, showcaseService, profiles, preferences, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
 	serverErrors := make(chan error, 1)
 	workerCtx, stopWorker := context.WithCancel(rootCtx)
 	defer stopWorker()

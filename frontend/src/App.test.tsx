@@ -457,7 +457,7 @@ describe('public site', () => {
 		expect(screen.getByText(/Enregistrés dans votre profil : 0 sur 2 comptes affichés/)).toBeVisible()
 		fireEvent.click(screen.getAllByRole('radio', { name: 'Sombre' })[0])
 		await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'dark'))
-		expect(fetchMock).toHaveBeenCalledTimes(3)
+		expect(fetchMock).toHaveBeenCalledTimes(6)
 	})
 
 	it('skips onboarding account selection when saved accounts already exist', async () => {
@@ -1005,6 +1005,7 @@ describe('public site', () => {
 		let inventoryCalls = 0
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
 			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 			if (path === '/api/portfolio/inventory') {
 				inventoryCalls += 1
@@ -1069,6 +1070,7 @@ describe('public site', () => {
 		const ready = { state: 'empty', generation: 2, updatedAt: '2026-09-20T12:01:00Z', connections: [] }
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
 			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(unavailable))
 			if (path === '/api/portfolio/inventory/retry') return Promise.resolve(jsonResponseBody(ready))
@@ -1142,6 +1144,7 @@ describe('public site', () => {
 		document.cookie = 'findur_csrf=csrf-token; Path=/'
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
 			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
 			return Promise.resolve(new Response(null, { status: 204 }))
 		})
@@ -1160,6 +1163,7 @@ describe('public site', () => {
 		window.history.replaceState(null, '', '/portfolio')
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
 			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
 			return Promise.resolve(new Response(JSON.stringify({ code: 'forbidden' }), { status: 403 }))
 		})
@@ -1176,6 +1180,7 @@ describe('public site', () => {
 		window.localStorage.setItem('protected-payload', 'secret')
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
 			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: false, authenticated: true }))
+			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
 			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 			return Promise.resolve(new Response(JSON.stringify({ code: 'unauthenticated' }), { status: 401 }))
