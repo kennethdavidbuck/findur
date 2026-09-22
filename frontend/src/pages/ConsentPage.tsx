@@ -2,18 +2,19 @@ import { useEffect, type RefObject } from 'react'
 import { Button } from 'react-aria-components'
 import { useI18n } from '../i18n'
 import { PublicLink } from '../components/PublicLayout'
-import { useAuthorizationStatus } from '../auth-status'
+import { useAuthorizationStatus, type AuthorizationStatus } from '../auth-status'
 
 type ConsentPageProps = {
   headingRef: RefObject<HTMLHeadingElement | null>
   onNavigate: (route: '/' | '/about' | '/connect') => void
   onAuthenticated: () => void
+  initialStatus?: AuthorizationStatus
 }
 
-export function ConsentPage({ headingRef, onNavigate, onAuthenticated }: ConsentPageProps) {
+export function ConsentPage({ headingRef, onNavigate, onAuthenticated, initialStatus }: ConsentPageProps) {
   const { messages } = useI18n()
   const consent = messages.consent
-	const authorization = useAuthorizationStatus()
+	const authorization = useAuthorizationStatus(initialStatus)
 	const available = !authorization.resolving && authorization.status.authorizationAvailable
 
   useEffect(() => {
@@ -25,7 +26,9 @@ export function ConsentPage({ headingRef, onNavigate, onAuthenticated }: Consent
   }, [authorization, headingRef])
 
   if (authorization.resolving || authorization.status.authenticated) {
-    return null
+    return <section className="consent-page consent-page--checking section-pad" aria-busy="true">
+      <div className="container consent-panel" role="status"><p>{consent.checking}</p></div>
+    </section>
   }
 
   return (

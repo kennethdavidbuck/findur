@@ -368,7 +368,7 @@ describe('public site', () => {
 
     render(<App />)
 
-    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Checking login availability…')
     expect(screen.queryByRole('heading', { level: 1, name: 'Log in to Findur.' })).not.toBeInTheDocument()
     await waitFor(() => expect(statusResolvers.length).toBeGreaterThan(0))
     statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true })))
@@ -393,6 +393,26 @@ describe('public site', () => {
     await waitFor(() => expect(statusResolvers.length).toBeGreaterThan(0))
     statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true })))
     await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+  })
+
+  it('opens staged consent without a second status check after a logged-out Login click', async () => {
+    const statusResolvers: Array<(response: Response) => void> = []
+    const fetchMock = vi.fn().mockImplementation((path: string) => {
+      if (path === '/api/auth/status') return new Promise<Response>((resolve) => { statusResolvers.push(resolve) })
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    fireEvent.click(screen.getAllByRole('link', { name: 'Log in' })[0])
+
+    expect(screen.getByRole('heading', { level: 1, name: 'A dating app where portfolios start the conversation.' })).toBeVisible()
+    await waitFor(() => expect(statusResolvers).toHaveLength(1))
+    statusResolvers[0](jsonResponseBody({ authorizationAvailable: true, authenticated: false }))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Log in to Findur.' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Continue with SnapTrade' })).toBeEnabled()
+    expect(fetchMock.mock.calls.filter(([path]) => path === '/api/auth/status')).toHaveLength(1)
   })
 
 	it('rejects a forged success URL and trusts only server session status', async () => {
