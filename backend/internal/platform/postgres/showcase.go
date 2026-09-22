@@ -56,7 +56,7 @@ func (r *ShowcaseRepository) GetShowcase(ctx context.Context, owner uuid.UUID) (
 		if !head.usable() {
 			head.account.Balances = unavailable("SnapTrade", "included account")
 			head.account.Positions = unavailable("SnapTrade", "included account")
-			head.account.Activities = unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
+			head.account.Activities = unavailable("SnapTrade", "included account; newest 50 accumulated activities")
 		} else {
 			head.account.Balances = r.balances(ctx, tx, owner, head.id, head.account.SyncMode, now)
 			head.account.Positions = r.positions(ctx, tx, owner, head.id, head.account.SyncMode, now)
@@ -195,26 +195,28 @@ func (r *ShowcaseRepository) activities(ctx context.Context, tx pgx.Tx, owner uu
 		WHERE h.user_id=$1 AND h.account_id=$2`, owner, account).
 		Scan(&version, &observed, &retrieved, &published)
 	if err != nil {
-		return unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
+		return unavailable("SnapTrade", "included account; newest 50 accumulated activities")
 	}
-	rows, err := tx.Query(ctx, `SELECT activity_type,trade_date,currency,amount::text,fee::text,price::text,units::text FROM portfolio_activity_rows WHERE version_id=$1 ORDER BY row_number LIMIT 500`, version)
+	rows, err := tx.Query(ctx, `SELECT activity_type,trade_date,currency,amount::text,fee::text,price::text,units::text
+		FROM portfolio_account_activities WHERE user_id=$1 AND account_id=$2
+		ORDER BY trade_date DESC NULLS LAST,activity_id DESC LIMIT 50`, owner, account)
 	if err != nil {
-		return unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
+		return unavailable("SnapTrade", "included account; newest 50 accumulated activities")
 	}
 	defer rows.Close()
 
-	dataset := portfolio.ShowcaseDataset{Context: datasetContext("SnapTrade", "included account; last 30 days, up to 500 rows", "", observed, &retrieved, &published, mode, true, now)}
+	dataset := portfolio.ShowcaseDataset{Context: datasetContext("SnapTrade", "included account; newest 50 accumulated activities", "", observed, &retrieved, &published, mode, true, now)}
 	currencies := map[string]struct{}{}
 	for rows.Next() {
 		var activity portfolio.ShowcaseActivity
 		if err := rows.Scan(&activity.Type, &activity.TradeDate, &activity.Currency, &activity.Amount, &activity.Fee, &activity.Price, &activity.Units); err != nil {
-			return unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
+			return unavailable("SnapTrade", "included account; newest 50 accumulated activities")
 		}
 		currencies[activity.Currency] = struct{}{}
 		dataset.Activities = append(dataset.Activities, activity)
 	}
 	if rows.Err() != nil {
-		return unavailable("SnapTrade", "included account; last 30 days, up to 500 rows")
+		return unavailable("SnapTrade", "included account; newest 50 accumulated activities")
 	}
 	dataset.Context.Currency = currencySummary(currencies)
 	return dataset

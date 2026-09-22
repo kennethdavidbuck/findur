@@ -60,12 +60,12 @@ The test first verifies that active connections containing only excluded account
 publish an empty inventory and display the matching empty-state message. It then
 loads the mixed fixture, checks the persisted normalized response,
 checks every account's connection assignment, complete masked label, and brokerage, loads
-the chooser, selects all, deselects all, scrolls to and clicks the last selectable
-account through WebDriver, and reviews all 441 selections. It verifies the request-journal delta is exactly
+the chooser, selects the maximum five, deselects them, scrolls to and clicks the last selectable
+account through WebDriver, and reviews a bounded five-account selection. It verifies the request-journal delta is exactly
 two provider calls throughout this journey, with no per-connection account calls
 or financial-data calls. The smaller journey still covers saving through the UI
 and rendering the Showcase. Large-selection confirmation and its provider-call
-budget are a separate follow-up; this scenario stops at reviewing the draft.
+budget are bounded by the browser and API five-account limit; this scenario stops at reviewing the draft.
 
 The console prints `large inventory performance` with API fetch/normalization/
 persistence duration, browser navigation/render duration, select-all, deselect-all,

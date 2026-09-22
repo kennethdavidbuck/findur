@@ -17,15 +17,14 @@ import (
 )
 
 const (
-	activityWindowDays = 30
-	activityRowLimit   = int32(500)
-	maxDatasetRows     = 5000
-	maxNumericWhole    = int64(131072)
-	maxNumericScale    = int64(16383)
-	maxPositionSymbol  = 120
-	maxPositionKind    = 60
-	maxActivityID      = 160
-	maxActivityType    = 80
+	activityRowLimit  = int32(50)
+	maxDatasetRows    = 5000
+	maxNumericWhole   = int64(131072)
+	maxNumericScale   = int64(16383)
+	maxPositionSymbol = 120
+	maxPositionKind   = 60
+	maxActivityID     = 160
+	maxActivityType   = 80
 )
 
 var (
@@ -97,9 +96,9 @@ type rawActivities struct {
 	Data *[]rawActivity `json:"data"`
 }
 
-// LoadAccountData fetches exactly balances, all positions, and a bounded
-// thirty-day activity window. It retains only the typed subset Findur needs.
-func (c *InventoryClient) LoadAccountData(ctx context.Context, bearer, accountID string, now time.Time) (portfolio.AccountData, error) {
+// LoadAccountData fetches exactly balances, all positions, and the newest
+// bounded activity page. Dataset calls are deliberately paced.
+func (c *InventoryClient) LoadAccountData(ctx context.Context, bearer, accountID string, _ time.Time) (portfolio.AccountData, error) {
 	if bearer == "" {
 		return portfolio.AccountData{}, &portfolio.ProviderError{State: portfolio.StateUnauthorized}
 	}
@@ -113,13 +112,38 @@ func (c *InventoryClient) LoadAccountData(ctx context.Context, bearer, accountID
 	}
 	positions, err := c.loadPositions(ctx, bearer, id)
 	if err != nil {
-		return portfolio.AccountData{}, err
+		return portfolio.AccountData{Balances: balances}, err
 	}
-	activities, err := c.loadActivities(ctx, bearer, id, now)
+	activities, err := c.loadActivities(ctx, bearer, id)
 	if err != nil {
-		return portfolio.AccountData{}, err
+		return portfolio.AccountData{Balances: balances, Positions: positions}, err
 	}
 	return portfolio.AccountData{Balances: balances, Positions: positions, Activities: activities}, nil
+}
+
+// LoadAccountResource fetches one independently checkpointed dataset. Other
+// AccountData fields remain empty so they cannot be published accidentally.
+func (c *InventoryClient) LoadAccountResource(ctx context.Context, bearer, accountID string, resource portfolio.AccountResource, _ time.Time) (portfolio.AccountData, error) {
+	if bearer == "" {
+		return portfolio.AccountData{}, &portfolio.ProviderError{State: portfolio.StateUnauthorized}
+	}
+	id, err := uuid.Parse(accountID)
+	if err != nil || id == uuid.Nil {
+		return portfolio.AccountData{}, &portfolio.ProviderError{State: portfolio.StateMalformed}
+	}
+	switch resource {
+	case portfolio.AccountResourceBalances:
+		data, loadErr := c.loadBalances(ctx, bearer, id)
+		return portfolio.AccountData{Balances: data}, loadErr
+	case portfolio.AccountResourcePositions:
+		data, loadErr := c.loadPositions(ctx, bearer, id)
+		return portfolio.AccountData{Positions: data}, loadErr
+	case portfolio.AccountResourceActivities:
+		data, loadErr := c.loadActivities(ctx, bearer, id)
+		return portfolio.AccountData{Activities: data}, loadErr
+	default:
+		return portfolio.AccountData{}, &portfolio.ProviderError{State: portfolio.StateMalformed}
+	}
 }
 
 func (c *InventoryClient) loadBalances(ctx context.Context, bearer string, accountID uuid.UUID) (portfolio.BalanceDataset, error) {
@@ -174,14 +198,11 @@ func (c *InventoryClient) loadPositions(ctx context.Context, bearer string, acco
 	return portfolio.PositionDataset{ObservedAt: raw.DataFreshness.AsOf.UTC(), RetrievedAt: c.clock().UTC(), Rows: result}, nil
 }
 
-func (c *InventoryClient) loadActivities(ctx context.Context, bearer string, accountID uuid.UUID, now time.Time) (portfolio.ActivityDataset, error) {
-	start, end := now.UTC().AddDate(0, 0, -activityWindowDays), now.UTC()
+func (c *InventoryClient) loadActivities(ctx context.Context, bearer string, accountID uuid.UUID) (portfolio.ActivityDataset, error) {
 	offset := int32(0)
 	params := &providergenerated.AccountInformationGetAccountActivitiesParams{
-		StartDate: &providergenerated.ReportingDate{Time: start},
-		EndDate:   &providergenerated.ReportingDate{Time: end},
-		Offset:    &offset,
-		Limit:     pointer(activityRowLimit),
+		Offset: &offset,
+		Limit:  pointer(activityRowLimit),
 	}
 	request, err := providergenerated.NewAccountInformationGetAccountActivitiesRequest(c.baseURL, accountID, params)
 	if err != nil {

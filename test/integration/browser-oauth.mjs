@@ -59,11 +59,11 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script: `const text=document.body.innerText;const check=[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Check again'&&!button.disabled);if(check)check.click();return {text,focused:document.activeElement===document.querySelector('h1'),chooserCount:document.querySelectorAll('.account-selection').length,inventoryCount:document.querySelectorAll('.inventory-connections').length,accountLabelCount:text.split('Individual (•••• X001)').length-1}`, args: [] }),
       })
-      if (inventoryEvidence.text.includes('Individual (•••• X001)')) break
+      if (inventoryEvidence.text.includes('Individual (•••• X001)') && inventoryEvidence.chooserCount === 1) break
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
     assert.equal(inventoryEvidence.focused, true, 'the account-choice heading retains meaningful focus')
-    assert.equal(inventoryEvidence.chooserCount, 1, 'one account chooser is rendered')
+    assert.equal(inventoryEvidence.chooserCount, 1, `one account chooser is rendered; observed: ${JSON.stringify(inventoryEvidence)}`)
     assert.equal(inventoryEvidence.inventoryCount, 0, 'the raw inventory is not duplicated beside the chooser')
     assert.equal(inventoryEvidence.accountLabelCount, 1, `the account is rendered once; observed: ${JSON.stringify(inventoryEvidence)}`)
     assert.match(inventoryEvidence.text, /Pick the accounts you’d like to include\. You can change this anytime\./)

@@ -31,6 +31,13 @@ var (
 	ErrIdempotencyConflict = errors.New("idempotency key conflict")
 )
 
+const (
+	// MaxIncludedAccounts bounds provider load and scheduled synchronization work.
+	MaxIncludedAccounts = 5
+	// MaxIdempotencyKeyLength matches the public API and persistence contract.
+	MaxIdempotencyKeyLength = 200
+)
+
 // Balance is a minimized currency-specific account balance.
 type Balance struct {
 	Currency          string
@@ -82,6 +89,18 @@ type AccountData struct {
 	Activities ActivityDataset
 }
 
+// AccountResource identifies one independently fetched and published dataset.
+type AccountResource string
+
+const (
+	// AccountResourceBalances selects the balance snapshot.
+	AccountResourceBalances AccountResource = "balances"
+	// AccountResourcePositions selects the position snapshot.
+	AccountResourcePositions AccountResource = "positions"
+	// AccountResourceActivities selects the bounded activity page.
+	AccountResourceActivities AccountResource = "activities"
+)
+
 // InclusionChange describes the current or most recent owner-scoped change.
 type InclusionChange struct {
 	ID                  uuid.UUID
@@ -97,7 +116,8 @@ type InclusionSnapshot struct {
 	Change    *InclusionChange
 }
 
-// InclusionPreparation is the short-transaction handoff for provider work.
+// InclusionPreparation describes a saved selection and any first-sync work the
+// background worker must finish.
 type InclusionPreparation struct {
 	InclusionSnapshot
 	Claimed             bool
@@ -105,43 +125,33 @@ type InclusionPreparation struct {
 	InventoryGeneration int64
 	LifecycleGeneration int64
 	Additions           []string
-	EncryptedToken      []byte
-	TokenVersion        int
 }
 
 // InclusionRepository fences changes and atomically publishes complete datasets.
 type InclusionRepository interface {
 	GetInclusion(context.Context, uuid.UUID) (InclusionSnapshot, error)
 	PrepareInclusion(context.Context, uuid.UUID, int64, string, []string, time.Time) (InclusionPreparation, error)
-	FinalizeInclusion(context.Context, uuid.UUID, uuid.UUID, int64, int64, int64, map[string]AccountData, string, time.Time) (InclusionSnapshot, bool, error)
+	FinalizeInclusion(context.Context, uuid.UUID, uuid.UUID, int64, int64, int64, map[string]AccountData, string, *time.Time, time.Time) (InclusionSnapshot, bool, error)
 }
 
 // AccountDataProvider performs only the allowlisted account-data reads.
 type AccountDataProvider interface {
 	LoadAccountData(context.Context, string, string, time.Time) (AccountData, error)
+	LoadAccountResource(context.Context, string, string, AccountResource, time.Time) (AccountData, error)
 }
 
-// InclusionService coordinates removal-first, call-outside-transaction changes.
+// InclusionService durably saves account membership without provider calls.
 type InclusionService struct {
 	repository InclusionRepository
-	provider   AccountDataProvider
-	tokens     *auth.TokenCipher
 	clock      func() time.Time
-	timeout    time.Duration
 }
 
 // NewInclusionService validates and constructs the inclusion orchestrator.
-func NewInclusionService(repository InclusionRepository, provider AccountDataProvider, tokens *auth.TokenCipher, clock func() time.Time, timeout time.Duration) (*InclusionService, error) {
-	if repository == nil || provider == nil || tokens == nil || clock == nil || timeout <= 0 {
+func NewInclusionService(repository InclusionRepository, clock func() time.Time) (*InclusionService, error) {
+	if repository == nil || clock == nil {
 		return nil, errors.New("incomplete inclusion service configuration")
 	}
-	return &InclusionService{
-		repository: repository,
-		provider:   provider,
-		tokens:     tokens,
-		clock:      clock,
-		timeout:    timeout,
-	}, nil
+	return &InclusionService{repository: repository, clock: clock}, nil
 }
 
 // Get returns the authenticated owner's persisted inclusion state.
@@ -149,39 +159,16 @@ func (s *InclusionService) Get(ctx context.Context, actor auth.Actor) (Inclusion
 	return s.repository.GetInclusion(ctx, actor.UserID())
 }
 
-// Confirm immediately commits removals, probes additions outside a transaction,
-// then publishes every required dataset and membership in one guarded transaction.
+// Confirm durably saves the intended selection. First-time additions remain
+// pending for the scheduled synchronization worker; retained additions commit
+// immediately without provider work.
 func (s *InclusionService) Confirm(ctx context.Context, actor auth.Actor, expectedVersion int64, idempotencyKey string, requested []string) (InclusionSnapshot, error) {
 	targets := canonicalAccountIDs(requested)
+	if len(targets) > MaxIncludedAccounts {
+		return InclusionSnapshot{}, ErrInvalidAccountSelection
+	}
 	preparation, err := s.repository.PrepareInclusion(ctx, actor.UserID(), expectedVersion, idempotencyKey, targets, s.clock().UTC())
-	if err != nil || !preparation.Claimed {
-		return preparation.InclusionSnapshot, err
-	}
-
-	token, err := s.tokens.DecryptAccess(actor.UserID(), preparation.TokenVersion, preparation.EncryptedToken)
-	if err != nil || token == "" {
-		return s.finish(ctx, actor.UserID(), preparation, nil, "authorization_required")
-	}
-
-	data := make(map[string]AccountData, len(preparation.Additions))
-	for _, accountID := range preparation.Additions {
-		opCtx, cancel := context.WithTimeout(ctx, s.timeout)
-		accountData, providerErr := s.provider.LoadAccountData(opCtx, token, accountID, s.clock().UTC())
-		cancel()
-		if providerErr != nil {
-			return s.finish(ctx, actor.UserID(), preparation, nil, inclusionFailureReason(providerErr))
-		}
-		data[accountID] = accountData
-	}
-	return s.finish(ctx, actor.UserID(), preparation, data, "")
-}
-
-func (s *InclusionService) finish(ctx context.Context, owner uuid.UUID, preparation InclusionPreparation, data map[string]AccountData, failure string) (InclusionSnapshot, error) {
-	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout)
-	defer cancel()
-
-	snapshot, _, err := s.repository.FinalizeInclusion(cleanupCtx, owner, preparation.ChangeID, preparation.Version, preparation.InventoryGeneration, preparation.LifecycleGeneration, data, failure, s.clock().UTC())
-	return snapshot, err
+	return preparation.InclusionSnapshot, err
 }
 
 func inclusionFailureReason(err error) string {

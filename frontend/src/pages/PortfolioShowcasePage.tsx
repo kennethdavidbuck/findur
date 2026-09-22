@@ -1,11 +1,12 @@
 import { useEffect, useState, type RefObject } from 'react'
 import type { components } from '../generated/api'
 import { useI18n } from '../i18n'
-import { InventorySessionExpiredError } from '../inventory'
+import { getPortfolioInclusion, InventorySessionExpiredError } from '../inventory'
 import { getPortfolioShowcase, type PortfolioShowcase } from '../showcase'
 
 type Dataset = components['schemas']['ShowcaseDataset']
 type Locale = 'en' | 'fr'
+const preparationRefreshIntervalMs = 5_000
 
 const copy = {
   en: {
@@ -18,6 +19,9 @@ const copy = {
     retry: 'Try again',
     reconnect: 'Reconnect',
     empty: 'No included accounts are saved.',
+    preparing: 'Your accounts are saved. Some portfolio data is still syncing. Check back in a few minutes.',
+    preparingDataset: 'This account data is still syncing.',
+    checkAgain: 'Check again',
     includedAccount: 'Included account',
     included: 'Included',
     coverageHeading: (count: number) => `Using ${count} included account${count === 1 ? '' : 's'}`,
@@ -41,7 +45,7 @@ const copy = {
     expiredDataset: 'This dataset has expired, so its saved values are hidden. Reconnect to recover it.',
     recordedRows: 'recorded rows',
     separateCurrencies: 'Currencies stay separate',
-    activityCoverage: 'Last 30 days · up to 500 rows',
+    activityCoverage: 'Newest 50 accumulated activities',
     activityCadence: 'Activities are bounded records, often daily; they are not real-time orders.',
     table: 'table',
   },
@@ -55,6 +59,9 @@ const copy = {
     retry: 'Réessayer',
     reconnect: 'Reconnecter',
     empty: 'Aucun compte inclus enregistré.',
+    preparing: 'Vos comptes sont enregistrés. Certaines données du portefeuille sont encore en cours de synchronisation. Revenez dans quelques minutes.',
+    preparingDataset: 'Les données de ce compte sont encore en cours de synchronisation.',
+    checkAgain: 'Vérifier à nouveau',
     includedAccount: 'Compte inclus',
     included: 'Inclus',
     coverageHeading: (count: number) => `${count} compte${count === 1 ? '' : 's'} inclus`,
@@ -78,7 +85,7 @@ const copy = {
     expiredDataset: 'Cet ensemble a expiré; ses valeurs enregistrées sont donc masquées. Reconnectez-vous pour le récupérer.',
     recordedRows: 'lignes enregistrées',
     separateCurrencies: 'Les devises restent distinctes',
-    activityCoverage: '30 derniers jours · jusqu’à 500 lignes',
+    activityCoverage: '50 activités cumulées les plus récentes',
     activityCadence: 'Les activités sont des enregistrements bornés, souvent quotidiens; elles ne sont pas des ordres en temps réel.',
     table: 'tableau',
   },
@@ -95,18 +102,37 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
   const text = copy[locale]
   const [data, setData] = useState<PortfolioShowcase | null>(null)
   const [failed, setFailed] = useState(false)
+  const [preparing, setPreparing] = useState(false)
   const [reload, setReload] = useState(0)
 
   useEffect(() => {
     let alive = true
     void getPortfolioShowcase()
-      .then((value) => alive && setData(value))
+      .then(async (showcase) => {
+        if (!alive) return
+        setData(showcase)
+        try {
+          const inclusion = await getPortfolioInclusion()
+          if (alive) setPreparing(inclusion.change?.status === 'pending')
+        } catch (error) {
+          if (error instanceof InventorySessionExpiredError) onSessionExpired()
+        }
+      })
       .catch((error) => {
         if (error instanceof InventorySessionExpiredError) onSessionExpired()
         else if (alive) setFailed(true)
       })
     return () => { alive = false }
   }, [onSessionExpired, reload])
+
+  useEffect(() => {
+    if (!preparing) return
+    const timer = window.setTimeout(
+      () => setReload((value) => value + 1),
+      preparationRefreshIntervalMs,
+    )
+    return () => window.clearTimeout(timer)
+  }, [preparing, reload])
 
   useEffect(() => {
     if (data) requestAnimationFrame(() => headingRef.current?.focus())
@@ -143,10 +169,16 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
       {data.accounts.length === 0
         ? <div className="showcase-empty" role="status">
           <span aria-hidden="true">◇</span>
-          <p>{text.empty}</p>
-          <button className="text-link" onClick={onEdit}>{text.edit} →</button>
+          <p>{preparing ? text.preparing : text.empty}</p>
+          {preparing
+            ? <button className="text-link" onClick={() => { setPreparing(false); setData(null); setReload((value) => value + 1) }}>{text.checkAgain} →</button>
+            : <button className="text-link" onClick={onEdit}>{text.edit} →</button>}
         </div>
         : <>
+          {preparing && <div className="showcase-preparing" role="status">
+            <p>{text.preparing}</p>
+            <button className="text-link" onClick={() => setReload((value) => value + 1)}>{text.checkAgain} →</button>
+          </div>}
           <section className="coverage" aria-label={text.coverage}>
             <div>
               <strong>{text.coverageHeading(data.accounts.length)}</strong>
@@ -163,7 +195,7 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
                 </div>
                 <span className="included">◆ {text.included}</span>
               </header>
-              <BalanceSummary dataset={account.balances} locale={locale} />
+              <BalanceSummary dataset={account.balances} locale={locale} preparing={preparing} />
               <span className="account-index">{text.includedAccount} {String(index + 1).padStart(2, '0')}</span>
             </article>)}
           </section>
@@ -179,9 +211,9 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
                   </div>
                 </header>
                 <div className="dataset-list">
-                  <Evidence title={text.balances} dataset={account.balances} rows={account.balances.balances} columns={columns.balances} locale={locale} onReconnect={onReconnect} />
-                  <Evidence title={text.positions} dataset={account.positions} rows={account.positions.positions} columns={columns.positions} locale={locale} onReconnect={onReconnect} />
-                  <Evidence title={text.activities} dataset={account.activities} rows={account.activities.activities} columns={columns.activities} locale={locale} onReconnect={onReconnect} activity />
+                  <Evidence title={text.balances} dataset={account.balances} rows={account.balances.balances} columns={columns.balances} locale={locale} onReconnect={onReconnect} preparing={preparing} />
+                  <Evidence title={text.positions} dataset={account.positions} rows={account.positions.positions} columns={columns.positions} locale={locale} onReconnect={onReconnect} preparing={preparing} />
+                  <Evidence title={text.activities} dataset={account.activities} rows={account.activities.activities} columns={columns.activities} locale={locale} onReconnect={onReconnect} preparing={preparing} activity />
                 </div>
               </section>
             })}
@@ -191,10 +223,10 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
   </div>
 }
 
-function BalanceSummary({ dataset, locale }: { dataset: Dataset; locale: Locale }) {
+function BalanceSummary({ dataset, locale, preparing }: { dataset: Dataset; locale: Locale; preparing: boolean }) {
   const text = copy[locale]
   if (dataset.context.freshness === 'expired') return <div className="money"><p>{text.expiredDataset}</p></div>
-  if (dataset.context.freshness === 'unavailable') return <div className="money"><p>{text.unavailableDataset}</p></div>
+  if (dataset.context.freshness === 'unavailable') return <div className="money"><p>{preparing ? text.preparingDataset : text.unavailableDataset}</p></div>
   if (dataset.balances.length === 0) return <div className="money"><p>{text.emptyDataset}</p></div>
   return <div className="money">
     {dataset.balances.map((row, index) => <div key={`${row.currency}-${index}`}>
@@ -205,7 +237,7 @@ function BalanceSummary({ dataset, locale }: { dataset: Dataset; locale: Locale 
   </div>
 }
 
-function Evidence({ title, dataset, rows, columns, locale, onReconnect, activity = false }: { title: string; dataset: Dataset; rows: Array<Record<string, unknown>>; columns: readonly string[]; locale: Locale; onReconnect: () => void; activity?: boolean }) {
+function Evidence({ title, dataset, rows, columns, locale, onReconnect, preparing, activity = false }: { title: string; dataset: Dataset; rows: Array<Record<string, unknown>>; columns: readonly string[]; locale: Locale; onReconnect: () => void; preparing: boolean; activity?: boolean }) {
   const text = copy[locale]
   const context = dataset.context
   const recorded = context.observedAt ?? context.retrievedAt
@@ -230,8 +262,8 @@ function Evidence({ title, dataset, rows, columns, locale, onReconnect, activity
     {activity && <p className="activity-cadence">△ {text.activityCadence}</p>}
     {context.freshness === 'expired' || context.freshness === 'unavailable'
       ? <div className="showcase-note showcase-note--unavailable">
-        <p>{context.freshness === 'expired' ? text.expiredDataset : text.unavailableDataset}</p>
-        <button className="action action--secondary" onClick={onReconnect}>{text.reconnect}</button>
+        <p>{context.freshness === 'expired' ? text.expiredDataset : preparing ? text.preparingDataset : text.unavailableDataset}</p>
+        {!preparing && <button className="action action--secondary" onClick={onReconnect}>{text.reconnect}</button>}
       </div>
       : rows.length === 0
         ? <p className="showcase-note">{text.emptyDataset}</p>

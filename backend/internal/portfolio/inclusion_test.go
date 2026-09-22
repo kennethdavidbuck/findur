@@ -1,7 +1,6 @@
 package portfolio
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -11,37 +10,32 @@ import (
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 )
 
-func TestInclusionServicePublishesAllAdditionsTogether(t *testing.T) {
+func TestInclusionServiceDurablySavesPendingAdditionsWithoutProviderWork(t *testing.T) {
 	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
-	encrypted, _ := tokens.EncryptAccess(uuid.Nil, "access-token")
-	repository := &inclusionRepositoryStub{preparation: InclusionPreparation{InclusionSnapshot: InclusionSnapshot{Version: 3, Committed: []string{"kept"}}, Claimed: true, ChangeID: uuid.New(), InventoryGeneration: 4, LifecycleGeneration: 1, Additions: []string{"a", "b"}, EncryptedToken: encrypted, TokenVersion: 1}}
-	provider := &accountDataProviderStub{data: completeTestAccountData(now)}
-	service, _ := NewInclusionService(repository, provider, tokens, func() time.Time { return now }, time.Second)
+	repository := &inclusionRepositoryStub{preparation: InclusionPreparation{InclusionSnapshot: InclusionSnapshot{
+		Version:   3,
+		Committed: []string{"kept"},
+		Change:    &InclusionChange{ID: uuid.New(), Status: InclusionPending, Additions: []string{"a", "b"}},
+	}, Claimed: true, Additions: []string{"a", "b"}}}
+	service, _ := NewInclusionService(repository, func() time.Time { return now })
 
 	result, err := service.Confirm(context.Background(), auth.Actor{}, 2, "one", []string{"a", "b", "kept"})
-	if err != nil || result.Change == nil || result.Change.Status != InclusionCommitted {
+	if err != nil || result.Change == nil || result.Change.Status != InclusionPending {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
-	if provider.calls != 2 || repository.failure != "" || len(repository.data) != 2 {
-		t.Fatalf("calls=%d failure=%q data=%v", provider.calls, repository.failure, repository.data)
+	if repository.finalizeCalls != 0 {
+		t.Fatalf("finalizeCalls=%d, save performed synchronization work", repository.finalizeCalls)
 	}
 }
 
-func TestInclusionServiceNeverPublishesPartialAdditions(t *testing.T) {
+func TestInclusionServiceRejectsMoreThanFiveUniqueAccountsBeforeRepositoryOrProvider(t *testing.T) {
 	now := time.Now().UTC()
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{1}, 64)))
-	encrypted, _ := tokens.EncryptAccess(uuid.Nil, "access-token")
-	repository := &inclusionRepositoryStub{preparation: InclusionPreparation{InclusionSnapshot: InclusionSnapshot{Version: 8, Committed: []string{"kept"}}, Claimed: true, ChangeID: uuid.New(), InventoryGeneration: 6, LifecycleGeneration: 2, Additions: []string{"a", "b"}, EncryptedToken: encrypted, TokenVersion: 1}}
-	provider := &accountDataProviderStub{data: completeTestAccountData(now), failAt: 2}
-	service, _ := NewInclusionService(repository, provider, tokens, func() time.Time { return now }, time.Second)
+	repository := &inclusionRepositoryStub{}
+	service, _ := NewInclusionService(repository, func() time.Time { return now })
 
-	result, err := service.Confirm(context.Background(), auth.Actor{}, 7, "two", []string{"a", "b", "kept"})
-	if err != nil || result.Change == nil || result.Change.Status != InclusionFailed {
-		t.Fatalf("result=%+v err=%v", result, err)
-	}
-	if repository.data != nil || repository.failure != "provider_unavailable" {
-		t.Fatalf("partial data reached finalizer: data=%v failure=%q", repository.data, repository.failure)
+	_, err := service.Confirm(context.Background(), auth.Actor{}, 0, "too-many", []string{"a", "b", "c", "d", "e", "f", "a"})
+	if !errors.Is(err, ErrInvalidAccountSelection) || repository.prepareCalls != 0 {
+		t.Fatalf("err=%v prepareCalls=%d", err, repository.prepareCalls)
 	}
 }
 
@@ -54,9 +48,11 @@ func completeTestAccountData(now time.Time) AccountData {
 }
 
 type inclusionRepositoryStub struct {
-	preparation InclusionPreparation
-	data        map[string]AccountData
-	failure     string
+	preparation   InclusionPreparation
+	data          map[string]AccountData
+	failure       string
+	prepareCalls  int
+	finalizeCalls int
 }
 
 func (r *inclusionRepositoryStub) GetInclusion(context.Context, uuid.UUID) (InclusionSnapshot, error) {
@@ -64,13 +60,17 @@ func (r *inclusionRepositoryStub) GetInclusion(context.Context, uuid.UUID) (Incl
 }
 
 func (r *inclusionRepositoryStub) PrepareInclusion(context.Context, uuid.UUID, int64, string, []string, time.Time) (InclusionPreparation, error) {
+	r.prepareCalls++
 	return r.preparation, nil
 }
 
-func (r *inclusionRepositoryStub) FinalizeInclusion(_ context.Context, _ uuid.UUID, _ uuid.UUID, _, _, _ int64, data map[string]AccountData, failure string, _ time.Time) (InclusionSnapshot, bool, error) {
+func (r *inclusionRepositoryStub) FinalizeInclusion(_ context.Context, _ uuid.UUID, _ uuid.UUID, _, _, _ int64, data map[string]AccountData, failure string, _ *time.Time, _ time.Time) (InclusionSnapshot, bool, error) {
+	r.finalizeCalls++
 	r.data, r.failure = data, failure
 	status := InclusionCommitted
-	if failure != "" {
+	if failure == "provider_unavailable" || failure == "rate_limited" {
+		status = InclusionPending
+	} else if failure != "" {
 		status = InclusionFailed
 	}
 	result := r.preparation.InclusionSnapshot
@@ -82,12 +82,36 @@ type accountDataProviderStub struct {
 	data   AccountData
 	failAt int
 	calls  int
+	err    error
 }
 
 func (p *accountDataProviderStub) LoadAccountData(context.Context, string, string, time.Time) (AccountData, error) {
 	p.calls++
 	if p.calls == p.failAt {
+		if p.err != nil {
+			return AccountData{}, p.err
+		}
 		return AccountData{}, errors.New("unavailable")
 	}
 	return p.data, nil
+}
+
+func (p *accountDataProviderStub) LoadAccountResource(_ context.Context, _ string, _ string, resource AccountResource, _ time.Time) (AccountData, error) {
+	p.calls++
+	if p.calls == p.failAt {
+		if p.err != nil {
+			return AccountData{}, p.err
+		}
+		return AccountData{}, errors.New("unavailable")
+	}
+	switch resource {
+	case AccountResourceBalances:
+		return AccountData{Balances: p.data.Balances}, nil
+	case AccountResourcePositions:
+		return AccountData{Positions: p.data.Positions}, nil
+	case AccountResourceActivities:
+		return AccountData{Activities: p.data.Activities}, nil
+	default:
+		return AccountData{}, errors.New("unknown resource")
+	}
 }
