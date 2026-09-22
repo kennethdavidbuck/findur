@@ -163,7 +163,7 @@ describe('public site', () => {
   it('uses the first supported French browser preference on a first visit', () => {
     vi.spyOn(window.navigator, 'languages', 'get').mockReturnValue(['fr-CA', 'en-CA'])
     render(<App />)
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Trouvez une autre trajectoire dans le même ciel.')
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Une application de rencontres où les portefeuilles lancent la conversation.')
     expect(document.documentElement.lang).toBe('fr')
   })
 
@@ -174,8 +174,9 @@ describe('public site', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Find a different pattern in the same sky.',
+      'A dating app where portfolios start the conversation.',
     )
+    expect(screen.getByText(/Meet people for dates through a different kind of first impression/)).toBeVisible()
     expect(screen.getByText('Private 18+ demo')).toBeInTheDocument()
     const loginLinks = screen.getAllByRole('link', { name: 'Log in' })
     expect(loginLinks).toHaveLength(2)
@@ -189,13 +190,13 @@ describe('public site', () => {
 
     fireEvent.click(screen.getByRole('link', { name: /how findur works/i }))
 
-    const heading = screen.getByRole('heading', { level: 1, name: /more to investing/i })
+    const heading = screen.getByRole('heading', { level: 1, name: /dating app with a different/i })
     await waitFor(() => expect(heading).toHaveFocus())
     expect(window.location.pathname).toBe('/about')
-    expect(document.title).toBe('About Findur')
+    expect(document.title).toBe('About Findur — Dating for investors')
     expect(document.querySelector('meta[name="description"]')).toHaveAttribute(
       'content',
-      expect.stringContaining('conversation starters'),
+      expect.stringContaining('start conversations'),
     )
     expect(screen.getByText(/mix of holdings, diversification, recent activity, and account coverage/)).toBeVisible()
     expect(screen.getByRole('heading', { name: 'The numbers never get the last word.' })).toBeVisible()
@@ -208,24 +209,24 @@ describe('public site', () => {
     fireEvent.click(screen.getAllByRole('radio', { name: 'FR' })[0])
 
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
-      'Trouvez une autre trajectoire dans le même ciel.',
+      'Une application de rencontres où les portefeuilles lancent la conversation.',
     )
     expect(document.documentElement.lang).toBe('fr')
     expect(window.localStorage.getItem('findur-locale')).toBe('fr')
     expect(screen.getByRole('link', { name: 'Aller au contenu' })).toBeInTheDocument()
-    expect(document.title).toBe('Findur — Des rencontres axées sur le portefeuille')
+    expect(document.title).toBe('Findur — Une application de rencontres pour investisseurs')
 
     fireEvent.click(screen.getAllByRole('link', { name: 'À propos' })[0])
     expect(window.location.pathname).toBe('/about')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Investir, c’est bien plus que le solde.',
+      'Une application de rencontres avec une première impression différente.',
     )
     expect(screen.getAllByRole('navigation')).toHaveLength(1)
 
     unmount()
     render(<App />)
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Investir, c’est bien plus que le solde.',
+      'Une application de rencontres avec une première impression différente.',
     )
   })
 
@@ -237,7 +238,7 @@ describe('public site', () => {
     fireEvent.keyDown(english, { key: 'ArrowRight' })
 
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent(
-      'Trouvez une autre trajectoire dans le même ciel.',
+      'Une application de rencontres où les portefeuilles lancent la conversation.',
     )
     expect(screen.getByRole('radio', { name: 'FR' })).toBeChecked()
   })
@@ -280,7 +281,7 @@ describe('public site', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'There’s more to investing than the balance.',
+      'A dating app with a different first impression.',
     )
 
     window.history.pushState(null, '', '/')
@@ -288,7 +289,7 @@ describe('public site', () => {
 
     await waitFor(() =>
       expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-        'Find a different pattern in the same sky.',
+        'A dating app where portfolios start the conversation.',
       ),
     )
   })
@@ -1174,7 +1175,7 @@ describe('public site', () => {
 
     expect(window.location.pathname).toBe('/')
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
-      'Find a different pattern in the same sky.',
+      'A dating app where portfolios start the conversation.',
     )
   })
 
