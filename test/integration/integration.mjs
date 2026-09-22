@@ -134,8 +134,8 @@ assert.ok(inventoryRequests.some(({ url }) => url === '/accounts'), 'successful 
 assert.ok(!journal.requests.some(({ request }) => /^\/authorizations\/[^/]+\/accounts/.test(request.url)), 'inventory never fans out into per-connection account requests')
 for (const providerRequest of inventoryRequests) {
   assert.ok(
-    ['Bearer synthetic-access-token', 'Bearer synthetic-access-token-refreshed'].includes(providerRequest.headers.Authorization),
-    'inventory uses only server-held initial or rotated bearer tokens',
+    providerRequest.headers.Authorization === 'Bearer synthetic-access-token',
+    'inventory uses the server-held bearer token',
   )
   for (const forbidden of ['clientId', 'consumerKey', 'userId', 'userSecret', 'timestamp', 'Signature']) assert.equal(providerRequest.headers[forbidden], undefined)
 }

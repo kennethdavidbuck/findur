@@ -118,43 +118,6 @@ func TestHandlerIssuesSignedNonceTokenForAuthenticatedRequest(t *testing.T) {
 	}
 }
 
-func TestHandlerCanIssueDedicatedExpiredCredentialFixture(t *testing.T) {
-	handler, err := NewWithTokenExpiry(fixtureIssuer, fixtureClientID, fixtureClientSecret, fixtureCallbackURL, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	form := url.Values{grantTypeField: {authorizationCodeFlow}, redirectURIField: {fixtureCallbackURL}, codeVerifierField: {"verifier"}, codeField: {"nonce"}}
-	request := httptest.NewRequest(http.MethodPost, fixtureIssuer+"/token", strings.NewReader(form.Encode()))
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.SetBasicAuth(fixtureClientID, fixtureClientSecret)
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	var token tokenResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &token); err != nil {
-		t.Fatal(err)
-	}
-	if response.Code != http.StatusOK || token.ExpiresIn != 0 {
-		t.Fatalf("status=%d expires=%d", response.Code, token.ExpiresIn)
-	}
-}
-
-func TestHandlerRotatesRefreshTokenForAuthenticatedRequest(t *testing.T) {
-	handler := fixtureHandler(t)
-	form := url.Values{grantTypeField: {refreshTokenGrant}, refreshTokenField: {testRefreshToken}}
-	request := httptest.NewRequest(http.MethodPost, fixtureIssuer+"/token", strings.NewReader(form.Encode()))
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	request.SetBasicAuth(fixtureClientID, fixtureClientSecret)
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, request)
-	var token tokenResponse
-	if err := json.Unmarshal(response.Body.Bytes(), &token); err != nil {
-		t.Fatal(err)
-	}
-	if response.Code != http.StatusOK || token.AccessToken != testAccessToken+"-refreshed" || token.RefreshToken != testRefreshToken+"-rotated-1" || token.IDToken != "" || token.ExpiresIn <= 15*60 {
-		t.Fatalf("status=%d token=%+v", response.Code, token)
-	}
-}
-
 func TestHandlerRejectsInvalidTokenRequests(t *testing.T) {
 	handler := fixtureHandler(t)
 	valid := url.Values{

@@ -79,7 +79,11 @@ func TestCredentialSourceAccessTable(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := source.Access(context.Background(), owner)
+			var got string
+			err = source.Read(context.Background(), owner, func(_ context.Context, token string) error {
+				got = token
+				return nil
+			})
 			if got != tc.wantToken || !errors.Is(err, tc.wantErr) {
 				t.Fatalf("token=%q error=%v; want token=%q error=%v", got, err, tc.wantToken, tc.wantErr)
 			}
@@ -186,7 +190,11 @@ func TestCredentialSourceConcurrentCallersShareOneRefresh(t *testing.T) {
 		group.Add(1)
 		go func(index int) {
 			defer group.Done()
-			token, err := sources[index%len(sources)].Access(context.Background(), owner)
+			var token string
+			err := sources[index%len(sources)].Read(context.Background(), owner, func(_ context.Context, access string) error {
+				token = access
+				return nil
+			})
 			results <- token
 			errorsFromCallers <- err
 		}(i)

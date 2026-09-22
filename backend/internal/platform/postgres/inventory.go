@@ -105,9 +105,9 @@ func reclaimInventory(ctx context.Context, tx pgx.Tx, owner uuid.UUID, preparati
 func loadInventoryAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID) error {
 	err := tx.QueryRow(ctx, `SELECT 1
         FROM provider_authorizations
-        WHERE user_id = $1
-            AND provider = $2
-            AND lifecycle_status = 'active'`, owner, auth.SnapTradeProvider).Scan(new(int))
+        WHERE user_id = @owner
+            AND provider = @provider
+            AND lifecycle_status = 'active'`, pgx.StrictNamedArgs{ownerArg: owner, providerArg: auth.SnapTradeProvider}).Scan(new(int))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}

@@ -53,9 +53,9 @@ func TestBuildInventoryRemainsAvailableWhenAuthorizationInitiationIsClosed(t *te
 			Enabled: false, ProviderBaseURL: providerURL, TokenKeys: map[int][]byte{1: bytes.Repeat([]byte{3}, 32)}, CurrentTokenKey: 1,
 		},
 	}
-	inventory, err := buildInventory(cfg, &pgxpool.Pool{})
-	if err != nil || inventory == nil {
-		t.Fatalf("inventory=%v err=%v", inventory, err)
+	components, err := buildPortfolioServices(cfg, &pgxpool.Pool{}, slog.Default())
+	if err != nil || components.inventory == nil || components.sync == nil {
+		t.Fatalf("components=%+v err=%v", components, err)
 	}
 }
 

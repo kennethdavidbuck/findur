@@ -251,26 +251,6 @@ func buildPortfolioServices(cfg config.Config, pool *pgxpool.Pool, logger *slog.
 	return portfolioComponents{inventory: inventory, inclusion: inclusion, sync: syncService}, nil
 }
 
-func buildInventory(cfg config.Config, pool *pgxpool.Pool) (*portfolio.Service, error) {
-	if len(cfg.Session.HashKey) == 0 || len(cfg.Authorization.TokenKeys) == 0 || cfg.Authorization.ProviderBaseURL == nil {
-		return nil, nil
-	}
-	tokens, err := auth.NewTokenCipher(auth.SnapTradeProvider, cfg.Authorization.TokenKeys, cfg.Authorization.CurrentTokenKey, rand.Reader)
-	if err != nil {
-		return nil, err
-	}
-	providerClient, err := provider.NewInventoryClient(cfg.Authorization.ProviderBaseURL, &http.Client{Timeout: config.ProviderTimeout}, time.Now)
-	if err != nil {
-		return nil, err
-	}
-	discovery := oidc.NewDiscoveryClient(cfg.Authorization.Issuer, &http.Client{Timeout: config.ProviderTimeout})
-	credentials, err := auth.NewCredentialSource(postgresadapter.NewCredentialRepository(pool), tokens, oidc.NewCallbackClient(discovery, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL), slog.Default(), time.Now, config.AuthorizationTimeout, 30*time.Second, config.AuthorizationTimeout)
-	if err != nil {
-		return nil, err
-	}
-	return portfolio.NewService(postgresadapter.NewInventoryRepository(pool), providerClient, credentials, time.Now, config.ProviderTimeout)
-}
-
 type authorizationComponents struct {
 	initiator *auth.Service
 	callback  *auth.CallbackService

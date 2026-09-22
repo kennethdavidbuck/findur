@@ -114,7 +114,7 @@ func selectPendingInclusionClaim(ctx context.Context, tx pgx.Tx, now time.Time) 
             AND app_user.active
         JOIN provider_authorizations provider_auth
             ON provider_auth.user_id = sync.user_id
-            AND provider_auth.provider = $1
+            AND provider_auth.provider = @provider
             AND provider_auth.lifecycle_status = 'active'
         LEFT JOIN portfolio_balance_heads balance
             ON balance.user_id = sync.user_id
@@ -125,11 +125,11 @@ func selectPendingInclusionClaim(ctx context.Context, tx pgx.Tx, now time.Time) 
         WHERE change.status = 'pending'
             AND sync.initialized_at IS NULL
             AND `+selectableInventoryAccountSQL+`
-            AND (sync.next_attempt_at IS NULL OR sync.next_attempt_at <= $2)
-            AND (sync.claim_expires_at IS NULL OR sync.claim_expires_at <= $2)
+            AND (sync.next_attempt_at IS NULL OR sync.next_attempt_at <= @now)
+            AND (sync.claim_expires_at IS NULL OR sync.claim_expires_at <= @now)
         ORDER BY change.created_at, sync.updated_at
         FOR UPDATE OF sync SKIP LOCKED
-        LIMIT 1`, auth.SnapTradeProvider, now).Scan(
+        LIMIT 1`, pgx.StrictNamedArgs{providerArg: auth.SnapTradeProvider, nowArg: now}).Scan(
 		&claim.Owner, &claim.AccountID, &claim.InclusionVersion, &claim.LifecycleGeneration, &claim.InventoryGeneration, &claim.Resource, &claim.ChangeID)
 	return claim, err
 }
@@ -173,7 +173,7 @@ func selectScheduledSyncClaim(ctx context.Context, tx pgx.Tx, now time.Time, ref
             AND app_user.active
         JOIN provider_authorizations provider_auth
             ON provider_auth.user_id = sync.user_id
-            AND provider_auth.provider = $1
+            AND provider_auth.provider = @provider
             AND provider_auth.lifecycle_status = 'active'
         LEFT JOIN portfolio_balance_heads balance
             ON balance.user_id = sync.user_id
@@ -185,16 +185,16 @@ func selectScheduledSyncClaim(ctx context.Context, tx pgx.Tx, now time.Time, ref
             ON activity.user_id = sync.user_id
             AND activity.account_id = sync.account_id
         WHERE `+selectableInventoryAccountSQL+`
-            AND (sync.next_attempt_at IS NULL OR sync.next_attempt_at <= $2)
-            AND (sync.claim_expires_at IS NULL OR sync.claim_expires_at <= $2)
+            AND (sync.next_attempt_at IS NULL OR sync.next_attempt_at <= @now)
+            AND (sync.claim_expires_at IS NULL OR sync.claim_expires_at <= @now)
             AND (sync.last_success_at IS NULL
-                OR sync.last_success_at <= $3
+                OR sync.last_success_at <= @stale_before
                 OR balance.version_id IS NULL
                 OR position.version_id IS NULL
                 OR activity.version_id IS NULL)
         ORDER BY sync.last_success_at NULLS FIRST, sync.updated_at
         FOR UPDATE OF sync SKIP LOCKED
-        LIMIT 1`, auth.SnapTradeProvider, now, now.Add(-refreshAge)).Scan(
+        LIMIT 1`, pgx.StrictNamedArgs{providerArg: auth.SnapTradeProvider, nowArg: now, "stale_before": now.Add(-refreshAge)}).Scan(
 		&claim.Owner, &claim.AccountID, &claim.InclusionVersion, &claim.LifecycleGeneration, &claim.InventoryGeneration, &claim.Resource, &claim.ChangeID)
 	return claim, err
 }

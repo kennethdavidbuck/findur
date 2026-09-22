@@ -151,7 +151,7 @@ func storeAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value a
             refresh_token_encrypted,
             envelope_version,
             token_expires_at
-        ) VALUES ($1, $2, $3, $4, $5, $6)
+        ) VALUES (@owner, @provider, @access, @refresh, @envelope_version, @expiry)
         ON CONFLICT (user_id, provider) DO UPDATE
         SET access_token_encrypted = EXCLUDED.access_token_encrypted,
             refresh_token_encrypted = EXCLUDED.refresh_token_encrypted,
@@ -163,14 +163,14 @@ func storeAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value a
             refresh_lease_id = NULL,
             refresh_lease_expires_at = NULL,
             updated_at = now()`,
-		owner, value.Provider, value.AccessToken, nullableBytes(value.RefreshToken), value.EnvelopeVersion, nullableTime(value.TokenExpiresAt))
+		pgx.StrictNamedArgs{ownerArg: owner, providerArg: value.Provider, "access": value.AccessToken, "refresh": nullableBytes(value.RefreshToken), "envelope_version": value.EnvelopeVersion, "expiry": nullableTime(value.TokenExpiresAt)})
 	if err != nil {
 		return err
 	}
 	if _, err = tx.Exec(ctx, `UPDATE portfolio_inclusion_state
         SET lifecycle_generation = lifecycle_generation + 1,
-            updated_at = $2
-        WHERE user_id = $1`, owner, value.CompletedAt); err != nil {
+            updated_at = @completed_at
+        WHERE user_id = @owner`, pgx.StrictNamedArgs{ownerArg: owner, completedAtArg: value.CompletedAt}); err != nil {
 		return err
 	}
 	// The requested selection remains durable across reauthorization. Move its
@@ -178,12 +178,12 @@ func storeAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value a
 	// retain their previous generation and fail their publication guard.
 	if _, err = tx.Exec(ctx, `UPDATE portfolio_inclusion_changes change
         SET lifecycle_generation = inclusion.lifecycle_generation,
-            updated_at = $2
+            updated_at = @completed_at
         FROM portfolio_inclusion_state inclusion
-        WHERE change.user_id = $1
+        WHERE change.user_id = @owner
             AND inclusion.user_id = change.user_id
             AND change.status = 'pending'
-            AND change.result_version = inclusion.version`, owner, value.CompletedAt); err != nil {
+            AND change.result_version = inclusion.version`, pgx.StrictNamedArgs{ownerArg: owner, completedAtArg: value.CompletedAt}); err != nil {
 		return err
 	}
 	// A prior authorization failure may have left account resources in backoff.
@@ -195,9 +195,9 @@ func storeAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value a
             claim_expires_at = NULL,
             claimed_resource = NULL,
             claimed_change_id = NULL,
-            updated_at = $2
-        WHERE user_id = $1
-            AND (next_attempt_at IS NOT NULL OR claim_id IS NOT NULL)`, owner, value.CompletedAt); err != nil {
+            updated_at = @completed_at
+        WHERE user_id = @owner
+            AND (next_attempt_at IS NOT NULL OR claim_id IS NOT NULL)`, pgx.StrictNamedArgs{ownerArg: owner, completedAtArg: value.CompletedAt}); err != nil {
 		return err
 	}
 	// Returning logins rotate credentials and fence in-flight portfolio work, but

@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"errors"
-	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +13,16 @@ import (
 
 // CredentialRepository coordinates one rotating refresh token across processes.
 type CredentialRepository struct{ pool *pgxpool.Pool }
+
+const (
+	ownerArg       = "owner"
+	providerArg    = "provider"
+	nowArg         = "now"
+	versionArg     = "version"
+	generationArg  = "generation"
+	completedAtArg = "completed_at"
+	leaseIDArg     = "lease_id"
+)
 
 // NewCredentialRepository creates the PostgreSQL credential coordination adapter.
 func NewCredentialRepository(pool *pgxpool.Pool) *CredentialRepository {
@@ -40,15 +49,15 @@ func (r *CredentialRepository) read(ctx context.Context, q interface {
             refresh_lease_id,
             refresh_lease_expires_at
         FROM provider_authorizations
-        WHERE user_id = $1
-            AND provider = $2`
+        WHERE user_id = @owner
+            AND provider = @provider`
 	if lock {
 		query += `
         FOR UPDATE`
 	}
 	var c auth.Credential
 	var expiry *time.Time
-	err := q.QueryRow(ctx, query, owner, auth.SnapTradeProvider).Scan(&c.Owner, &c.AccessEnvelope, &c.RefreshEnvelope, &c.EnvelopeVersion, &expiry, &c.Status, &c.Generation, &c.Version, &c.LeaseID, &c.LeaseExpiresAt)
+	err := q.QueryRow(ctx, query, pgx.StrictNamedArgs{ownerArg: owner, providerArg: auth.SnapTradeProvider}).Scan(&c.Owner, &c.AccessEnvelope, &c.RefreshEnvelope, &c.EnvelopeVersion, &expiry, &c.Status, &c.Generation, &c.Version, &c.LeaseID, &c.LeaseExpiresAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return auth.Credential{}, false, nil
 	}
@@ -87,10 +96,10 @@ func (r *CredentialRepository) ClaimRefresh(ctx context.Context, owner uuid.UUID
                     lifecycle_generation = lifecycle_generation + 1,
                     refresh_lease_id = NULL,
                     refresh_lease_expires_at = NULL,
-                    updated_at = $2
-                WHERE user_id = $1
-                    AND provider = $3
-                    AND credential_version = $4`, owner, now, auth.SnapTradeProvider, c.Version)
+                    updated_at = @now
+                WHERE user_id = @owner
+                    AND provider = @provider
+                    AND credential_version = @version`, pgx.StrictNamedArgs{ownerArg: owner, nowArg: now, providerArg: auth.SnapTradeProvider, versionArg: c.Version})
 			if err != nil {
 				return c, false, err
 			}
@@ -103,15 +112,15 @@ func (r *CredentialRepository) ClaimRefresh(ctx context.Context, owner uuid.UUID
 	id := uuid.New()
 	expires := now.Add(lease)
 	command, err := tx.Exec(ctx, `UPDATE provider_authorizations
-        SET refresh_lease_id = $3,
-            refresh_lease_expires_at = $4,
-            updated_at = $2
-        WHERE user_id = $1
-            AND provider = $5
-            AND credential_version = $6
-            AND lifecycle_generation = $7
+        SET refresh_lease_id = @lease_id,
+            refresh_lease_expires_at = @lease_expires_at,
+            updated_at = @now
+        WHERE user_id = @owner
+            AND provider = @provider
+            AND credential_version = @version
+            AND lifecycle_generation = @generation
             AND lifecycle_status = 'active'
-            AND refresh_lease_id IS NULL`, owner, now, id, expires, auth.SnapTradeProvider, c.Version, c.Generation)
+            AND refresh_lease_id IS NULL`, pgx.StrictNamedArgs{ownerArg: owner, nowArg: now, leaseIDArg: id, "lease_expires_at": expires, providerArg: auth.SnapTradeProvider, versionArg: c.Version, generationArg: c.Generation})
 	if err != nil {
 		return c, false, err
 	}
@@ -132,13 +141,13 @@ func (r *CredentialRepository) ReleaseRefresh(ctx context.Context, claim auth.Cr
 	command, err := r.pool.Exec(ctx, `UPDATE provider_authorizations
         SET refresh_lease_id = NULL,
             refresh_lease_expires_at = NULL,
-            updated_at = $6
-        WHERE user_id = $1
-            AND provider = $2
+            updated_at = @now
+        WHERE user_id = @owner
+            AND provider = @provider
             AND lifecycle_status = 'active'
-            AND lifecycle_generation = $3
-            AND credential_version = $4
-            AND refresh_lease_id = $5`, claim.Owner, auth.SnapTradeProvider, claim.Generation, claim.Version, *claim.LeaseID, now)
+            AND lifecycle_generation = @generation
+            AND credential_version = @version
+            AND refresh_lease_id = @lease_id`, pgx.StrictNamedArgs{ownerArg: claim.Owner, providerArg: auth.SnapTradeProvider, generationArg: claim.Generation, versionArg: claim.Version, leaseIDArg: *claim.LeaseID, nowArg: now})
 	return command.RowsAffected() == 1, err
 }
 
@@ -148,21 +157,21 @@ func (r *CredentialRepository) InstallRefresh(ctx context.Context, claim auth.Cr
 		return false, nil
 	}
 	command, err := r.pool.Exec(ctx, `UPDATE provider_authorizations
-        SET access_token_encrypted = $4,
-            refresh_token_encrypted = $5,
-            envelope_version = $6,
-            token_expires_at = $7,
+        SET access_token_encrypted = @access,
+            refresh_token_encrypted = @refresh,
+            envelope_version = @envelope_version,
+            token_expires_at = @expiry,
             credential_version = credential_version + 1,
             refresh_lease_id = NULL,
             refresh_lease_expires_at = NULL,
-            updated_at = $8
-        WHERE user_id = $1
-            AND provider = $2
+            updated_at = @now
+        WHERE user_id = @owner
+            AND provider = @provider
             AND lifecycle_status = 'active'
-            AND lifecycle_generation = $3
-            AND credential_version = $9
-            AND refresh_lease_id = $10
-            AND refresh_lease_expires_at > $8`, claim.Owner, auth.SnapTradeProvider, claim.Generation, access, refresh, envelopeVersion, expiry, now, claim.Version, *claim.LeaseID)
+            AND lifecycle_generation = @generation
+            AND credential_version = @version
+            AND refresh_lease_id = @lease_id
+            AND refresh_lease_expires_at > @now`, pgx.StrictNamedArgs{ownerArg: claim.Owner, providerArg: auth.SnapTradeProvider, generationArg: claim.Generation, "access": access, "refresh": refresh, "envelope_version": envelopeVersion, "expiry": expiry, nowArg: now, versionArg: claim.Version, leaseIDArg: *claim.LeaseID})
 	return command.RowsAffected() == 1, err
 }
 
@@ -173,21 +182,21 @@ func (r *CredentialRepository) RequireReauthorization(ctx context.Context, owner
             lifecycle_generation = lifecycle_generation + 1,
             refresh_lease_id = NULL,
             refresh_lease_expires_at = NULL,
-            updated_at = $2
-        WHERE user_id = $1
-            AND provider = $3
+            updated_at = @now
+        WHERE user_id = @owner
+            AND provider = @provider
             AND lifecycle_status = 'active'`
-	args := []any{owner, now, auth.SnapTradeProvider}
+	args := pgx.StrictNamedArgs{ownerArg: owner, nowArg: now, providerArg: auth.SnapTradeProvider}
 	if lease != nil {
 		query += `
-            AND refresh_lease_id = $4`
-		args = append(args, *lease)
+            AND refresh_lease_id = @lease_id`
+		args[leaseIDArg] = *lease
 	}
 	if version > 0 {
 		query += `
-            AND credential_version = $` + strconv.Itoa(len(args)+1)
-		args = append(args, version)
+            AND credential_version = @version`
+		args["version"] = version
 	}
-	_, err := r.pool.Exec(ctx, query, args...)
+	_, err := r.pool.Exec(ctx, query, args)
 	return err
 }

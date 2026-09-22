@@ -82,25 +82,6 @@ func NewCredentialSource(repo CredentialRepository, cipher *TokenCipher, refresh
 	return &Source{repo: repo, cipher: cipher, refresh: refresh, logger: logger, clock: clock, timeout: timeout, lease: lease, wait: wait}, nil
 }
 
-// Access returns a valid access token, refreshing it when the shared policy requires.
-func (s *Source) Access(ctx context.Context, owner uuid.UUID) (string, error) {
-	token, _, err := s.access(ctx, owner, false, 0)
-	return token, err
-}
-
-// ForceRefresh refreshes a credential unless another caller has already rotated it.
-func (s *Source) ForceRefresh(ctx context.Context, owner uuid.UUID) (string, error) {
-	credential, found, err := s.repo.ReadCredential(ctx, owner)
-	if err != nil {
-		return "", err
-	}
-	if !found {
-		return "", ErrReauthorizationRequired
-	}
-	token, _, err := s.access(ctx, owner, true, credential.Version)
-	return token, err
-}
-
 // Read executes one safe provider read and recovers one 401 with one forced
 // refresh. A repeated unauthorized response disables local authorization.
 func (s *Source) Read(ctx context.Context, owner uuid.UUID, read func(context.Context, string) error) error {
@@ -142,7 +123,7 @@ func (s *Source) access(ctx context.Context, owner uuid.UUID, force bool, failed
 		if !found || credential.Status != CredentialStatusActive {
 			return "", 0, ErrReauthorizationRequired
 		}
-		if credential.LeaseID == nil && ((!force || credential.Version != failedVersion) && credential.ExpiresAt.After(now.Add(RefreshEarlyWindow)) || force && credential.Version != failedVersion && credential.ExpiresAt.After(now)) {
+		if canUseAccess(credential, now, force, failedVersion) {
 			token, decryptErr := s.decryptAccess(credential)
 			if decryptErr != nil {
 				s.requireReauthorization(ctx, owner, nil, credential.Version)
@@ -174,6 +155,16 @@ func (s *Source) access(ctx context.Context, owner uuid.UUID, force bool, failed
 			delay *= 2
 		}
 	}
+}
+
+func canUseAccess(c Credential, now time.Time, afterUnauthorized bool, failedVersion int64) bool {
+	if c.LeaseID != nil {
+		return false
+	}
+	if afterUnauthorized {
+		return c.Version != failedVersion && c.ExpiresAt.After(now)
+	}
+	return c.ExpiresAt.After(now.Add(RefreshEarlyWindow))
 }
 
 func (s *Source) decryptAccess(c Credential) (string, error) {
