@@ -78,6 +78,27 @@ func (c *CallbackClient) Exchange(ctx context.Context, code, redirectURI, verifi
 	return result, nil
 }
 
+// Refresh exchanges one rotating refresh token. Refresh responses intentionally
+// do not require or inspect an ID token because identity is established only by
+// the authorization-code callback.
+func (c *CallbackClient) Refresh(ctx context.Context, refreshToken string) (auth.TokenSet, error) {
+	p, err := c.provider(ctx)
+	if err != nil {
+		return auth.TokenSet{}, &auth.RefreshPreSendError{Cause: err}
+	}
+	ctx = coreoidc.ClientContext(ctx, c.discovery.httpClient)
+	endpoint := p.Endpoint()
+	endpoint.AuthStyle = oauth2.AuthStyleInHeader
+	token, err := (&oauth2.Config{ClientID: c.clientID, ClientSecret: c.clientSecret, Endpoint: endpoint}).TokenSource(ctx, &oauth2.Token{RefreshToken: refreshToken}).Token()
+	if err != nil {
+		return auth.TokenSet{}, err
+	}
+	if token.AccessToken == "" || token.RefreshToken == "" || token.Expiry.IsZero() {
+		return auth.TokenSet{}, errors.New("incomplete refresh token response")
+	}
+	return auth.TokenSet{AccessToken: token.AccessToken, RefreshToken: token.RefreshToken, Expiry: token.Expiry}, nil
+}
+
 // Verify validates an ID token and returns only the identity claims Findur uses.
 func (c *CallbackClient) Verify(ctx context.Context, raw string) (auth.Identity, error) {
 	p, err := c.provider(ctx)

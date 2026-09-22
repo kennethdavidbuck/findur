@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
@@ -27,6 +29,8 @@ const (
 	codeVerifierField     = "code_verifier"
 	redirectURIField      = "redirect_uri"
 	grantTypeField        = "grant_type"
+	refreshTokenGrant     = "refresh_token"
+	refreshTokenField     = "refresh_token"
 	nonceField            = "nonce"
 	responseTypeField     = "response_type"
 	scopeField            = "scope"
@@ -44,10 +48,19 @@ type Handler struct {
 	issuer, clientID, clientSecret, callbackURL string
 	signer                                      jose.Signer
 	jwks                                        jose.JSONWebKeySet
+	mu                                          sync.Mutex
+	refreshCalls                                int
+	tokenExpirySeconds                          int
 }
 
 // New creates an integration-only OIDC fixture handler.
 func New(issuer, clientID, clientSecret, callbackURL string) (*Handler, error) {
+	return NewWithTokenExpiry(issuer, clientID, clientSecret, callbackURL, 3600)
+}
+
+// NewWithTokenExpiry creates a fixture with an explicit code-grant lifetime.
+// Integration refresh scenarios use a nonpositive value to make credentials due.
+func NewWithTokenExpiry(issuer, clientID, clientSecret, callbackURL string, expirySeconds int) (*Handler, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, err
@@ -57,7 +70,7 @@ func New(issuer, clientID, clientSecret, callbackURL string) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{issuer: issuer, clientID: clientID, clientSecret: clientSecret, callbackURL: callbackURL, signer: signer, jwks: jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}}, nil
+	return &Handler{issuer: issuer, clientID: clientID, clientSecret: clientSecret, callbackURL: callbackURL, signer: signer, jwks: jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}, tokenExpirySeconds: expirySeconds}, nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +134,14 @@ func (h *Handler) serveJWKS(w http.ResponseWriter) {
 }
 
 func (h *Handler) serveToken(w http.ResponseWriter, r *http.Request) {
+	if !h.authenticatedForm(r) {
+		http.Error(w, "invalid_request", http.StatusBadRequest)
+		return
+	}
+	if r.Form.Get(grantTypeField) == refreshTokenGrant {
+		h.serveRefresh(w, r)
+		return
+	}
 	if !h.validTokenRequest(r) {
 		http.Error(w, "invalid_request", http.StatusBadRequest)
 		return
@@ -134,9 +155,21 @@ func (h *Handler) serveToken(w http.ResponseWriter, r *http.Request) {
 		TokenType:    bearerTokenType,
 		AccessToken:  testAccessToken,
 		RefreshToken: testRefreshToken,
-		ExpiresIn:    300,
+		ExpiresIn:    h.tokenExpirySeconds,
 		IDToken:      idToken,
 	})
+}
+
+func (h *Handler) serveRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Form.Get(refreshTokenField) != testRefreshToken {
+		http.Error(w, "invalid_grant", http.StatusBadRequest)
+		return
+	}
+	h.mu.Lock()
+	h.refreshCalls++
+	sequence := h.refreshCalls
+	h.mu.Unlock()
+	writeJSON(w, tokenResponse{TokenType: bearerTokenType, AccessToken: testAccessToken + "-refreshed", RefreshToken: testRefreshToken + "-rotated-" + strconv.Itoa(sequence), ExpiresIn: 3600})
 }
 
 func (h *Handler) serveRevocation(w http.ResponseWriter, r *http.Request) {

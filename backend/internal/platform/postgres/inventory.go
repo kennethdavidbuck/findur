@@ -44,7 +44,7 @@ func (r *InventoryRepository) Prepare(ctx context.Context, owner uuid.UUID, retr
 		return portfolio.Preparation{}, err
 	}
 	if preparation.Claimed {
-		if err := loadInventoryAuthorization(ctx, tx, owner, &preparation); err != nil {
+		if err := loadInventoryAuthorization(ctx, tx, owner); err != nil {
 			return portfolio.Preparation{}, err
 		}
 	}
@@ -102,8 +102,12 @@ func reclaimInventory(ctx context.Context, tx pgx.Tx, owner uuid.UUID, preparati
 	return preparation, nil
 }
 
-func loadInventoryAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, preparation *portfolio.Preparation) error {
-	err := tx.QueryRow(ctx, `SELECT access_token_encrypted,envelope_version FROM provider_authorizations WHERE user_id=$1 AND provider=$2`, owner, auth.SnapTradeProvider).Scan(&preparation.EncryptedToken, &preparation.TokenVersion)
+func loadInventoryAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID) error {
+	err := tx.QueryRow(ctx, `SELECT 1
+        FROM provider_authorizations
+        WHERE user_id = $1
+            AND provider = $2
+            AND lifecycle_status = 'active'`, owner, auth.SnapTradeProvider).Scan(new(int))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
 	}

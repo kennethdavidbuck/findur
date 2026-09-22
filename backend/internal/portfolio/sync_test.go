@@ -11,19 +11,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/kennethdavidbuck/findur/backend/internal/auth"
 )
 
 func TestSyncServiceRunPassDrainsClaimsAndLogsSafeOutcome(t *testing.T) {
 	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
 	owner := uuid.New()
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{2}, 64)))
-	encrypted, _ := tokens.EncryptAccess(owner, "secret-access-token")
 	accountID := uuid.New()
-	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: accountID.String(), EncryptedToken: encrypted, TokenVersion: 1, Resource: AccountResourceBalances}}}
+	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: accountID.String(), Resource: AccountResourceBalances}}}
 	provider := &accountDataProviderStub{data: completeTestAccountData(now)}
 	var logs bytes.Buffer
-	service, err := NewSyncService(repository, provider, tokens, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
+	service, err := NewSyncService(repository, provider, &credentialStub{token: "secret-access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,12 +38,10 @@ func TestSyncServiceRunPassDrainsClaimsAndLogsSafeOutcome(t *testing.T) {
 func TestSyncServiceCategorizesProviderFailureForDurableRetry(t *testing.T) {
 	now := time.Now().UTC()
 	owner := uuid.New()
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{3}, 64)))
-	encrypted, _ := tokens.EncryptAccess(owner, "access-token")
-	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: "account", EncryptedToken: encrypted, TokenVersion: 1, Resource: AccountResourceActivities}}}
+	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: "account", Resource: AccountResourceActivities}}}
 	retryAt := now.Add(7 * time.Minute)
 	provider := &accountDataProviderStub{failAt: 1, err: &ProviderError{State: StateRateLimited, RetryAt: &retryAt}}
-	service, _ := NewSyncService(repository, provider, tokens, func() time.Time { return now }, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	service, _ := NewSyncService(repository, provider, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	service.RunPass(context.Background())
 	if repository.failure != "rate_limited" || repository.data != nil || repository.finishes != 1 || repository.retryAt == nil || !repository.retryAt.Equal(retryAt) {
@@ -57,12 +52,10 @@ func TestSyncServiceCategorizesProviderFailureForDurableRetry(t *testing.T) {
 func TestSyncServiceOmitsMalformedPersistedAccountIDFromLogs(t *testing.T) {
 	now := time.Now().UTC()
 	owner := uuid.New()
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{5}, 64)))
-	encrypted, _ := tokens.EncryptAccess(owner, "access-token")
 	const malformedAccountID = "private-persisted-account-reference"
-	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: malformedAccountID, EncryptedToken: encrypted, TokenVersion: 1, Resource: AccountResourceBalances}}}
+	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: malformedAccountID, Resource: AccountResourceBalances}}}
 	var logs bytes.Buffer
-	service, err := NewSyncService(repository, &accountDataProviderStub{data: completeTestAccountData(now)}, tokens, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
+	service, err := NewSyncService(repository, &accountDataProviderStub{data: completeTestAccountData(now)}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,10 +69,9 @@ func TestSyncServiceOmitsMalformedPersistedAccountIDFromLogs(t *testing.T) {
 
 func TestRunSyncWorkerStopsPromptlyOnCancellation(t *testing.T) {
 	now := time.Now().UTC()
-	tokens, _ := auth.NewTokenCipher(auth.SnapTradeProvider, map[int][]byte{1: bytes.Repeat([]byte{7}, 32)}, 1, bytes.NewReader(bytes.Repeat([]byte{4}, 64)))
 	repository := &syncRepositoryStub{}
 	var logs bytes.Buffer
-	service, _ := NewSyncService(repository, &accountDataProviderStub{}, tokens, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
+	service, _ := NewSyncService(repository, &accountDataProviderStub{}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); RunSyncWorker(ctx, time.Millisecond, service) }()

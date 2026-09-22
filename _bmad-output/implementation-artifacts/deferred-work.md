@@ -92,3 +92,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-logging-improvements.md`
   summary: Add source-level safe structured error diagnostics with explicit operation fields and controlled error representations.
   evidence: The current logging improvement adds request/user/SnapTrade correlation and categorical failures; the user explicitly requested richer source-level error context as a separate follow-up.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-centralize-snaptrade-token-refresh.md`
+  summary: Persist and evaluate the provider's granted scope when installing rotated credentials.
+  evidence: AD-4 already calls for scope persistence, but the existing authorization schema has no scope column and current portfolio callers do not branch on scope; this is separate from supplying fresh tokens.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-centralize-snaptrade-token-refresh.md`
+  summary: Design durable recovery when a second provider 401 cannot be recorded because PostgreSQL is unavailable.
+  evidence: A failed reauthorization update is logged and requests fail while the database is unavailable, but another process may read the still-active row after recovery; a durable pending-validation state would close that cross-process gap.

@@ -316,7 +316,7 @@ func TestInventoryRepositoryPublishesDisabledRowsAndReturningLoginPreservesHead(
 		t.Fatalf("old bearer completion snapshot=%+v published=%v err=%v", stale, published, err)
 	}
 	bootstrap, err := repository.Prepare(fixture.ctx, owner, false, fixture.now.Add(time.Minute))
-	if err != nil || bootstrap.Claimed || bootstrap.Generation != claim.Generation || len(bootstrap.Connections) != 1 || len(bootstrap.EncryptedToken) != 0 {
+	if err != nil || bootstrap.Claimed || bootstrap.Generation != claim.Generation || len(bootstrap.Connections) != 1 {
 		t.Fatalf("bootstrap=%+v err=%v", bootstrap, err)
 	}
 	var versions int

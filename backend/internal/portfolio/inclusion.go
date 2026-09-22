@@ -172,6 +172,9 @@ func (s *InclusionService) Confirm(ctx context.Context, actor auth.Actor, expect
 }
 
 func inclusionFailureReason(err error) string {
+	if errors.Is(err, auth.ErrReauthorizationRequired) {
+		return "authorization_required"
+	}
 	var categorized *ProviderError
 	if errors.As(err, &categorized) {
 		switch categorized.State {

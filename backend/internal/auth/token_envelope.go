@@ -56,14 +56,24 @@ func (c *TokenCipher) EncryptRefresh(owner uuid.UUID, token string) ([]byte, err
 
 // DecryptAccess opens a persisted access-token envelope without changing its AAD contract.
 func (c *TokenCipher) DecryptAccess(owner uuid.UUID, version int, envelope []byte) (string, error) {
+	return c.decrypt(owner, tokenKindAccess, version, envelope)
+}
+
+// DecryptRefresh opens a persisted refresh-token envelope without exposing it
+// outside the server-side credential source.
+func (c *TokenCipher) DecryptRefresh(owner uuid.UUID, version int, envelope []byte) (string, error) {
+	return c.decrypt(owner, tokenKindRefresh, version, envelope)
+}
+
+func (c *TokenCipher) decrypt(owner uuid.UUID, kind string, version int, envelope []byte) (string, error) {
 	aead := c.keys[version]
 	if aead == nil || len(envelope) < aead.NonceSize() {
-		return "", errors.New("invalid access token envelope")
+		return "", errors.New("invalid token envelope")
 	}
-	aad := []byte(fmt.Sprintf("%s|%s|%s|%d", owner.String(), c.provider, tokenKindAccess, version))
+	aad := []byte(fmt.Sprintf("%s|%s|%s|%d", owner.String(), c.provider, kind, version))
 	plain, err := aead.Open(nil, envelope[:aead.NonceSize()], envelope[aead.NonceSize():], aad)
 	if err != nil {
-		return "", errors.New("invalid access token envelope")
+		return "", errors.New("invalid token envelope")
 	}
 	return string(plain), nil
 }
