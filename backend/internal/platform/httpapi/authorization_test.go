@@ -868,7 +868,7 @@ func TestAuthorizationLogsCorrelatedSafeFailure(t *testing.T) {
 	if requestID == "" || strings.Count(logs.String(), requestID) != 2 {
 		t.Fatalf("request ID not shared by warning and completion logs: %s", logs.String())
 	}
-	if !strings.Contains(logs.String(), `"CATEGORY":"request_canceled"`) {
+	if !strings.Contains(logs.String(), `"category":"request_canceled"`) {
 		t.Fatalf("missing safe cancellation category: %s", logs.String())
 	}
 }
@@ -892,7 +892,7 @@ func TestUnexpectedHandlerFailureLogsSafeCategoryOnce(t *testing.T) {
 	handler.ServeHTTP(response, request)
 
 	output := logs.String()
-	if response.Code != http.StatusServiceUnavailable || strings.Count(output, `"FAILURE":"handler_failure"`) != 1 || !strings.Contains(output, `"REQUEST_ID":"`) || strings.Contains(output, "private database detail") {
+	if response.Code != http.StatusServiceUnavailable || strings.Count(output, `"failure":"handler_failure"`) != 1 || !strings.Contains(output, `"request_id":"`) || strings.Contains(output, "private database detail") {
 		t.Fatalf("unsafe or incomplete unexpected-failure logging: status=%d logs=%s", response.Code, output)
 	}
 }
@@ -916,7 +916,7 @@ func TestAuthenticatedRequestLogsServerDerivedFindurUserID(t *testing.T) {
 	handler.ServeHTTP(response, request)
 
 	output := logs.String()
-	if response.Code != http.StatusServiceUnavailable || strings.Count(output, `"FINDUR_USER_ID":"`+owner.String()+`"`) != 2 || strings.Count(output, `"REQUEST_ID":"`) != 2 {
+	if response.Code != http.StatusServiceUnavailable || strings.Count(output, `"user_id":"`+owner.String()+`"`) != 2 || strings.Count(output, `"request_id":"`) != 2 {
 		t.Fatalf("authenticated logs do not share server-derived context: status=%d logs=%s", response.Code, output)
 	}
 }
@@ -968,7 +968,7 @@ func TestAnonymousAndForbiddenRequestsOmitFindurUserID(t *testing.T) {
 			if response.Code != test.status {
 				t.Fatalf("status=%d, want %d", response.Code, test.status)
 			}
-			if strings.Contains(logs.String(), owner.String()) || strings.Contains(logs.String(), `"FINDUR_USER_ID"`) {
+			if strings.Contains(logs.String(), owner.String()) || strings.Contains(logs.String(), `"user_id"`) {
 				t.Fatalf("unauthorized request logged identity: %s", logs.String())
 			}
 		})
@@ -993,7 +993,7 @@ func TestInclusionRequestLogsOnlyBoundedValidSnapTradeAccountIDs(t *testing.T) {
 	handler.ServeHTTP(response, request)
 
 	output := logs.String()
-	if response.Code != http.StatusOK || !strings.Contains(output, `"FINDUR_USER_ID":"`+owner.String()+`"`) || !strings.Contains(output, `"SNAPTRADE_ACCOUNT_IDS":["`+valid+`"]`) || strings.Contains(output, "private-not-a-uuid") {
+	if response.Code != http.StatusOK || !strings.Contains(output, `"user_id":"`+owner.String()+`"`) || !strings.Contains(output, `"snaptrade_account_ids":["`+valid+`"]`) || strings.Contains(output, "private-not-a-uuid") {
 		t.Fatalf("inclusion request log was unsafe or incomplete: status=%d logs=%s", response.Code, output)
 	}
 }

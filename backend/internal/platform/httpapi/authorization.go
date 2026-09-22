@@ -133,7 +133,7 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 			writeGeneratedError(w, http.StatusBadRequest, generated.ErrorCodeInvalidRequest)
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
-			logger.ErrorContext(r.Context(), "http handler failure", "FAILURE", "handler_failure")
+			logger.ErrorContext(r.Context(), "http handler failure", "failure", "handler_failure")
 			writeGeneratedError(w, http.StatusServiceUnavailable, generated.ErrorCodeInitializationFailed)
 		},
 	})
@@ -703,13 +703,13 @@ func (a *authorizationAPI) GetAuthorizationStatus(ctx context.Context, _ generat
 			setFindurUserID(ctx, actor)
 		}
 		if err != nil && !errors.Is(err, auth.ErrUnauthenticated) {
-			a.logger.WarnContext(ctx, "authorization status unavailable", "CATEGORY", sessionCheckCategory)
+			a.logger.WarnContext(ctx, "authorization status unavailable", "category", sessionCheckCategory)
 		}
 	} else if a.status != nil {
 		var err error
 		status, err = a.status.Status(ctx, cookies.session)
 		if err != nil {
-			a.logger.WarnContext(ctx, "authorization status unavailable", "CATEGORY", sessionCheckCategory)
+			a.logger.WarnContext(ctx, "authorization status unavailable", "category", sessionCheckCategory)
 		}
 	}
 	return generated.GetAuthorizationStatus200JSONResponse{Body: generated.AuthorizationStatus{AuthorizationAvailable: status.AuthorizationAvailable, Authenticated: status.Authenticated}, Headers: generated.GetAuthorizationStatus200ResponseHeaders{CacheControl: noStoreDirective}}, nil
@@ -821,7 +821,7 @@ func (a *authorizationAPI) CompleteSnapTradeAuthorization(ctx context.Context, r
 	if err == nil && result.Success {
 		category = callbackSucceededCategory
 	}
-	a.logger.InfoContext(ctx, "authorization callback completed", "CATEGORY", category)
+	a.logger.InfoContext(ctx, "authorization callback completed", "category", category)
 	return callbackRedirect{location: result.Route, cookies: set}, nil
 }
 
@@ -843,8 +843,8 @@ func (a *authorizationAPI) BeginSnapTradeAuthorization(ctx context.Context, requ
 			category = deadlineExceededCategory
 		}
 		a.logger.WarnContext(ctx, "authorization initiation refused",
-			"CATEGORY", category,
-			"STAGE", auth.InitializationStageOf(err),
+			"category", category,
+			"stage", auth.InitializationStageOf(err),
 		)
 		return unavailableResponse(code), nil
 	}

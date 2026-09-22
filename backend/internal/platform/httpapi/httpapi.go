@@ -119,13 +119,13 @@ func (h *requestLogHandler) Handle(ctx context.Context, record slog.Record) erro
 	record = withoutReservedRequestLogAttributes(record)
 	snapshot := metadata.snapshot()
 	if snapshot.requestID != "" {
-		record.AddAttrs(slog.String("REQUEST_ID", snapshot.requestID))
+		record.AddAttrs(slog.String("request_id", snapshot.requestID))
 	}
 	if snapshot.findurUserID != "" {
-		record.AddAttrs(slog.String("FINDUR_USER_ID", snapshot.findurUserID))
+		record.AddAttrs(slog.String("user_id", snapshot.findurUserID))
 	}
 	if len(snapshot.snapTradeAccountIDs) > 0 {
-		record.AddAttrs(slog.Any("SNAPTRADE_ACCOUNT_IDS", snapshot.snapTradeAccountIDs))
+		record.AddAttrs(slog.Any("snaptrade_account_ids", snapshot.snapTradeAccountIDs))
 	}
 	return h.next.Handle(ctx, record)
 }
@@ -174,7 +174,7 @@ func withoutReservedAttribute(attr slog.Attr) (slog.Attr, bool) {
 }
 
 func isReservedRequestLogKey(key string) bool {
-	return key == "REQUEST_ID" || key == "FINDUR_USER_ID" || key == "SNAPTRADE_ACCOUNT_IDS"
+	return key == "request_id" || key == "user_id" || key == "snaptrade_account_ids"
 }
 
 func (w *statusWriter) WriteHeader(status int) {
@@ -290,10 +290,10 @@ func requestMetadata(logger *slog.Logger, next http.Handler) http.Handler {
 		r = r.WithContext(context.WithValue(r.Context(), requestLogMetadataContextKey{}, metadata))
 		next.ServeHTTP(recorder, r)
 		logger.InfoContext(r.Context(), "http request",
-			"METHOD", r.Method,
-			"ROUTE", routeCategory(r.URL.Path),
-			"STATUS", recorder.status,
-			"LATENCY_MS", time.Since(started).Milliseconds(),
+			"method", r.Method,
+			"route", routeCategory(r.URL.Path),
+			"status", recorder.status,
+			"latency_ms", time.Since(started).Milliseconds(),
 		)
 	})
 }

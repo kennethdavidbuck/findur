@@ -88,3 +88,7 @@
  - source_spec: `_bmad-output/implementation-artifacts/spec-use-cursor-for-display-preference-saves.md`
    summary: Make concurrent authenticated display-preference saves retain pending feedback until the latest request resolves.
    evidence: `AuthenticatedPreferences` has one shared save state, so an earlier PUT response can clear it while a later PUT remains pending.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-logging-improvements.md`
+  summary: Add source-level safe structured error diagnostics with explicit operation fields and controlled error representations.
+  evidence: The current logging improvement adds request/user/SnapTrade correlation and categorical failures; the user explicitly requested richer source-level error context as a separate follow-up.

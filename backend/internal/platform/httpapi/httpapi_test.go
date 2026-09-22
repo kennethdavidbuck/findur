@@ -215,24 +215,24 @@ func TestRequestLogsDoNotContainUnmatchedPathDetails(t *testing.T) {
 	if strings.Contains(logs.String(), "secret-value") {
 		t.Fatalf("request log exposes unmatched path: %s", logs.String())
 	}
-	if !strings.Contains(logs.String(), `"ROUTE":"unmatched"`) {
+	if !strings.Contains(logs.String(), `"route":"unmatched"`) {
 		t.Fatalf("request log lacks safe route category: %s", logs.String())
 	}
 }
 
 func TestRequestLogHandlerAddsOnlyApprovedRequestMetadata(t *testing.T) {
 	var logs bytes.Buffer
-	logger := slog.New(NewRequestLogHandler(slog.NewJSONHandler(&logs, nil))).With("REQUEST_ID", "caller-request-id", "FINDUR_USER_ID", "caller-user-id", "SNAPTRADE_ACCOUNT_IDS", []string{"caller-account-id"})
+	logger := slog.New(NewRequestLogHandler(slog.NewJSONHandler(&logs, nil))).With("request_id", "caller-request-id", "user_id", "caller-user-id", "snaptrade_account_ids", []string{"caller-account-id"})
 	metadata := &requestLogMetadata{
 		requestID:           "request-opaque-id",
 		findurUserID:        "b24b69c1-d6c6-4ae3-83a5-35b39950dc2e",
 		snapTradeAccountIDs: []string{"6f1ee24e-4f23-4fdd-8d1c-93b51f55580a"},
 	}
 	ctx := context.WithValue(context.Background(), requestLogMetadataContextKey{}, metadata)
-	logger.InfoContext(ctx, "handler event", "RESOURCE", "portfolio", "REQUEST_ID", "event-request-id", "FINDUR_USER_ID", "event-user-id", "SNAPTRADE_ACCOUNT_IDS", []string{"event-account-id"})
+	logger.InfoContext(ctx, "handler event", "resource", "portfolio", "request_id", "event-request-id", "user_id", "event-user-id", "snaptrade_account_ids", []string{"event-account-id"})
 
 	output := logs.String()
-	for _, expected := range []string{`"REQUEST_ID":"request-opaque-id"`, `"FINDUR_USER_ID":"b24b69c1-d6c6-4ae3-83a5-35b39950dc2e"`, `"SNAPTRADE_ACCOUNT_IDS":["6f1ee24e-4f23-4fdd-8d1c-93b51f55580a"]`, `"RESOURCE":"portfolio"`} {
+	for _, expected := range []string{`"request_id":"request-opaque-id"`, `"user_id":"b24b69c1-d6c6-4ae3-83a5-35b39950dc2e"`, `"snaptrade_account_ids":["6f1ee24e-4f23-4fdd-8d1c-93b51f55580a"]`, `"resource":"portfolio"`} {
 		if !strings.Contains(output, expected) {
 			t.Fatalf("log missing %s: %s", expected, output)
 		}
@@ -242,7 +242,7 @@ func TestRequestLogHandlerAddsOnlyApprovedRequestMetadata(t *testing.T) {
 			t.Fatalf("caller supplied reserved metadata reached log: %s", output)
 		}
 	}
-	for _, key := range []string{`"REQUEST_ID"`, `"FINDUR_USER_ID"`, `"SNAPTRADE_ACCOUNT_IDS"`} {
+	for _, key := range []string{`"request_id"`, `"user_id"`, `"snaptrade_account_ids"`} {
 		if strings.Count(output, key) != 1 {
 			t.Fatalf("reserved key %s was duplicated: %s", key, output)
 		}
