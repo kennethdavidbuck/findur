@@ -553,6 +553,27 @@ p { line-height: 1.65; }
 .freshness--current { color: var(--secondary); }.freshness--stale_usable { color: var(--warning); }.freshness--expired,.freshness--unavailable { color: var(--danger); }
 .showcase-note { margin: .75rem 0; color: var(--text-muted); font-size: .875rem; }.showcase-note--unavailable,.showcase-recovery { padding: .85rem 1rem; border-left: 3px solid var(--danger); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }.showcase-note--unavailable p,.showcase-recovery p { margin-bottom: .5rem; }.showcase-note--unavailable .action,.showcase-recovery .action { margin-top: .25rem; }
 .showcase-empty,.showcase-loading { padding: clamp(2rem, 7vw, 5rem); margin-top: 2rem; border: 1px dashed var(--border-strong); text-align: center; color: var(--text-muted); }.showcase-empty > span { display: block; color: var(--secondary); font-size: 2rem; }.showcase-empty .text-link { margin-top: .5rem; }
+.showcase-preparing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .75rem;
+  padding: .8rem .9rem;
+  margin: 1.1rem 0;
+  border: 1px solid var(--secondary);
+  background: var(--secondary-soft);
+  color: var(--text);
+}
+.showcase-preparing p { margin: 0; }
+.showcase-preparing .text-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--secondary);
+  font: 600 .8rem/1.4 var(--font-display);
+  text-decoration: underline;
+  text-underline-offset: .2rem;
+}
 /* Portfolio Showcase follows the reference ledger grammar, not generic cards. */
 .showcase-reference { width: 100%; min-width: 0; }
 .showcase-reference .topline { display: flex; align-items: end; justify-content: space-between; gap: 1.25rem; }.showcase-reference .topline > div { min-width: 0; }.showcase-reference .topline h1 { margin: .45rem 0; font-size: clamp(2rem, 4vw, 2.5rem); font-weight: 400; letter-spacing: -.04em; }.showcase-reference .topline p:not(.eyebrow) { max-width: 34rem; margin: 0; color: var(--text-muted); font-size: .82rem; line-height: 1.55; }
@@ -712,9 +733,12 @@ p { line-height: 1.65; }
 .connection-success strong { color: var(--secondary); }
 .account-selection { display: grid; gap: 0; padding: 0; margin: 0; border: 0; }
 .account-selection legend { width: 100%; padding: 1.0625rem 1.125rem 0.625rem; margin: 0; font-family: var(--font-display); font-size: 1rem; font-weight: 750; }
+.selection-guidance { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 0.3rem 1rem; padding: 0 1.125rem 0.9rem; color: var(--text-muted); font-size: 0.75rem; }
+.selection-guidance p { margin: 0; }
+.selection-count { color: var(--text); font: 750 0.6875rem/1.35 var(--font-mono); white-space: nowrap; }
+.selection-limit { grid-column: 1 / -1; padding-top: 0.55rem; border-top: 1px solid color-mix(in srgb, var(--warning) 35%, transparent); color: var(--warning); font-weight: 700; }
 .select-all, .account-choice { min-height: 3.875rem; display: grid; grid-template-columns: 1.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; padding: 0.65rem 1rem; border-top: 1px solid var(--border-strong); cursor: pointer; }
 .select-all { min-height: 3.25rem; background: var(--surface-subtle); font-weight: 800; }
-.select-all__ratio { color: var(--text-muted); font: 700 0.6875rem/1.35 var(--font-mono); }
 .account-choice input, .select-all input { width: 1.25rem; height: 1.25rem; flex: none; margin-top: 0.1rem; accent-color: var(--secondary); }
 .account-choice__details { min-width: 0; display: grid; gap: 0.15rem; }
 .account-choice__details > * { min-width: 0; overflow-wrap: anywhere; }

@@ -157,12 +157,22 @@ func TestInclusionAndReauthorizationShareOwnerLockOrder(t *testing.T) {
 	if prepared.err != nil && !errors.Is(prepared.err, portfolio.ErrInvalidAccountSelection) {
 		t.Fatalf("concurrent prepare error=%v", prepared.err)
 	}
-	if prepared.err == nil {
-		if _, accepted, err := repository.FinalizeInclusion(ctx, prepareOwner, prepared.value.ChangeID, prepared.value.Version, prepared.value.InventoryGeneration, prepared.value.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": completeRepositoryAccountData(fixture.now)}, "", fixture.now.Add(2*time.Minute)); err != nil || accepted {
-			t.Fatalf("pre-reauthorization preparation published stale data accepted=%v err=%v", accepted, err)
-		}
+	var prepareLifecycle int64
+	if err := fixture.pool.QueryRow(ctx, `SELECT lifecycle_generation FROM portfolio_inclusion_state WHERE user_id=$1`, prepareOwner).Scan(&prepareLifecycle); err != nil {
+		t.Fatal(err)
 	}
-	assertNoPublishedInclusionRows(t, fixture, prepareOwner)
+	if prepared.err == nil {
+		_, accepted, err := repository.FinalizeInclusion(ctx, prepareOwner, prepared.value.ChangeID, prepared.value.Version, prepared.value.InventoryGeneration, prepared.value.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": completeRepositoryAccountData(fixture.now)}, "", nil, fixture.now.Add(2*time.Minute))
+		expectedAcceptance := prepared.value.LifecycleGeneration == prepareLifecycle
+		if err != nil || accepted != expectedAcceptance {
+			t.Fatalf("prepared lifecycle=%d current=%d accepted=%v err=%v", prepared.value.LifecycleGeneration, prepareLifecycle, accepted, err)
+		}
+		if !accepted {
+			assertOnlyImmediateMembership(t, fixture, prepareOwner)
+		}
+	} else {
+		assertNoPublishedInclusionRows(t, fixture, prepareOwner)
+	}
 
 	finalizeOwner := inclusionOwnerWithInventory(t, fixture, 251, "finalize-race-owner")
 	publishInclusionInventory(t, fixture, finalizeOwner, []portfolio.Account{{ID: "account-2", Category: portfolio.AccountCategoryInvestment, Type: "Margin", MaskedLabel: "Second (•••• 1002)", Available: true, Eligible: true, Selectable: true, UsabilityReason: portfolio.UsabilityReady, SyncState: portfolio.AccountSyncStateComplete}})
@@ -183,7 +193,7 @@ func TestInclusionAndReauthorizationShareOwnerLockOrder(t *testing.T) {
 	start = make(chan struct{})
 	go func() {
 		<-start
-		_, accepted, err := repository.FinalizeInclusion(ctx, finalizeOwner, finalizePrepared.ChangeID, finalizePrepared.Version, finalizePrepared.InventoryGeneration, finalizePrepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-2": completeRepositoryAccountData(fixture.now)}, "", fixture.now.Add(2*time.Minute))
+		_, accepted, err := repository.FinalizeInclusion(ctx, finalizeOwner, finalizePrepared.ChangeID, finalizePrepared.Version, finalizePrepared.InventoryGeneration, finalizePrepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-2": completeRepositoryAccountData(fixture.now)}, "", nil, fixture.now.Add(2*time.Minute))
 		finalizeDone <- finalizeResult{accepted: accepted, err: err}
 	}()
 	go func() {
@@ -206,9 +216,9 @@ func TestInclusionAndReauthorizationShareOwnerLockOrder(t *testing.T) {
 		t.Fatalf("finalize race lifecycle=%d old=%d", lifecycle, finalizePrepared.LifecycleGeneration)
 	}
 	if !finalized.accepted {
-		assertNoPublishedInclusionRows(t, fixture, finalizeOwner)
+		assertOnlyImmediateMembership(t, fixture, finalizeOwner)
 	}
-	if _, accepted, err := repository.FinalizeInclusion(ctx, finalizeOwner, finalizePrepared.ChangeID, finalizePrepared.Version, finalizePrepared.InventoryGeneration, finalizePrepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-2": completeRepositoryAccountData(fixture.now)}, "", fixture.now.Add(4*time.Minute)); err != nil || accepted {
+	if _, accepted, err := repository.FinalizeInclusion(ctx, finalizeOwner, finalizePrepared.ChangeID, finalizePrepared.Version, finalizePrepared.InventoryGeneration, finalizePrepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-2": completeRepositoryAccountData(fixture.now)}, "", nil, fixture.now.Add(4*time.Minute)); err != nil || accepted {
 		t.Fatalf("post-reauthorization stale replay accepted=%v err=%v", accepted, err)
 	}
 }
@@ -261,7 +271,7 @@ func TestInclusionRepositoryIsIdempotentOwnerScopedAndRemovalFirst(t *testing.T)
 	var prepared portfolio.InclusionPreparation
 	claims := 0
 	for result := range preparations {
-		if result.Version != 1 || len(result.Committed) != 0 {
+		if result.Version != 1 || len(result.Committed) != 1 || result.Committed[0] != "account-1" {
 			t.Fatalf("concurrent result=%+v", result)
 		}
 		if result.Claimed {
@@ -273,7 +283,7 @@ func TestInclusionRepositoryIsIdempotentOwnerScopedAndRemovalFirst(t *testing.T)
 		t.Fatalf("concurrent idempotent claims=%d, want 1", claims)
 	}
 	data := map[string]portfolio.AccountData{"account-1": completeRepositoryAccountData(fixture.now)}
-	committed, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, data, "", fixture.now)
+	committed, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, data, "", nil, fixture.now)
 	if err != nil || !accepted || len(committed.Committed) != 1 || committed.Change == nil || committed.Change.Status != portfolio.InclusionCommitted {
 		t.Fatalf("committed=%+v accepted=%v err=%v", committed, accepted, err)
 	}
@@ -311,11 +321,11 @@ func TestInclusionRepositoryIsIdempotentOwnerScopedAndRemovalFirst(t *testing.T)
 	}
 
 	older, err := repository.PrepareInclusion(fixture.ctx, owner, 1, "older-add", []string{"account-1", "account-2"}, fixture.now.Add(time.Second))
-	if err != nil || !older.Claimed || older.Version != 2 || len(older.Committed) != 1 {
+	if err != nil || !older.Claimed || older.Version != 2 || len(older.Committed) != 2 {
 		t.Fatalf("older=%+v err=%v", older, err)
 	}
 	mixed, err := repository.PrepareInclusion(fixture.ctx, owner, 2, "mixed", []string{"account-2"}, fixture.now.Add(2*time.Second))
-	if err != nil || !mixed.Claimed || mixed.Version != 3 || len(mixed.Committed) != 0 || mixed.Change == nil || len(mixed.Change.Removals) != 1 || mixed.LifecycleGeneration != older.LifecycleGeneration+1 {
+	if err != nil || mixed.Claimed || mixed.Version != 3 || len(mixed.Committed) != 1 || mixed.Committed[0] != "account-2" || mixed.Change == nil || mixed.Change.Status != portfolio.InclusionCommitted || len(mixed.Change.Removals) != 1 || mixed.LifecycleGeneration != older.LifecycleGeneration+1 {
 		t.Fatalf("mixed=%+v err=%v", mixed, err)
 	}
 	var included, oldVersions int
@@ -328,10 +338,10 @@ func TestInclusionRepositoryIsIdempotentOwnerScopedAndRemovalFirst(t *testing.T)
 		(SELECT count(*) FROM portfolio_activity_versions WHERE user_id=$1 AND account_id='account-1')`, owner).Scan(&oldVersions); err != nil {
 		t.Fatal(err)
 	}
-	if included != 0 || oldVersions != 0 {
+	if included != 1 || oldVersions != 3 {
 		t.Fatalf("removal was not immediate: included=%d versions=%d", included, oldVersions)
 	}
-	if _, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, older.ChangeID, older.Version, older.InventoryGeneration, older.LifecycleGeneration, map[string]portfolio.AccountData{"account-2": completeRepositoryAccountData(fixture.now)}, "", fixture.now.Add(3*time.Second)); err != nil || accepted {
+	if _, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, older.ChangeID, older.Version, older.InventoryGeneration, older.LifecycleGeneration, map[string]portfolio.AccountData{"account-2": completeRepositoryAccountData(fixture.now)}, "", nil, fixture.now.Add(3*time.Second)); err != nil || accepted {
 		t.Fatalf("older finalizer accepted=%v err=%v", accepted, err)
 	}
 	var olderStatus, olderFailure string
@@ -344,12 +354,12 @@ func TestInclusionRepositoryIsIdempotentOwnerScopedAndRemovalFirst(t *testing.T)
 	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT (SELECT count(*) FROM portfolio_included_accounts WHERE user_id=$1)+(SELECT count(*) FROM portfolio_balance_heads WHERE user_id=$1)+(SELECT count(*) FROM portfolio_position_heads WHERE user_id=$1)+(SELECT count(*) FROM portfolio_activity_heads WHERE user_id=$1)`, owner).Scan(&included); err != nil {
 		t.Fatal(err)
 	}
-	if included != 0 {
-		t.Fatalf("older finalizer recreated removed coverage: rows=%d", included)
+	if included != 4 {
+		t.Fatalf("older finalizer changed retained heads: rows=%d", included)
 	}
-	failed, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, mixed.ChangeID, mixed.Version, mixed.InventoryGeneration, mixed.LifecycleGeneration, nil, "provider_unavailable", fixture.now.Add(4*time.Second))
-	if err != nil || accepted || len(failed.Committed) != 0 || failed.Change == nil || failed.Change.Status != portfolio.InclusionFailed {
-		t.Fatalf("failed=%+v accepted=%v err=%v", failed, accepted, err)
+	reincluded, err := repository.PrepareInclusion(fixture.ctx, owner, mixed.Version, "reinclude-retained", []string{"account-1"}, fixture.now.Add(5*time.Second))
+	if err != nil || reincluded.Claimed || reincluded.Change == nil || reincluded.Change.Status != portfolio.InclusionCommitted || len(reincluded.Committed) != 1 {
+		t.Fatalf("retained re-inclusion=%+v err=%v", reincluded, err)
 	}
 
 	other := inclusionOwnerWithInventory(t, fixture, 202, "subject-two")
@@ -375,7 +385,7 @@ func TestInclusionRepositoryPublishesThreeDatasetsAtomicallyAndCanRecover(t *tes
 	first, second := completeRepositoryAccountData(fixture.now), completeRepositoryAccountData(fixture.now)
 	badCurrency := "1"
 	second.Balances.Rows = []portfolio.Balance{{Currency: "US", Cash: &badCurrency}}
-	if _, _, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": first, "account-2": second}, "", fixture.now); err == nil {
+	if _, _, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": first, "account-2": second}, "", nil, fixture.now); err == nil {
 		t.Fatal("invalid second account unexpectedly published")
 	}
 	var rows int
@@ -389,11 +399,11 @@ func TestInclusionRepositoryPublishesThreeDatasetsAtomicallyAndCanRecover(t *tes
 		(SELECT count(*) FROM portfolio_activity_heads WHERE user_id=$1)`, owner).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
-	if rows != 0 {
+	if rows != 2 {
 		t.Fatalf("partial dataset publication rows=%d", rows)
 	}
 	second = completeRepositoryAccountData(fixture.now)
-	result, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": first, "account-2": second}, "", fixture.now.Add(time.Second))
+	result, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": first, "account-2": second}, "", nil, fixture.now.Add(time.Second))
 	if err != nil || !accepted || len(result.Committed) != 2 {
 		t.Fatalf("recovery result=%+v accepted=%v err=%v", result, accepted, err)
 	}
@@ -428,7 +438,7 @@ func TestInclusionRepositoryPublishesTypedRowsThroughDatasetHeads(t *testing.T) 
 		Positions:  portfolio.PositionDataset{ObservedAt: fixture.now.Add(-time.Minute), RetrievedAt: fixture.now, Rows: []portfolio.Position{{InstrumentID: "instrument-1", Symbol: "AAPL", Kind: "stock", Currency: "USD", Units: &units, Price: &price, CostBasis: &costBasis}}},
 		Activities: portfolio.ActivityDataset{RetrievedAt: fixture.now, Rows: []portfolio.Activity{{ID: "activity-1", Type: "BUY", TradeDate: &tradeDate, Currency: "CAD", Amount: &amount, Fee: &fee, Price: &activityPrice, Units: &activityUnits}}},
 	}
-	if _, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": data}, "", fixture.now); err != nil || !accepted {
+	if _, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": data}, "", nil, fixture.now); err != nil || !accepted {
 		t.Fatalf("accepted=%v err=%v", accepted, err)
 	}
 
@@ -481,13 +491,13 @@ func TestReauthorizationFencesPendingInclusionFinalizer(t *testing.T) {
 	if lifecycle != prepared.LifecycleGeneration+1 {
 		t.Fatalf("reauthorized lifecycle=%d old=%d", lifecycle, prepared.LifecycleGeneration)
 	}
-	if _, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": completeRepositoryAccountData(fixture.now)}, "", fixture.now.Add(2*time.Minute)); err != nil || accepted {
+	if _, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": completeRepositoryAccountData(fixture.now)}, "", nil, fixture.now.Add(2*time.Minute)); err != nil || accepted {
 		t.Fatalf("old finalizer accepted=%v err=%v", accepted, err)
 	}
 	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT (SELECT count(*) FROM portfolio_included_accounts WHERE user_id=$1)+(SELECT count(*) FROM portfolio_balance_heads WHERE user_id=$1)+(SELECT count(*) FROM portfolio_position_heads WHERE user_id=$1)+(SELECT count(*) FROM portfolio_activity_heads WHERE user_id=$1)`, owner).Scan(&lifecycle); err != nil {
 		t.Fatal(err)
 	}
-	if lifecycle != 0 {
+	if lifecycle != 1 {
 		t.Fatalf("reauthorization-stale finalizer recreated rows=%d", lifecycle)
 	}
 }
@@ -503,14 +513,14 @@ func TestInclusionRepositorySupersedesDurablePendingChangeWithoutBroadening(t *t
 		t.Fatalf("older=%+v err=%v", older, err)
 	}
 	replacement, err := repository.PrepareInclusion(fixture.ctx, owner, older.Version, "pending-replacement", []string{"account-1"}, fixture.now.Add(time.Second))
-	if err != nil || !replacement.Claimed || replacement.Version != older.Version+1 || len(replacement.Additions) != 1 || replacement.Additions[0] != "account-1" || len(replacement.Committed) != 0 {
+	if err != nil || replacement.Claimed || replacement.Version != older.Version+1 || len(replacement.Additions) != 0 || len(replacement.Committed) != 1 || replacement.Committed[0] != "account-1" || replacement.Change == nil || replacement.Change.Status != portfolio.InclusionCommitted {
 		t.Fatalf("replacement=%+v err=%v", replacement, err)
 	}
-	if _, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, older.ChangeID, older.Version, older.InventoryGeneration, older.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": completeRepositoryAccountData(fixture.now)}, "", fixture.now.Add(2*time.Second)); err != nil || accepted {
+	if _, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, older.ChangeID, older.Version, older.InventoryGeneration, older.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": completeRepositoryAccountData(fixture.now)}, "", nil, fixture.now.Add(2*time.Second)); err != nil || accepted {
 		t.Fatalf("superseded finalizer accepted=%v err=%v", accepted, err)
 	}
-	result, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, replacement.ChangeID, replacement.Version, replacement.InventoryGeneration, replacement.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": completeRepositoryAccountData(fixture.now)}, "", fixture.now.Add(3*time.Second))
-	if err != nil || !accepted || len(result.Committed) != 1 || result.Committed[0] != "account-1" {
+	result, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, replacement.ChangeID, replacement.Version, replacement.InventoryGeneration, replacement.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": completeRepositoryAccountData(fixture.now)}, "", nil, fixture.now.Add(3*time.Second))
+	if err != nil || accepted || len(result.Committed) != 1 || result.Committed[0] != "account-1" {
 		t.Fatalf("replacement result=%+v accepted=%v err=%v", result, accepted, err)
 	}
 }
@@ -520,6 +530,34 @@ func completeRepositoryAccountData(now time.Time) portfolio.AccountData {
 		Balances:   portfolio.BalanceDataset{RetrievedAt: now, Rows: []portfolio.Balance{}},
 		Positions:  portfolio.PositionDataset{ObservedAt: now, RetrievedAt: now, Rows: []portfolio.Position{}},
 		Activities: portfolio.ActivityDataset{RetrievedAt: now, Rows: []portfolio.Activity{}},
+	}
+}
+
+func TestInclusionRepositoryEmptySaveCancelsPendingFirstInclusion(t *testing.T) {
+	fixture := newRepositoryFixture(t)
+	fixture.reset(t)
+	owner := inclusionOwnerWithInventory(t, fixture, 207, "cancel-pending-owner")
+	publishInclusionInventory(t, fixture, owner, []portfolio.Account{{ID: "account-1", Category: portfolio.AccountCategoryInvestment, Type: "Margin", MaskedLabel: "First (•••• 1001)", Available: true, Eligible: true, Selectable: true, UsabilityReason: portfolio.UsabilityReady, SyncState: portfolio.AccountSyncStateComplete}})
+	repository := postgresadapter.NewInclusionRepository(fixture.pool)
+	pending, err := repository.PrepareInclusion(fixture.ctx, owner, 0, "pending-account", []string{"account-1"}, fixture.now)
+	if err != nil || !pending.Claimed || pending.Change == nil || pending.Change.Status != portfolio.InclusionPending {
+		t.Fatalf("pending=%+v err=%v", pending, err)
+	}
+
+	canceled, err := repository.PrepareInclusion(fixture.ctx, owner, pending.Version, "cancel-pending", nil, fixture.now.Add(time.Second))
+	if err != nil || canceled.Claimed || canceled.Version != pending.Version+1 || canceled.LifecycleGeneration != pending.LifecycleGeneration+1 || len(canceled.Committed) != 0 || canceled.Change == nil || canceled.Change.Status != portfolio.InclusionCommitted {
+		t.Fatalf("canceled=%+v err=%v", canceled, err)
+	}
+	var oldStatus, oldFailure string
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT status,failure_reason FROM portfolio_inclusion_changes WHERE id=$1`, pending.ChangeID).Scan(&oldStatus, &oldFailure); err != nil {
+		t.Fatal(err)
+	}
+	if oldStatus != "failed" || oldFailure != "stale_guard" {
+		t.Fatalf("superseded status=%q failure=%q", oldStatus, oldFailure)
+	}
+	claim, err := postgresadapter.NewSyncRepository(fixture.pool).ClaimDue(fixture.ctx, fixture.now.Add(time.Minute), 24*time.Hour, time.Minute)
+	if err != nil || claim != nil {
+		t.Fatalf("canceled pending claim=%+v err=%v", claim, err)
 	}
 }
 
@@ -549,7 +587,7 @@ func TestInclusionRepositoryRechecksLegacySelectionAndPreservesCommittedAccounts
 	for _, id := range targets {
 		data[id] = completeRepositoryAccountData(fixture.now)
 	}
-	committed, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, data, "", fixture.now)
+	committed, accepted, err := repository.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, data, "", nil, fixture.now)
 	if err != nil || !accepted || !slices.Equal(committed.Committed, targets) {
 		t.Fatalf("approved accounts committed=%+v accepted=%v err=%v", committed, accepted, err)
 	}
@@ -576,7 +614,17 @@ func TestInclusionRepositoryRechecksLegacySelectionAndPreservesCommittedAccounts
 	if err != nil || removed.Claimed || len(removed.Committed) != 0 || removed.Change.Status != portfolio.InclusionCommitted {
 		t.Fatalf("removal-only cleanup failed: %+v err=%v", removed, err)
 	}
-	assertNoPublishedInclusionRows(t, fixture, owner)
+	var memberships, retainedHeads int
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT
+		(SELECT count(*) FROM portfolio_included_accounts WHERE user_id=$1),
+		(SELECT count(*) FROM portfolio_balance_heads WHERE user_id=$1)+
+		(SELECT count(*) FROM portfolio_position_heads WHERE user_id=$1)+
+		(SELECT count(*) FROM portfolio_activity_heads WHERE user_id=$1)`, owner).Scan(&memberships, &retainedHeads); err != nil {
+		t.Fatal(err)
+	}
+	if memberships != 0 || retainedHeads != 9 {
+		t.Fatalf("removal memberships=%d retainedHeads=%d", memberships, retainedHeads)
+	}
 	if _, err := repository.PrepareInclusion(fixture.ctx, owner, removed.Version, "reject-readmission", targets, fixture.now); !errors.Is(err, portfolio.ErrInvalidAccountSelection) {
 		t.Fatalf("excluded accounts could be re-added after removal: %v", err)
 	}
@@ -607,6 +655,21 @@ func assertNoPublishedInclusionRows(t *testing.T, fixture *repositoryFixture, ow
 	}
 	if rows != 0 {
 		t.Fatalf("stale inclusion publication rows=%d", rows)
+	}
+}
+
+func assertOnlyImmediateMembership(t *testing.T, fixture *repositoryFixture, owner uuid.UUID) {
+	t.Helper()
+	var memberships, heads int
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT
+		(SELECT count(*) FROM portfolio_included_accounts WHERE user_id=$1),
+		(SELECT count(*) FROM portfolio_balance_heads WHERE user_id=$1)+
+		(SELECT count(*) FROM portfolio_position_heads WHERE user_id=$1)+
+		(SELECT count(*) FROM portfolio_activity_heads WHERE user_id=$1)`, owner).Scan(&memberships, &heads); err != nil {
+		t.Fatal(err)
+	}
+	if memberships != 1 || heads != 0 {
+		t.Fatalf("immediate memberships=%d stale dataset heads=%d", memberships, heads)
 	}
 }
 

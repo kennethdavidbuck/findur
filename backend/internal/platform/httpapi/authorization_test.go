@@ -384,8 +384,8 @@ func TestInclusionPOSTReturnsSafeConflictWithoutMutationDetail(t *testing.T) {
 	}
 }
 
-func TestInclusionPOSTAcceptsLargeSelectionsWithinInventoryLimit(t *testing.T) {
-	for _, count := range []int{1000, 5000, 5001} {
+func TestInclusionPOSTEnforcesFiveAccountLimitBeforeService(t *testing.T) {
+	for _, count := range []int{5, 6} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
 			ids := make([]string, count)
 			for index := range ids {
@@ -402,12 +402,12 @@ func TestInclusionPOSTAcceptsLargeSelectionsWithinInventoryLimit(t *testing.T) {
 			request.Header.Set("Idempotency-Key", "large-selection")
 			response := httptest.NewRecorder()
 			portfolioHandler(&sessionLifecycleStub{}, &inventoryLifecycleStub{}, inclusion, "https://findur.example").ServeHTTP(response, request)
-			if count > 5000 {
+			if count > portfolio.MaxIncludedAccounts {
 				if response.Code != http.StatusBadRequest || inclusion.confirmCalls != 0 {
 					t.Fatalf("oversized selection: status=%d calls=%d", response.Code, inclusion.confirmCalls)
 				}
 			} else if response.Code != http.StatusOK || inclusion.confirmCalls != 1 || len(inclusion.accountIDs) != count {
-				t.Fatalf("large selection: status=%d calls=%d accounts=%d", response.Code, inclusion.confirmCalls, len(inclusion.accountIDs))
+				t.Fatalf("bounded selection: status=%d calls=%d accounts=%d", response.Code, inclusion.confirmCalls, len(inclusion.accountIDs))
 			}
 		})
 	}

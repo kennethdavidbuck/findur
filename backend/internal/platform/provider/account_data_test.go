@@ -28,7 +28,7 @@ func TestAccountDataUsesOnlyAllowlistedReadsAndBoundsActivities(t *testing.T) {
 			return jsonResponse(http.StatusOK, `{"data_freshness":{"as_of":"2026-09-20T11:55:00Z"},"results":[{"instrument":{"id":"87b24961-b51e-4db8-9226-f198f6518a89","symbol":"AAPL","kind":"stock"},"currency":"USD","units":"1.25","price":"123.456789","cost_basis":"100.01"}]}`), nil
 		case strings.HasSuffix(request.URL.Path, "/activities"):
 			query := request.URL.Query()
-			if query.Get("limit") != "500" || query.Get("offset") != "0" || query.Get("startDate") != "2026-08-21" || query.Get("endDate") != "2026-09-20" {
+			if query.Get("limit") != "50" || query.Get("offset") != "0" || query.Has("startDate") || query.Has("endDate") {
 				t.Fatalf("unbounded activity query: %s", request.URL.RawQuery)
 			}
 			return jsonResponse(http.StatusOK, `{"data":[{"id":"activity-1","type":"BUY","trade_date":"2026-09-19T10:00:00Z","currency":{"code":"CAD"},"amount":-10.25,"units":"1"}]}`), nil
@@ -40,6 +40,7 @@ func TestAccountDataUsesOnlyAllowlistedReadsAndBoundsActivities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.gate = &requestGate{}
 
 	result, err := client.LoadAccountData(context.Background(), "access-token", "917c8734-8470-4a3e-a18f-57c3f2ee6631", now)
 	if err != nil {
@@ -59,6 +60,27 @@ func TestAccountDataUsesOnlyAllowlistedReadsAndBoundsActivities(t *testing.T) {
 	}
 }
 
+func TestAccountResourceLoadsOnlyRequestedDataset(t *testing.T) {
+	baseURL, _ := url.Parse("https://api.snaptrade.example")
+	requests := 0
+	client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		requests++
+		if !strings.HasSuffix(request.URL.Path, "/positions/all") {
+			t.Fatalf("unexpected resource request: %s", request.URL.Path)
+		}
+		return jsonResponse(http.StatusOK, `{"data_freshness":{"as_of":"2026-09-20T11:55:00Z"},"results":[]}`), nil
+	}), time.Now)
+	client.gate = &requestGate{}
+
+	data, err := client.LoadAccountResource(context.Background(), "access-token", "917c8734-8470-4a3e-a18f-57c3f2ee6631", portfolio.AccountResourcePositions, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 || data.Positions.Rows == nil || data.Balances.Rows != nil || data.Activities.Rows != nil {
+		t.Fatalf("requests=%d data=%+v", requests, data)
+	}
+}
+
 func TestAccountDataRejectsMissingProviderObservationProof(t *testing.T) {
 	baseURL, _ := url.Parse("https://api.snaptrade.example")
 	client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -72,6 +94,7 @@ func TestAccountDataRejectsMissingProviderObservationProof(t *testing.T) {
 			return nil, nil
 		}
 	}), time.Now)
+	client.gate = &requestGate{}
 
 	if _, err := client.LoadAccountData(context.Background(), "access-token", "917c8734-8470-4a3e-a18f-57c3f2ee6631", time.Now()); err == nil {
 		t.Fatal("missing provider observation proof was accepted")
@@ -87,6 +110,7 @@ func TestAccountDataRejectsPartialMalformedDataset(t *testing.T) {
 		t.Fatalf("provider continued after malformed required dataset: %s", request.URL.Path)
 		return nil, nil
 	}), time.Now)
+	client.gate = &requestGate{}
 
 	if _, err := client.LoadAccountData(context.Background(), "access-token", "917c8734-8470-4a3e-a18f-57c3f2ee6631", time.Now()); err == nil {
 		t.Fatal("malformed dataset was accepted")
@@ -120,6 +144,7 @@ func TestAccountDataRejectsPostgresUnsafeProviderValuesAsMalformed(t *testing.T)
 					return nil, nil
 				}
 			}), time.Now)
+			client.gate = &requestGate{}
 			_, err := client.LoadAccountData(context.Background(), "access-token", "917c8734-8470-4a3e-a18f-57c3f2ee6631", time.Now())
 			var providerErr *portfolio.ProviderError
 			if !errors.As(err, &providerErr) || providerErr.State != portfolio.StateMalformed {

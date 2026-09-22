@@ -131,16 +131,27 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl) {
   })
   assert.equal(saved, true, 'account choice is saved through the UI')
 
+  let preparingState
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    preparingState = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const text=document.body.innerText;return {path:location.pathname,accounts:document.querySelectorAll('.account h2').length,syncing:text.includes('Some portfolio data is still syncing')}`, args: [] }),
+    })
+    if (preparingState.path === '/portfolio' && preparingState.accounts === 3 && preparingState.syncing) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.deepEqual(preparingState, { path: '/portfolio', accounts: 3, syncing: true }, 'saved accounts render immediately while their first datasets sync')
+
   let showcaseState
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  for (let attempt = 0; attempt < 360; attempt += 1) {
     showcaseState = await webdriver(`/session/${sessionId}/execute/sync`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: `const accounts=[...document.querySelectorAll('.account h2')].map(value=>value.innerText);return {path:location.pathname,heading:document.querySelector('h1')?.innerText,focused:document.activeElement===document.querySelector('h1'),accounts:accounts.length===3&&['Individual','IRA','Cash Account'].every(name=>accounts.some(value=>value.includes(name))),tables:document.querySelectorAll('.table-wrap').length,mvpNav:[...document.querySelectorAll('.authenticated-nav a')].map(value=>value.innerText).join('|')}`, args: [] }),
+      body: JSON.stringify({ script: `const text=document.body.innerText;const accounts=[...document.querySelectorAll('.account h2')].map(value=>value.innerText);return {path:location.pathname,heading:document.querySelector('h1')?.innerText,focused:document.activeElement===document.querySelector('h1'),accounts:accounts.length===3&&['Individual','IRA','Cash Account'].every(name=>accounts.some(value=>value.includes(name))),tables:document.querySelectorAll('.table-wrap').length,activity:text.includes('BUY'),mvpNav:[...document.querySelectorAll('.authenticated-nav a')].map(value=>value.innerText).join('|')}`, args: [] }),
     })
-    if (showcaseState.path === '/portfolio' && showcaseState.accounts && showcaseState.tables === 5) break
+    if (showcaseState.path === '/portfolio' && showcaseState.accounts && showcaseState.tables === 5 && showcaseState.activity) break
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
-  assert.deepEqual(showcaseState, { path: '/portfolio', heading: 'Your portfolio', focused: true, accounts: true, tables: 5, mvpNav: 'Portfolio|Profile' }, 'initial save opens the focused Portfolio Showcase with only the MVP navigation')
+  assert.deepEqual(showcaseState, { path: '/portfolio', heading: 'Your portfolio', focused: true, accounts: true, tables: 5, activity: true, mvpNav: 'Portfolio|Profile' }, 'the worker completes the Portfolio Showcase and renders the synthetic transaction')
 
   const showcase = await webdriver(`/session/${sessionId}/execute/async`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },

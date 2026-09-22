@@ -28,6 +28,9 @@ the integration fixture intentionally uses simulated accounts.
 
 ## Request and persistence behavior
 
+- Account inventory is bootstrapped only once. A returning login rotates
+  credentials and fences stale in-flight work without clearing or refetching the
+  published inventory. Explicit retry/reconnect remains the refresh path.
 - Discovery uses one `GET /authorizations` and one `GET /accounts` when an active
   connection exists. Empty or entirely disabled connections need no account call.
 - `/accounts` returns SnapTrade’s daily cached inventory, including on real-time
@@ -43,11 +46,24 @@ the integration fixture intentionally uses simulated accounts.
   category, availability, completed holdings sync, and active connection before display.
   New additions are checked against those same requirements at confirmation so a
   legacy `selectable` flag cannot admit an excluded account.
-- Previously committed membership and API removal behavior are unchanged. This
-  does not automatically delete existing selections or financial datasets.
-  Excluded accounts are absent from the chooser, including previously committed
-  ones; removing a committed account absent from inventory through the UI is an
-  existing deferred lifecycle concern, not solved by this filter.
+- At most five accounts can be selected. Both the browser and API enforce the
+  limit before provider work.
+- A valid selection save commits membership without provider calls. Selected
+  account identities appear immediately in the Portfolio; first-time datasets
+  are labelled as syncing until the minute worker completes balances,
+  positions, and activities for every newly selected account.
+- Removing an account deletes only its inclusion membership. Its synchronized
+  datasets remain retained but hidden, and re-inclusion reuses them without an
+  eager provider call.
+- Included accounts are refreshed when their complete bundle is at least 24
+  hours old. A minute worker uses durable database leases, bounded backoff, a
+  45-second pass limit, and a shared paced/circuit-broken SnapTrade client.
+- Balances and positions replace their current snapshots. Activities append by
+  stable provider ID from the newest 50 returned rows, and the Showcase exposes
+  only its newest accumulated 50 rows.
+  Accounts excluded by current eligibility are absent from the chooser.
+  Eligibility filtering does not silently rewrite an existing inclusion;
+  membership changes only through an explicit selection save.
 
 ## Verification
 

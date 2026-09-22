@@ -1,4 +1,4 @@
 {
   "data": [],
-  "pagination": { "limit": 500, "offset": 0, "total": 0 }
+  "pagination": { "limit": 50, "offset": 0, "total": 0 }
 }

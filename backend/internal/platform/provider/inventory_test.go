@@ -713,6 +713,39 @@ func TestInventoryClassifiesTransportFailureWithoutDetail(t *testing.T) {
 	}
 }
 
+func TestRequestGateHonorsRetryAfterAndFailureThresholds(t *testing.T) {
+	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
+	gate := &requestGate{}
+	gate.record(http.StatusTooManyRequests, "90", now)
+	if err := gate.wait(context.Background(), now.Add(89*time.Second)); err == nil {
+		t.Fatal("429 circuit admitted before Retry-After")
+	}
+	if err := gate.wait(context.Background(), now.Add(90*time.Second)); err != nil {
+		t.Fatalf("429 circuit remained open: %v", err)
+	}
+
+	dateGate := &requestGate{}
+	retryAt := now.Add(2 * time.Minute)
+	dateGate.record(http.StatusTooManyRequests, retryAt.Format(http.TimeFormat), now)
+	if !dateGate.openUntil.Equal(retryAt) {
+		t.Fatalf("date Retry-After=%v want=%v", dateGate.openUntil, retryAt)
+	}
+
+	failureGate := &requestGate{}
+	failureGate.record(http.StatusBadGateway, "", now)
+	failureGate.record(0, "", now)
+	if err := failureGate.wait(context.Background(), now); err != nil {
+		t.Fatalf("circuit opened before threshold: %v", err)
+	}
+	failureGate.record(http.StatusServiceUnavailable, "", now)
+	if err := failureGate.wait(context.Background(), now); err == nil {
+		t.Fatal("repeated transport/5xx failures did not open circuit")
+	}
+	if err := failureGate.wait(context.Background(), now.Add(30*time.Second)); err != nil {
+		t.Fatalf("failure circuit did not recover: %v", err)
+	}
+}
+
 func jsonResponse(status int, body string) *http.Response {
 	return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}
 }

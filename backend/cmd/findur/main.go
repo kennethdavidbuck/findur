@@ -133,12 +133,7 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		pool.Close()
 		return errInvalidConfiguration
 	}
-	inventory, err := buildInventory(cfg, pool)
-	if err != nil {
-		pool.Close()
-		return errInvalidConfiguration
-	}
-	inclusion, err := buildInclusion(cfg, pool)
+	portfolioServices, err := buildPortfolioServices(cfg, pool, logger)
 	if err != nil {
 		pool.Close()
 		return errInvalidConfiguration
@@ -153,17 +148,30 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		pool.Close()
 		return errInvalidConfiguration
 	}
-	server := newServer(cfg.Address, httpapi.NewHandlerWithProfile(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, inventory, inclusion, showcaseService, profiles, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
+	server := newServer(cfg.Address, httpapi.NewHandlerWithProfile(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, portfolioServices.inventory, portfolioServices.inclusion, showcaseService, profiles, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
 	serverErrors := make(chan error, 1)
+	workerCtx, stopWorker := context.WithCancel(rootCtx)
+	defer stopWorker()
+	workerDone := make(chan struct{})
 	go func() {
 		logger.Info("http server starting", "address", cfg.Address)
 		serverErrors <- server.ListenAndServe()
 	}()
+	if portfolioServices.sync != nil {
+		go func() {
+			defer close(workerDone)
+			portfolio.RunSyncWorker(workerCtx, portfolio.SyncWorkerInterval, portfolioServices.sync)
+		}()
+	} else {
+		close(workerDone)
+	}
 	readiness.SetReady(true)
 
 	select {
 	case err := <-serverErrors:
 		readiness.SetReady(false)
+		stopWorker()
+		waitForWorker(logger, workerDone, config.ShutdownDrain)
 		pool.Close()
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
@@ -174,25 +182,63 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 
 	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), config.ShutdownDrain)
 	defer cancelShutdown()
-	if err := lifecycle.Drain(shutdownCtx, readiness, server, pool.Close); err != nil {
+	stopWorker()
+	if err := lifecycle.Drain(shutdownCtx, readiness, server, func() {
+		select {
+		case <-workerDone:
+			logger.Info("portfolio sync worker drained", "event", "portfolio_sync_worker_drained")
+		case <-shutdownCtx.Done():
+			logger.Warn("portfolio sync worker drain deadline reached", "event", "portfolio_sync_worker_drain_timeout")
+		}
+		pool.Close()
+	}); err != nil {
 		return errShutdown
 	}
 	return nil
 }
 
-func buildInclusion(cfg config.Config, pool *pgxpool.Pool) (*portfolio.InclusionService, error) {
+func waitForWorker(logger *slog.Logger, done <-chan struct{}, timeout time.Duration) {
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+		logger.Info("portfolio sync worker drained", "event", "portfolio_sync_worker_drained")
+	case <-timer.C:
+		logger.Warn("portfolio sync worker drain deadline reached", "event", "portfolio_sync_worker_drain_timeout")
+	}
+}
+
+type portfolioComponents struct {
+	inventory *portfolio.Service
+	inclusion *portfolio.InclusionService
+	sync      *portfolio.SyncService
+}
+
+func buildPortfolioServices(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger) (portfolioComponents, error) {
 	if len(cfg.Session.HashKey) == 0 || len(cfg.Authorization.TokenKeys) == 0 || cfg.Authorization.ProviderBaseURL == nil {
-		return nil, nil
+		return portfolioComponents{}, nil
 	}
 	tokens, err := auth.NewTokenCipher(auth.SnapTradeProvider, cfg.Authorization.TokenKeys, cfg.Authorization.CurrentTokenKey, rand.Reader)
 	if err != nil {
-		return nil, err
+		return portfolioComponents{}, err
 	}
 	providerClient, err := provider.NewInventoryClient(cfg.Authorization.ProviderBaseURL, &http.Client{Timeout: config.ProviderTimeout}, time.Now)
 	if err != nil {
-		return nil, err
+		return portfolioComponents{}, err
 	}
-	return portfolio.NewInclusionService(postgresadapter.NewInclusionRepository(pool), providerClient, tokens, time.Now, config.ProviderTimeout)
+	inventory, err := portfolio.NewService(postgresadapter.NewInventoryRepository(pool), providerClient, tokens, time.Now, config.ProviderTimeout)
+	if err != nil {
+		return portfolioComponents{}, err
+	}
+	inclusion, err := portfolio.NewInclusionService(postgresadapter.NewInclusionRepository(pool), time.Now)
+	if err != nil {
+		return portfolioComponents{}, err
+	}
+	syncService, err := portfolio.NewSyncService(postgresadapter.NewSyncRepository(pool), providerClient, tokens, time.Now, config.ProviderTimeout, logger)
+	if err != nil {
+		return portfolioComponents{}, err
+	}
+	return portfolioComponents{inventory: inventory, inclusion: inclusion, sync: syncService}, nil
 }
 
 func buildInventory(cfg config.Config, pool *pgxpool.Pool) (*portfolio.Service, error) {

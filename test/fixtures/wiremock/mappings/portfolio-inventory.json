@@ -62,7 +62,7 @@
       "request": {
         "method": "GET",
         "urlPath": "/accounts/03867fbb-41b4-4a05-8815-c96f94f8ba6b/activities",
-        "queryParameters": { "limit": { "equalTo": "500" }, "offset": { "equalTo": "0" }, "startDate": { "matches": "[0-9]{4}-[0-9]{2}-[0-9]{2}" }, "endDate": { "matches": "[0-9]{4}-[0-9]{2}-[0-9]{2}" } },
+        "queryParameters": { "limit": { "equalTo": "50" }, "offset": { "equalTo": "0" }, "startDate": { "absent": true }, "endDate": { "absent": true } },
         "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" }, "userId": { "absent": true }, "userSecret": { "absent": true }, "Signature": { "absent": true } }
       },
       "response": { "status": 200, "headers": { "Content-Type": "application/json" }, "bodyFileName": "inventory/success-activities.json" }
@@ -87,7 +87,7 @@
       "request": {
         "method": "GET",
         "urlPath": "/accounts/7e7dcb86-7d52-4f46-8fcf-91d5c9f81629/activities",
-        "queryParameters": { "limit": { "equalTo": "500" }, "offset": { "equalTo": "0" }, "startDate": { "matches": "[0-9]{4}-[0-9]{2}-[0-9]{2}" }, "endDate": { "matches": "[0-9]{4}-[0-9]{2}-[0-9]{2}" } },
+        "queryParameters": { "limit": { "equalTo": "50" }, "offset": { "equalTo": "0" }, "startDate": { "absent": true }, "endDate": { "absent": true } },
         "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" }, "userId": { "absent": true }, "userSecret": { "absent": true }, "Signature": { "absent": true } }
       },
       "response": { "status": 200, "headers": { "Content-Type": "application/json" }, "bodyFileName": "inventory/success-empty-activities.json" }
@@ -112,7 +112,7 @@
       "request": {
         "method": "GET",
         "urlPath": "/accounts/50bb0405-5efd-473f-a742-78a82bb1db53/activities",
-        "queryParameters": { "limit": { "equalTo": "500" }, "offset": { "equalTo": "0" }, "startDate": { "matches": "[0-9]{4}-[0-9]{2}-[0-9]{2}" }, "endDate": { "matches": "[0-9]{4}-[0-9]{2}-[0-9]{2}" } },
+        "queryParameters": { "limit": { "equalTo": "50" }, "offset": { "equalTo": "0" }, "startDate": { "absent": true }, "endDate": { "absent": true } },
         "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" }, "userId": { "absent": true }, "userSecret": { "absent": true }, "Signature": { "absent": true } }
       },
       "response": { "status": 200, "headers": { "Content-Type": "application/json" }, "bodyFileName": "inventory/success-empty-activities.json" }

@@ -3,6 +3,8 @@ import { Button, Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from 'rea
 import { checkPortfolioInventory, confirmPortfolioInclusion, getPortfolioInclusion, getPortfolioInventory, InventorySessionDefenseError, InventorySessionExpiredError, retryPortfolioInventory, type PortfolioInclusion, type PortfolioInventory } from '../inventory'
 import { useI18n } from '../i18n'
 
+const maxIncludedAccounts = 5
+
 type Props = {
   editing?: boolean
   headingRef: RefObject<HTMLHeadingElement | null>
@@ -62,8 +64,10 @@ export function PortfolioPage({ editing = false, headingRef, onComplete, onRecon
   const removals = accounts.filter((account) => !draft.has(account.id) && committed.has(account.id))
   const committedVisibleCount = accounts.filter((account) => committed.has(account.id)).length
   const selectedVisibleCount = draftVisibleCount(draft, accounts)
-  const allSelected = selectable.length > 0 && selectable.every((account) => draft.has(account.id))
+  const selectedSelectableCount = selectable.filter((account) => draft.has(account.id)).length
+  const allSelected = selectable.length > 0 && selectedSelectableCount === Math.min(selectable.length, maxIncludedAccounts)
   const someSelected = selectable.some((account) => draft.has(account.id)) && !allSelected
+  const selectionLimitReached = draft.size >= maxIncludedAccounts
   const currentChangeDraft = inclusion ? sameIDs([...draft], [...recoveryDraft(inclusion)]) : false
 
   useEffect(() => {
@@ -99,7 +103,7 @@ export function PortfolioPage({ editing = false, headingRef, onComplete, onRecon
     setDraft((current) => {
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
-      else next.add(id)
+      else if (next.size < maxIncludedAccounts) next.add(id)
       return next
     })
   }
@@ -120,14 +124,16 @@ export function PortfolioPage({ editing = false, headingRef, onComplete, onRecon
       const result = await confirmPortfolioInclusion(inclusion.version, desired)
       setInclusion(result)
       setDraft(recoveryDraft(result))
-      if (result.change?.status === 'committed' && activeRef.current) onComplete(true)
+      if ((result.change?.status === 'committed' || result.change?.status === 'pending') && activeRef.current) onComplete(true)
     } catch (error: unknown) {
       if (isSessionError(error)) {
         onSessionExpired()
       } else {
         try {
           const durable = await getPortfolioInclusion()
-          if (sameIDs(durable.committed, desired)) {
+          const pendingSelectionMatches = durable.change?.status === 'pending'
+            && sameIDs([...recoveryDraft(durable)], desired)
+          if (sameIDs(durable.committed, desired) || pendingSelectionMatches) {
             if (activeRef.current) onComplete(true)
           } else {
             setInclusion(durable)
@@ -154,7 +160,7 @@ export function PortfolioPage({ editing = false, headingRef, onComplete, onRecon
       const next = new Set(current)
       for (const account of selectable) {
         if (allSelected) next.delete(account.id)
-        else next.add(account.id)
+        else if (next.size < maxIncludedAccounts) next.add(account.id)
       }
       return next
     })
@@ -209,14 +215,18 @@ export function PortfolioPage({ editing = false, headingRef, onComplete, onRecon
             <>
               <fieldset className="account-selection" disabled={saving}>
                 <legend>{copy.inclusion.groupName}</legend>
+                <div className="selection-guidance">
+                  <p>{copy.inclusion.selectionLimit}</p>
+                  <p className="selection-count" aria-live="polite">{copy.inclusion.selectedCount(selectedVisibleCount)}</p>
+                  {selectionLimitReached && <p className="selection-limit" role="status" aria-live="polite">{copy.inclusion.limitReached}</p>}
+                </div>
                 <label className="select-all">
                   <input ref={selectAllRef} type="checkbox" checked={allSelected} disabled={saving || selectable.length === 0} onChange={toggleAllSelectable} />
                   <span>{copy.inclusion.selectAll}</span>
-                  <span className="select-all__ratio" aria-live="polite">{selectedVisibleCount} / {accounts.length}</span>
                 </label>
                 {accounts.map((account) => {
                       const selected = draft.has(account.id)
-                      const choiceDisabled = !account.selectable && !committed.has(account.id)
+                      const choiceDisabled = (!account.selectable && !committed.has(account.id)) || (!selected && selectionLimitReached)
                       return (
                         <label className={`account-choice${choiceDisabled ? ' account-choice--disabled' : ''}`} key={account.id}>
                           <input type="checkbox" checked={selected} disabled={choiceDisabled} onChange={() => toggleAccount(account.id)} />

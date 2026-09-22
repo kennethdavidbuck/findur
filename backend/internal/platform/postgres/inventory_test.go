@@ -274,7 +274,7 @@ func TestInventoryRepositoryReclaimsExpiredClaimAfterHardRestart(t *testing.T) {
 	}
 }
 
-func TestInventoryRepositoryPublishesDisabledRowsAndReauthorizationInvalidatesHead(t *testing.T) {
+func TestInventoryRepositoryPublishesDisabledRowsAndReturningLoginPreservesHead(t *testing.T) {
 	fixture := newRepositoryFixture(t)
 	fixture.reset(t)
 	firstAttempt := fixture.createAttempt(t, 101, fixture.now.Add(10*time.Minute))
@@ -312,22 +312,19 @@ func TestInventoryRepositoryPublishesDisabledRowsAndReauthorizationInvalidatesHe
 	if inclusionLifecycle != 8 {
 		t.Fatalf("reauthorization inclusion lifecycle=%d, want 8", inclusionLifecycle)
 	}
-	if stale, published, err := repository.Finalize(fixture.ctx, owner, claim.Generation, portfolio.StateReady, nil, disabledRows, fixture.now.Add(time.Minute)); err != nil || published || stale.Generation <= claim.Generation {
+	if stale, published, err := repository.Finalize(fixture.ctx, owner, claim.Generation, portfolio.StateReady, nil, disabledRows, fixture.now.Add(time.Minute)); err != nil || published || stale.Generation != claim.Generation {
 		t.Fatalf("old bearer completion snapshot=%+v published=%v err=%v", stale, published, err)
 	}
 	bootstrap, err := repository.Prepare(fixture.ctx, owner, false, fixture.now.Add(time.Minute))
-	if err != nil || !bootstrap.Claimed || bootstrap.Generation != claim.Generation+2 || len(bootstrap.Connections) != 0 || !bytes.Equal(bootstrap.EncryptedToken, second.AccessToken) {
+	if err != nil || bootstrap.Claimed || bootstrap.Generation != claim.Generation || len(bootstrap.Connections) != 1 || len(bootstrap.EncryptedToken) != 0 {
 		t.Fatalf("bootstrap=%+v err=%v", bootstrap, err)
-	}
-	if current, published, err := repository.Finalize(fixture.ctx, owner, bootstrap.Generation, portfolio.StateEmpty, nil, nil, fixture.now.Add(time.Minute)); err != nil || !published || current.State != portfolio.StateEmpty {
-		t.Fatalf("new bearer completion snapshot=%+v published=%v err=%v", current, published, err)
 	}
 	var versions int
 	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT count(*) FROM portfolio_inventory_versions WHERE user_id=$1`, owner).Scan(&versions); err != nil {
 		t.Fatal(err)
 	}
 	if versions != 1 {
-		t.Fatalf("inventory versions=%d, want only the new bearer version", versions)
+		t.Fatalf("inventory versions=%d, want preserved first inventory version", versions)
 	}
 }
 

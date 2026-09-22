@@ -30,7 +30,12 @@ func TestShowcaseRepositoryReadsOnlyOwnerCommittedHeadsAndFailsClosed(t *testing
 	if err != nil || !prepared.Claimed {
 		t.Fatalf("prepare=%+v err=%v", prepared, err)
 	}
-	if _, accepted, err := inclusion.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"included": data}, "", fixture.now); err != nil || !accepted {
+	repository := postgresadapter.NewShowcaseRepository(fixture.pool, func() time.Time { return fixture.now })
+	pendingShowcase, err := repository.GetShowcase(fixture.ctx, owner)
+	if err != nil || len(pendingShowcase.Accounts) != 1 || pendingShowcase.Accounts[0].Label != "Included (•••• 1001)" || pendingShowcase.Accounts[0].Balances.Context.Freshness != portfolio.FreshnessUnavailable {
+		t.Fatalf("pending selection was not immediately visible: showcase=%+v err=%v", pendingShowcase, err)
+	}
+	if _, accepted, err := inclusion.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"included": data}, "", nil, fixture.now); err != nil || !accepted {
 		t.Fatalf("accepted=%v err=%v", accepted, err)
 	}
 
@@ -40,7 +45,7 @@ func TestShowcaseRepositoryReadsOnlyOwnerCommittedHeadsAndFailsClosed(t *testing
 	if err != nil || !otherPrepared.Claimed {
 		t.Fatalf("other prepare=%+v err=%v", otherPrepared, err)
 	}
-	if _, accepted, err := inclusion.FinalizeInclusion(fixture.ctx, other, otherPrepared.ChangeID, otherPrepared.Version, otherPrepared.InventoryGeneration, otherPrepared.LifecycleGeneration, map[string]portfolio.AccountData{"included": completeRepositoryAccountData(fixture.now)}, "", fixture.now); err != nil || !accepted {
+	if _, accepted, err := inclusion.FinalizeInclusion(fixture.ctx, other, otherPrepared.ChangeID, otherPrepared.Version, otherPrepared.InventoryGeneration, otherPrepared.LifecycleGeneration, map[string]portfolio.AccountData{"included": completeRepositoryAccountData(fixture.now)}, "", nil, fixture.now); err != nil || !accepted {
 		t.Fatalf("other accepted=%v err=%v", accepted, err)
 	}
 
@@ -52,7 +57,6 @@ func TestShowcaseRepositoryReadsOnlyOwnerCommittedHeadsAndFailsClosed(t *testing
 		t.Fatal(err)
 	}
 
-	repository := postgresadapter.NewShowcaseRepository(fixture.pool, func() time.Time { return fixture.now })
 	showcase, err := repository.GetShowcase(fixture.ctx, owner)
 	if err != nil {
 		t.Fatal(err)

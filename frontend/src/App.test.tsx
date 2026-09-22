@@ -10,6 +10,16 @@ const emptyInventory = () => new Response(JSON.stringify({
 
 const jsonResponseBody = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 const emptyShowcase = () => ({ accounts: [] })
+const preparingShowcase = (label = 'Retirement (•••• 8443)') => ({
+	accounts: [{
+		label,
+		brokerage: 'Synthetic Broker',
+		syncMode: 'realtime',
+		balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: '', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
+		positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: '', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
+		activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 accumulated activities', currency: '', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
+	}],
+})
 
 function inclusionAccount(id: string, maskedLabel: string, selectable: boolean, usabilityReason: string, category = 'investment') {
 	return { id, category, type: category === 'investment' ? 'Margin' : 'Checking', maskedLabel, available: true, eligible: selectable, selectable, usabilityReason, syncState: 'complete' }
@@ -80,7 +90,7 @@ describe('portfolio showcase', () => {
       : path === '/api/portfolio/showcase' ? new Response(JSON.stringify(body), { status }) : new Response(null, { status: 404 }))))
   }
 	it('renders saved facts and separately routes account editing', async () => {
-    installShowcase({ accounts: [{ label: 'Retirement (•••• 8443)', brokerage: 'Synthetic Broker', syncMode: 'realtime', balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '1234.50' }], positions: [], activities: [] }, positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'stale_usable' }, balances: [], positions: [], activities: [] }, activities: { context: { source: 'SnapTrade', coverage: 'included account; last 30 days, up to 500 rows', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] } }] })
+    installShowcase({ accounts: [{ label: 'Retirement (•••• 8443)', brokerage: 'Synthetic Broker', syncMode: 'realtime', balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '1234.50' }], positions: [], activities: [] }, positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'stale_usable' }, balances: [], positions: [], activities: [] }, activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] } }] })
     render(<App />)
     expect((await screen.findAllByText('Retirement (•••• 8443)'))[0].textContent).toBe('Retirement (•••• 8443)')
     expect(screen.getAllByText('CAD $1,234.50').length).toBeGreaterThan(0)
@@ -98,7 +108,7 @@ describe('portfolio showcase', () => {
 	it('keeps each account dataset and its evidence context together', async () => {
 		const dataset = (kind: 'balances' | 'positions' | 'activities', observedAt: string) => ({
 			context: {
-				source: 'SnapTrade', coverage: kind === 'activities' ? 'included account; last 30 days, up to 500 rows' : 'included account',
+				source: 'SnapTrade', coverage: kind === 'activities' ? 'included account; newest 50 activities' : 'included account',
 				currency: 'CAD', freshness: 'current', observedAt,
 			},
 			balances: kind === 'balances' ? [{ currency: 'CAD', cash: '100.00' }] : [],
@@ -122,7 +132,7 @@ describe('portfolio showcase', () => {
 			label: 'Expired account (•••• 9000)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
 			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'expired', observedAt: '2026-09-01T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '999999.00' }], positions: [], activities: [] },
 			positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
-			activities: { context: { source: 'SnapTrade', coverage: 'included account; last 30 days, up to 500 rows', currency: 'CAD', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
+			activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
 		}] })
 
 		render(<App />)
@@ -391,7 +401,7 @@ describe('public site', () => {
 		expect(screen.queryByRole('heading', { level: 3, name: 'Synthetic Broker' })).not.toBeInTheDocument()
 		expect(screen.getAllByText(/Synthetic Broker ·/)).toHaveLength(2)
 		expect(screen.getAllByText('Ready')).toHaveLength(2)
-		expect(screen.getByText('0 / 2')).toBeVisible()
+		expect(screen.getByText('0 of 5 selected')).toBeVisible()
 		expect(screen.queryByText(/Ready to choose/)).not.toBeInTheDocument()
 		expect(screen.getByText(/Synthetic Broker · Category unavailable/)).toBeVisible()
 		expect(document.body).not.toHaveTextContent('· unknown')
@@ -445,7 +455,7 @@ describe('public site', () => {
 		const review = screen.getByRole('button', { name: 'Review my choices' })
 		expect(review).toBeDisabled()
 		fireEvent.click(retirement)
-		expect(screen.getByText('1 / 2')).toBeVisible()
+		expect(screen.getByText('1 of 5 selected')).toBeVisible()
 		expect(screen.getByText(/Selected after saving: 1 of 2 accounts shown/)).toBeVisible()
 		expect(review).toBeEnabled()
 		fireEvent.click(review)
@@ -581,9 +591,9 @@ describe('public site', () => {
 		const pendingChoice = screen.getByRole('checkbox', { name: /Retirement/ })
 		expect(pendingChoice).toBeEnabled()
 		fireEvent.click(pendingChoice)
-		expect(screen.getByText('0 / 1')).toBeVisible()
+		expect(screen.getByText('0 of 5 selected')).toBeVisible()
 		fireEvent.click(pendingChoice)
-		expect(screen.getByText('1 / 1')).toBeVisible()
+		expect(screen.getByText('1 of 5 selected')).toBeVisible()
 		const retry = screen.getByRole('button', { name: 'Review my choices' })
 		expect(screen.getByText('Finishing your update…')).toBeVisible()
 		fireEvent.click(retry)
@@ -598,13 +608,10 @@ describe('public site', () => {
 	})
 
 
-	it.each([
-		['pending', 'Finishing your update…', 'status'],
-		['failed', 'We couldn’t save every choice. Review them and try again.', 'alert'],
-	] as const)('keeps a %s POST result on setup with one accurate announcement', async (status, message, role) => {
+	it('keeps a failed POST result on setup with one accurate announcement', async () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
-		const change = { id: '87b24961-b51e-4db8-9226-f198f6518a89', status, additions: ['account-1'], removals: [], ...(status === 'failed' ? { failureReason: 'provider_unavailable' } : {}) }
+		const change = { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'failed', additions: ['account-1'], removals: [], failureReason: 'provider_unavailable' }
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
 			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
@@ -618,10 +625,38 @@ describe('public site', () => {
 		fireEvent.click(await screen.findByRole('checkbox', { name: /Retirement/ }))
 		fireEvent.click(screen.getByRole('button', { name: 'Review my choices' }))
 		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
-		expect(await screen.findByRole(role)).toHaveTextContent(message)
+		expect(await screen.findByRole('alert')).toHaveTextContent('We couldn’t save every choice. Review them and try again.')
 		expect(window.location.pathname).toBe('/onboarding/accounts')
 		expect(screen.getByRole('checkbox', { name: /Retirement/ })).toBeChecked()
 		expect(screen.getByText('Ready')).toBeVisible()
+	})
+
+	it('shows a saved account immediately while its first datasets are loading', async () => {
+		window.history.replaceState(null, '', '/onboarding/accounts')
+		const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
+		let saved = false
+		const pending = { version: 1, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] } }
+		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
+			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody(saved ? pending : { version: 0, committed: [] }))
+			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') {
+				saved = true
+				return Promise.resolve(jsonResponseBody(pending))
+			}
+			throw new Error(`unexpected request ${path}`)
+		})
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+
+		fireEvent.click(await screen.findByRole('checkbox', { name: /Retirement/ }))
+		fireEvent.click(screen.getByRole('button', { name: 'Review my choices' }))
+		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
+		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+		expect((await screen.findAllByText('Retirement (•••• 8443)')).length).toBeGreaterThan(0)
+		expect(await screen.findByText(/Some portfolio data is still syncing/)).toBeVisible()
+		expect(screen.getAllByText('This account data is still syncing.').length).toBeGreaterThan(0)
 	})
 
 	it('reconciles an ambiguous failed request as success when durable choices match', async () => {
@@ -653,7 +688,7 @@ describe('public site', () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
 		let getCalls = 0
-		const pending = { version: 1, committed: [], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] } }
+		const pending = { version: 1, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] } }
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
 			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
@@ -661,6 +696,7 @@ describe('public site', () => {
 				getCalls += 1
 				return Promise.resolve(jsonResponseBody(getCalls === 1 ? { version: 0, committed: [] } : pending))
 			}
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') return Promise.reject(new TypeError('connection lost'))
 			throw new Error(`unexpected request ${path}`)
 		})
@@ -670,7 +706,8 @@ describe('public site', () => {
 		fireEvent.click(await screen.findByRole('checkbox', { name: /Retirement/ }))
 		fireEvent.click(screen.getByRole('button', { name: 'Review my choices' }))
 		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
-		expect(await screen.findByRole('status')).toHaveTextContent('Finishing your update…')
+		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+		expect(await screen.findByText(/Some portfolio data is still syncing/)).toBeVisible()
 		expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 	})
 
@@ -684,13 +721,18 @@ describe('public site', () => {
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') {
 				getCalls += 1
-				return Promise.resolve(jsonResponseBody({ version: getCalls === 1 ? 0 : 4, committed: [] }))
+				return Promise.resolve(jsonResponseBody(getCalls === 1
+					? { version: 0, committed: [] }
+					: getCalls === 2
+						? { version: 4, committed: [] }
+						: { version: 5, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] } }))
 			}
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') {
 				postCalls += 1
 				return postCalls === 1
 					? Promise.resolve(new Response(JSON.stringify({ code: 'conflict' }), { status: 409 }))
-					: Promise.resolve(jsonResponseBody({ version: 5, committed: [], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] } }))
+					: Promise.resolve(jsonResponseBody({ version: 5, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] } }))
 			}
 			throw new Error(`unexpected request ${path}`)
 		})
@@ -708,7 +750,8 @@ describe('public site', () => {
 		fireEvent.click(account)
 		fireEvent.click(screen.getByRole('button', { name: 'Review my choices' }))
 		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
-		expect(await screen.findByRole('status')).toHaveTextContent('Finishing your update…')
+		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+		expect(await screen.findByText(/Some portfolio data is still syncing/)).toBeVisible()
 		const posts = fetchMock.mock.calls.filter(([path, init]) => path === '/api/portfolio/inclusion' && init?.method === 'POST')
 		expect(posts[1]?.[1]).toEqual(expect.objectContaining({ headers: expect.objectContaining({ 'X-Inclusion-Version': '4' }) }))
 	})
@@ -737,7 +780,7 @@ describe('public site', () => {
 		const unavailable = screen.getByRole('checkbox', { name: /Unavailable account/ })
 		const ready = screen.getByRole('checkbox', { name: /^Ready account/ })
 		const secondReady = screen.getByRole('checkbox', { name: /Second ready account/ })
-		const selectAll = screen.getByRole('checkbox', { name: /^Select all accounts/ })
+		const selectAll = screen.getByRole('checkbox', { name: /^Select up to 5 accounts/ })
 		expect(unavailable).toBeChecked()
 		expect(unavailable).toBeEnabled()
 		expect(unavailable.closest('label')).not.toHaveClass('account-choice--disabled')
@@ -775,13 +818,32 @@ describe('public site', () => {
 		expect(screen.queryByRole('button', { name: 'Review my choices' })).not.toBeInTheDocument()
 	})
 
+	it('explains and enforces the five-account limit while keeping deselection available', async () => {
+		window.history.replaceState(null, '', '/onboarding/accounts')
+		const inventory = inclusionInventory(Array.from({ length: 6 }, (_, index) =>
+			inclusionAccount(`account-${index + 1}`, `Account ${index + 1}`, true, 'ready')))
+		installInclusionFetch(inventory, { version: 0, committed: [] })
+		render(<App />)
+
+		expect(await screen.findByText('You can select up to 5 accounts.')).toBeVisible()
+		expect(screen.getByText('0 of 5 selected').closest('.selection-guidance')).toBeVisible()
+		for (let index = 1; index <= 5; index++) fireEvent.click(screen.getByRole('checkbox', { name: new RegExp(`^Account ${index}`) }))
+		expect(screen.getByText('5 of 5 selected')).toBeVisible()
+		expect(screen.getByRole('status')).toHaveTextContent('You have reached the 5-account limit')
+		expect(screen.getByRole('checkbox', { name: /^Account 6/ })).toBeDisabled()
+		const first = screen.getByRole('checkbox', { name: /^Account 1/ })
+		expect(first).toBeEnabled()
+		fireEvent.click(first)
+		expect(screen.getByRole('checkbox', { name: /^Account 6/ })).toBeEnabled()
+	})
+
 	it('disables Select All when every visible account is ineligible', async () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		const inventory = inclusionInventory([inclusionAccount('account-cash', 'Daily cash (•••• 1111)', false, 'unsupported_category', 'deposit')])
 		installInclusionFetch(inventory, { version: 0, committed: [] })
 		render(<App />)
 
-		expect(await screen.findByRole('checkbox', { name: /^Select all accounts/ })).toBeDisabled()
+		expect(await screen.findByRole('checkbox', { name: /^Select up to 5 accounts/ })).toBeDisabled()
 		expect(screen.getByRole('checkbox', { name: /Daily cash/ })).toBeDisabled()
 	})
 
@@ -815,9 +877,10 @@ describe('public site', () => {
 			}))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') return Promise.resolve(jsonResponseBody({
 				version: 2,
-				committed: [],
+				committed: ['account-ready'],
 				change: { id: '66d954cb-5e83-4da1-8843-1d195d62a876', status: 'pending', additions: ['account-ready'], removals: [] },
 			}))
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase('Ready account (•••• 2222)')))
 			throw new Error(`unexpected request ${path}`)
 		})
 		vi.stubGlobal('fetch', fetchMock)
@@ -826,7 +889,7 @@ describe('public site', () => {
 		fireEvent.click(await screen.findByRole('checkbox', { name: /Ready account/ }))
 		fireEvent.click(screen.getByRole('button', { name: 'Review my choices' }))
 		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
-		await screen.findByText('Finishing your update…')
+		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
 
 		const post = fetchMock.mock.calls.find(([path, init]) => path === '/api/portfolio/inclusion' && init?.method === 'POST')
 		expect(post?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ accountIds: ['account-ready'] }) }))
@@ -1054,6 +1117,7 @@ describe('public site', () => {
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
 			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: false, authenticated: true }))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 			return Promise.resolve(new Response(JSON.stringify({ code: 'unauthenticated' }), { status: 401 }))
 		})
 		vi.stubGlobal('fetch', fetchMock)

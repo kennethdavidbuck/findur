@@ -108,7 +108,7 @@ export async function exerciseLargeInventory(webdriver, sessionId, origin, wirem
     }
 
     const selected = await interact(`document.querySelector('.select-all input').click();`)
-    assert.equal((await execute(rowState)).checked, expected.selectable, 'select all includes all selectable accounts across all connections')
+    assert.equal((await execute(rowState)).checked, 5, 'bulk selection stops at the explicit account limit')
     const deselected = await interact(`document.querySelector('.select-all input').click();`)
     assert.equal((await execute(rowState)).checked, 0, 'deselect all clears the large draft')
     const element = await execute(`const row=[...document.querySelectorAll('.account-choice input:not(:disabled)')].at(-1);row.scrollIntoView({block:'center',behavior:'instant'});return row;`)
@@ -120,9 +120,9 @@ export async function exerciseLargeInventory(webdriver, sessionId, origin, wirem
     assert.equal(toggled.indeterminate, true, 'select all reflects the individual selection')
     await interact(`document.querySelector('.select-all input').click();`)
     const reviewed = await interact(`document.querySelector('.inclusion-actions button').click();`)
-    assert.equal(await execute(`return document.querySelectorAll('.confirmation-dialog li').length`), expected.selectable, 'review lists every selected account')
+    assert.equal(await execute(`return document.querySelectorAll('.confirmation-dialog li').length`), 5, 'review lists only the bounded selection')
     await interact(`document.querySelector('.dialog-actions button').click();`)
-    assert.equal((await execute(rowState)).checked, expected.selectable, 'closing review preserves the complete draft')
+    assert.equal((await execute(rowState)).checked, 5, 'closing review preserves the bounded draft')
     for (const [name, metric] of Object.entries({ selected, deselected, individualToggle, reviewed })) {
       assert.ok(metric.durationMs < interactionBudgetMs, `${name} took ${metric.durationMs} ms`)
     }

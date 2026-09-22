@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -34,6 +35,9 @@ const (
 	unknownValue             = "unknown"
 	defaultAccountLabel      = "Account"
 	defaultBrokerageLabel    = "Connected institution"
+	providerRequestSpacing   = time.Second
+	transportFailureLimit    = 3
+	transportCircuitDelay    = 30 * time.Second
 )
 
 // InventoryClient is the purpose-limited OAuth bearer adapter generated from
@@ -42,6 +46,15 @@ type InventoryClient struct {
 	baseURL string
 	http    doer
 	clock   func() time.Time
+	gate    *requestGate
+}
+
+type requestGate struct {
+	mu          sync.Mutex
+	spacing     time.Duration
+	nextAllowed time.Time
+	openUntil   time.Time
+	failures    int
 }
 
 // NewInventoryClient validates and constructs the purpose-limited bearer client.
@@ -49,7 +62,8 @@ func NewInventoryClient(baseURL *url.URL, httpClient doer, clock func() time.Tim
 	if baseURL == nil || httpClient == nil || clock == nil || baseURL.Scheme == "" || baseURL.Host == "" {
 		return nil, errors.New("incomplete inventory provider configuration")
 	}
-	return &InventoryClient{baseURL: strings.TrimRight(baseURL.String(), "/"), http: httpClient, clock: clock}, nil
+	base := strings.TrimRight(baseURL.String(), "/")
+	return &InventoryClient{baseURL: base, http: httpClient, clock: clock, gate: &requestGate{spacing: providerRequestSpacing}}, nil
 }
 
 // Load fetches the complete connection and account arrays, then groups accounts
@@ -166,11 +180,16 @@ func (c *InventoryClient) doJSON(request *http.Request, target any) error {
 }
 
 func (c *InventoryClient) doJSONLimit(request *http.Request, target any, limit int64) error {
+	if err := c.gate.wait(request.Context(), c.clock().UTC()); err != nil {
+		return &portfolio.ProviderError{State: portfolio.StateUnavailable}
+	}
 	response, err := c.http.Do(request)
 	if err != nil {
+		c.gate.record(0, "", c.clock().UTC())
 		return &portfolio.ProviderError{State: portfolio.StateUnavailable}
 	}
 	defer func() { _ = response.Body.Close() }()
+	c.gate.record(response.StatusCode, response.Header.Get(retryAfterHeader), c.clock().UTC())
 	if response.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, limit))
 		return c.responseError(response)
@@ -188,6 +207,54 @@ func (c *InventoryClient) doJSONLimit(request *http.Request, target any, limit i
 		return &portfolio.ProviderError{State: portfolio.StateMalformed}
 	}
 	return nil
+}
+
+func (g *requestGate) wait(ctx context.Context, now time.Time) error {
+	g.mu.Lock()
+	if g.openUntil.After(now) {
+		g.mu.Unlock()
+		return errors.New("provider circuit open")
+	}
+	wake := g.nextAllowed
+	if wake.Before(now) {
+		wake = now
+	}
+	g.nextAllowed = wake.Add(g.spacing)
+	g.mu.Unlock()
+	if !wake.After(now) {
+		return nil
+	}
+	timer := time.NewTimer(wake.Sub(now))
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func (g *requestGate) record(status int, retryAfter string, now time.Time) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	switch {
+	case status == http.StatusTooManyRequests:
+		g.failures++
+		retryAt := parseRetryAfter(retryAfter, now)
+		if retryAt == nil {
+			fallback := now.Add(conservativeRetryDelay)
+			retryAt = &fallback
+		}
+		g.openUntil = *retryAt
+	case status == 0 || status >= http.StatusInternalServerError:
+		g.failures++
+		if g.failures >= transportFailureLimit {
+			g.openUntil = now.Add(transportCircuitDelay)
+		}
+	case status >= http.StatusOK && status < http.StatusMultipleChoices:
+		g.failures = 0
+		g.openUntil = time.Time{}
+	}
 }
 
 func (c *InventoryClient) responseError(response *http.Response) error {

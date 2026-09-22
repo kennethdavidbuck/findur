@@ -157,6 +157,13 @@ assert.deepEqual(
 for (const providerRequest of accountDataRequests) {
   assert.equal(providerRequest.headers.Authorization, 'Bearer synthetic-access-token')
   for (const forbidden of ['clientId', 'consumerKey', 'userId', 'userSecret', 'timestamp', 'Signature']) assert.equal(providerRequest.headers[forbidden], undefined)
+  const requestUrl = new URL(providerRequest.url, 'http://wiremock')
+  if (requestUrl.pathname.endsWith('/activities')) {
+    assert.equal(requestUrl.searchParams.get('offset'), '0', 'activities start at the newest page')
+    assert.equal(requestUrl.searchParams.get('limit'), '50', 'activities use the bounded page size')
+    assert.equal(requestUrl.searchParams.has('startDate'), false, 'activities do not use a date window')
+    assert.equal(requestUrl.searchParams.has('endDate'), false, 'activities do not use a date window')
+  }
 }
 
 console.log('integration contracts passed')
