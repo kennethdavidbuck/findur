@@ -38,9 +38,10 @@ export function PreferenceControls({ compact = false }: { compact?: boolean }) {
   const { locale, messages, setLocale } = useI18n()
   const { preference, setPreference } = useTheme()
   const authenticated = useAuthenticatedPreferences()
+  const saving = authenticated?.state === 'saving'
 
   return (
-    <div className={`preference-controls${compact ? ' preference-controls--compact' : ''}`}>
+    <div className={`preference-controls${compact ? ' preference-controls--compact' : ''}${saving ? ' preference-controls--saving' : ''}`}>
       <RadioGroup
         aria-label={messages.languageLabel}
         className="choice-group"
@@ -62,7 +63,6 @@ export function PreferenceControls({ compact = false }: { compact?: boolean }) {
         <Radio className="choice" value="light">{messages.themes.light}</Radio>
         <Radio className="choice" value="dark">{messages.themes.dark}</Radio>
       </RadioGroup>
-      {authenticated && <span className="preference-save-status" aria-live="polite">{authenticated.state === 'saving' || authenticated.state === 'loading' ? 'Saving display preferences…' : authenticated.state === 'retry' ? 'Display preferences need retrying.' : 'Display preferences saved.'}</span>}
     </div>
   )
 }

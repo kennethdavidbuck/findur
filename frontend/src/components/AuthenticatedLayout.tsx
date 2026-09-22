@@ -1,6 +1,7 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { PreferenceControls } from './PublicLayout'
 import { useI18n } from '../i18n'
+import { useAuthenticatedPreferences } from '../authenticated-preferences'
 
 export type ProtectedRoute = '/discovery' | '/portfolio' | '/profile'
 
@@ -37,6 +38,14 @@ function Navigation({ route, onNavigate }: Pick<Props, 'route' | 'onNavigate'>) 
   )
 }
 
+function PreferenceSaveStatus() {
+  const { messages } = useI18n()
+  const preferences = useAuthenticatedPreferences()
+  if (preferences?.state === 'saving') return <p className="visually-hidden" role="status">{messages.preferencesSaving}</p>
+  if (preferences?.state === 'retry') return <p className="visually-hidden" aria-live="polite">{messages.preferencesSaveFailed}</p>
+  return null
+}
+
 export function AuthenticatedLayout({ children, route, setup = false, loggingOut, logoutFailed, onNavigate, onLogout }: Props) {
   const { messages } = useI18n()
   return (
@@ -54,6 +63,7 @@ export function AuthenticatedLayout({ children, route, setup = false, loggingOut
         </div>
       </header>
       {!setup && <Navigation route={route} onNavigate={onNavigate} />}
+      <PreferenceSaveStatus />
       <main id="private-content" className="authenticated-content">{children}</main>
     </div>
   )

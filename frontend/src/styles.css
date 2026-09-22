@@ -232,6 +232,7 @@ p { line-height: 1.65; }
 }
 
 .preference-controls { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+.preference-controls--saving, .preference-controls--saving .choice { cursor: progress; }
 .choice-group { display: flex; align-items: stretch; border: 1px solid var(--border-strong); }
 
 .choice {
@@ -929,7 +930,7 @@ p { line-height: 1.65; }
   .footer-grid { grid-template-columns: 1fr; }
   .footer-preferences .preference-controls { overflow: visible; }
   .authenticated-header { flex-wrap: wrap; }
-  .authenticated-header .preference-controls { order: 3; width: 100%; margin-left: 0; overflow-x: auto; }
+  .authenticated-header .preference-controls { display: none; }
   .authenticated-shell--setup .authenticated-header {
     min-height: 4.5rem;
     display: grid;
