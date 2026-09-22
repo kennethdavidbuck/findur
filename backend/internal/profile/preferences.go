@@ -30,6 +30,7 @@ type PreferenceRepository interface {
 // PreferenceService validates owner-scoped display preferences independently of profile completion.
 type PreferenceService struct{ repository PreferenceRepository }
 
+// NewPreferenceService creates a display-preference service from its repository.
 func NewPreferenceService(repository PreferenceRepository) (*PreferenceService, error) {
 	if repository == nil {
 		return nil, errors.New("incomplete preference service configuration")
@@ -37,10 +38,12 @@ func NewPreferenceService(repository PreferenceRepository) (*PreferenceService, 
 	return &PreferenceService{repository: repository}, nil
 }
 
+// Get returns the authenticated owner's optional display preferences.
 func (s *PreferenceService) Get(ctx context.Context, actor auth.Actor) (*DisplayPreferences, error) {
 	return s.repository.GetDisplayPreferences(ctx, actor.UserID())
 }
 
+// Save validates and persists the authenticated owner's display preferences.
 func (s *PreferenceService) Save(ctx context.Context, actor auth.Actor, input DisplayPreferencesInput) (DisplayPreferences, error) {
 	if !allowed(locales, input.Locale) || !allowed(themes, input.Theme) || input.ExpectedVersion < 0 {
 		return DisplayPreferences{}, ErrInvalid

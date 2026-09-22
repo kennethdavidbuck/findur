@@ -84,6 +84,7 @@ const (
 	portfolioShowcasePath       = "/api/portfolio/showcase"
 	profilePath                 = "/api/profile"
 	displayPreferencesPath      = "/api/preferences/display"
+	localeField                 = "locale"
 	callbackSucceededCategory   = "succeeded"
 	callbackRestartCategory     = "restart_required"
 	requestCanceledCategory     = "request_canceled"
@@ -296,7 +297,7 @@ func (a *authorizationAPI) PutDisplayPreferences(ctx context.Context, request ge
 		return nil, err
 	}
 	if request.Body == nil {
-		return generated.PutDisplayPreferences400JSONResponse{ProfileValidationJSONResponse: profileValidation([]string{"locale"}).(generated.PutPersonalProfile400JSONResponse).ProfileValidationJSONResponse}, nil
+		return generated.PutDisplayPreferences400JSONResponse{ProfileValidationJSONResponse: profileValidation([]string{localeField}).(generated.PutPersonalProfile400JSONResponse).ProfileValidationJSONResponse}, nil
 	}
 	saved, err := a.preferences.Save(ctx, actor, profile.DisplayPreferencesInput{Locale: string(request.Body.Locale), Theme: string(request.Body.Theme), ExpectedVersion: request.Body.ExpectedVersion})
 	if errors.Is(err, profile.ErrConflict) {

@@ -17,10 +17,12 @@ type PreferenceRepository struct {
 	now  func() time.Time
 }
 
+// NewPreferenceRepository creates a repository backed by the supplied PostgreSQL pool.
 func NewPreferenceRepository(pool *pgxpool.Pool, now func() time.Time) *PreferenceRepository {
 	return &PreferenceRepository{pool: pool, now: now}
 }
 
+// GetDisplayPreferences returns one owner's optional persisted display preferences.
 func (r *PreferenceRepository) GetDisplayPreferences(ctx context.Context, owner uuid.UUID) (*profile.DisplayPreferences, error) {
 	var value profile.DisplayPreferences
 	err := r.pool.QueryRow(ctx, `SELECT locale,theme,version FROM owner_display_preferences WHERE user_id=$1`, owner).Scan(&value.Locale, &value.Theme, &value.Version)
@@ -33,6 +35,7 @@ func (r *PreferenceRepository) GetDisplayPreferences(ctx context.Context, owner 
 	return &value, nil
 }
 
+// SaveDisplayPreferences creates or replaces one owner's display preferences by version.
 func (r *PreferenceRepository) SaveDisplayPreferences(ctx context.Context, owner uuid.UUID, input profile.DisplayPreferencesInput) (profile.DisplayPreferences, error) {
 	now := r.now().UTC()
 	var value profile.DisplayPreferences
