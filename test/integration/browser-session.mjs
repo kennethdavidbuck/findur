@@ -205,6 +205,18 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCom
   }
   assert.deepEqual(showcaseState, { path: '/portfolio', heading: 'Your portfolio', focused: true, accounts: true, tables: 5, activity: true, mvpNav: 'Portfolio|Profile' }, 'the worker completes the Portfolio Showcase and renders the synthetic transaction')
 
+  let inclusionState
+  for (let attempt = 0; attempt < 360; attempt += 1) {
+    inclusionState = await webdriver(`/session/${sessionId}/execute/async`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/portfolio/inclusion',{credentials:'same-origin',cache:'no-store'}).then(async response=>done({status:response.status,body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+    })
+    if (inclusionState.status === 200 && inclusionState.body.change?.status === 'committed') break
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  assert.equal(inclusionState?.status, 200, `the completed account inclusion remains readable: ${JSON.stringify(inclusionState)}`)
+  assert.equal(inclusionState?.body.change?.status, 'committed', `the first account synchronization completes before measuring Showcase provider calls: ${JSON.stringify(inclusionState)}`)
+
   const showcase = await webdriver(`/session/${sessionId}/execute/async`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/portfolio/showcase',{credentials:'same-origin',cache:'no-store'}).then(async response=>done({status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
@@ -225,8 +237,6 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCom
   assert.deepEqual(cash?.activities.activities, [], 'the Cash Account empty activities dataset remains complete')
   assert.doesNotMatch(JSON.stringify(showcase.body), /03867fbb|7e7dcb86|50bb0405|synthetic-access-token/, 'Showcase response omits IDs, raw payload fields, and credentials')
 
-  if (onCommitted) await onCommitted()
-
   const requestsBeforeReload = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
   const providerReadsBeforeReload = requestsBeforeReload.requests.filter(({ request }) => request.url.startsWith('/accounts/')).length
   await webdriver(`/session/${sessionId}/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
@@ -241,6 +251,19 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCom
   const requestsAfterReload = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
   const providerReadsAfterReload = requestsAfterReload.requests.filter(({ request }) => request.url.startsWith('/accounts/')).length
   assert.equal(providerReadsAfterReload, providerReadsBeforeReload, 'rendering and reloading the Showcase makes zero provider calls')
+
+  if (onCommitted) await onCommitted()
+
+  let showcaseRestored = false
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    showcaseRestored = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `return location.pathname==='/portfolio'&&document.querySelectorAll('.table-wrap').length===5`, args: [] }),
+    })
+    if (showcaseRestored) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(showcaseRestored, true, 'the completed-session check returns to the rendered Portfolio Showcase')
 
   for (const width of [1440, 390, 320]) {
     await webdriver(`/session/${sessionId}/window/rect`, {
