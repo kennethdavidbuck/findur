@@ -7,18 +7,19 @@ const maxIncludedAccounts = 5
 
 type Props = {
   editing?: boolean
+  initialInclusion?: PortfolioInclusion
   headingRef: RefObject<HTMLHeadingElement | null>
   onComplete: (savedNow: boolean) => void
   onReconnect: () => void
   onSessionExpired: () => void
 }
 
-export function PortfolioPage({ editing = false, headingRef, onComplete, onReconnect, onSessionExpired }: Props) {
+export function PortfolioPage({ editing = false, initialInclusion, headingRef, onComplete, onReconnect, onSessionExpired }: Props) {
   const { locale, messages } = useI18n()
   const copy = messages.authenticated.inventory
   const [inventory, setInventory] = useState<PortfolioInventory | null>(null)
-  const [inclusion, setInclusion] = useState<PortfolioInclusion | null>(null)
-  const [draft, setDraft] = useState<Set<string>>(new Set())
+  const [inclusion, setInclusion] = useState<PortfolioInclusion | null>(initialInclusion ?? null)
+  const [draft, setDraft] = useState<Set<string>>(() => initialInclusion ? recoveryDraft(initialInclusion) : new Set())
   const [failed, setFailed] = useState(false)
   const [inclusionFailed, setInclusionFailed] = useState(false)
   const [saveFailed, setSaveFailed] = useState(false)
@@ -41,7 +42,7 @@ export function PortfolioPage({ editing = false, headingRef, onComplete, onRecon
   }, [onSessionExpired])
 
   useEffect(() => {
-    if (!inventory) return
+    if (!inventory || initialInclusion) return
     let active = true
     void getPortfolioInclusion().then((result) => {
       if (!active) return
@@ -50,7 +51,7 @@ export function PortfolioPage({ editing = false, headingRef, onComplete, onRecon
       setInclusionFailed(false)
     }).catch((error: unknown) => handleFailure(error, onSessionExpired, () => active && setInclusionFailed(true)))
     return () => { active = false }
-  }, [inclusionReload, inventory, onSessionExpired])
+  }, [inclusionReload, initialInclusion, inventory, onSessionExpired])
 
   const committed = useMemo(() => new Set(inclusion?.committed ?? []), [inclusion])
   const visibleConnections = useMemo(() => inventory?.connections.map((connection) => ({

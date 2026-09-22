@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useAuthorizationStatus } from './auth-status'
 import { AuthenticatedLayout, type ProtectedRoute } from './components/AuthenticatedLayout'
 import { PublicLayout } from './components/PublicLayout'
@@ -10,7 +10,7 @@ import { PortfolioPage } from './pages/PortfolioPage'
 import { PortfolioShowcasePage } from './pages/PortfolioShowcasePage'
 import { ProfilePage } from './pages/ProfilePage'
 import { StatusPage } from './pages/StatusPage'
-import { resetInitialInventoryRequest } from './inventory'
+import { getPortfolioInclusion, InventorySessionExpiredError, resetInitialInventoryRequest, type PortfolioInclusion } from './inventory'
 import { endCurrentSession } from './session'
 import { ThemeProvider } from './theme'
 
@@ -120,12 +120,39 @@ function ProtectedApp({ requestedRoute, onNavigate }: { requestedRoute: Protecte
 
   return (
     <AuthenticatedLayout route={route} setup={onboarding} loggingOut={loggingOut} logoutFailed={logoutFailed} onNavigate={navigateProtected} onLogout={() => { void logout() }}>
-      {accountSelection ? <PortfolioPage editing={editingAccounts} headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/portfolio' ? <PortfolioShowcasePage headingRef={headingRef} onEdit={() => onNavigate('/portfolio/accounts')} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/profile' ? <ProfilePage headingRef={headingRef} onSessionExpired={recoverSession} /> : <section className="private-placeholder">
+      {connectionSetup ? <OnboardingAccountSelection headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : accountSelection ? <PortfolioPage editing={editingAccounts} headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/portfolio' ? <PortfolioShowcasePage headingRef={headingRef} onEdit={() => onNavigate('/portfolio/accounts')} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/profile' ? <ProfilePage headingRef={headingRef} onSessionExpired={recoverSession} /> : <section className="private-placeholder">
         <h1 ref={headingRef} tabIndex={-1}>{messages.authenticated[`${route.slice(1)}Title` as 'discoveryTitle' | 'portfolioTitle' | 'profileTitle']}</h1>
         <p className="large-copy">{messages.authenticated[`${route.slice(1)}Body` as 'discoveryBody' | 'portfolioBody' | 'profileBody']}</p>
       </section>}
     </AuthenticatedLayout>
   )
+}
+
+function OnboardingAccountSelection({ headingRef, onComplete, onReconnect, onSessionExpired }: { headingRef: RefObject<HTMLHeadingElement | null>; onComplete: () => void; onReconnect: () => void; onSessionExpired: () => void }) {
+  const { messages } = useI18n()
+  const [checking, setChecking] = useState(true)
+  const [inclusion, setInclusion] = useState<PortfolioInclusion | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void getPortfolioInclusion().then((inclusion) => {
+      if (!active) return
+      if (inclusion.committed.length > 0 || inclusion.change?.status === 'pending' && inclusion.change.additions.length > 0) onComplete()
+      else { setInclusion(inclusion); setChecking(false) }
+    }).catch((error) => {
+      if (!active) return
+      if (error instanceof InventorySessionExpiredError) onSessionExpired()
+      else setChecking(false)
+    })
+    return () => { active = false }
+  }, [onComplete, onSessionExpired])
+
+  useEffect(() => {
+    if (!checking) requestAnimationFrame(() => headingRef.current?.focus())
+  }, [checking, headingRef])
+
+  if (checking) return <main className="session-gate" role="status"><p>{messages.authenticated.checking}</p></main>
+  return <PortfolioPage initialInclusion={inclusion ?? undefined} headingRef={headingRef} onComplete={onComplete} onReconnect={onReconnect} onSessionExpired={onSessionExpired} />
 }
 
 function RoutedApp() {

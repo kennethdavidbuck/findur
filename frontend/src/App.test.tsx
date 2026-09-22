@@ -100,8 +100,7 @@ describe('portfolio showcase', () => {
     expect(document.querySelector('.showcase-reference .coverage')).toBeInTheDocument()
     expect(document.querySelector('.showcase-reference .account-grid')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Balances table' })).toHaveClass('table-wrap')
-    expect(screen.getByText((_, element) => element?.classList.contains('freshness--stale_usable') === true && element.textContent?.includes('Stale, still usable') === true)).toBeVisible()
-    expect(screen.getAllByText('This complete dataset has no recorded rows.')).toHaveLength(2)
+    expect(screen.getAllByText('This complete dataset has no recorded rows.')).toHaveLength(1)
     fireEvent.click(screen.getByRole('button', { name: 'Edit included accounts →' }))
 		await waitFor(() => expect(window.location.pathname).toBe('/portfolio/accounts'))
 	})
@@ -126,6 +125,46 @@ describe('portfolio showcase', () => {
 		expect(screen.getAllByRole('heading', { name: 'Positions' })).toHaveLength(2)
 		expect(screen.getAllByRole('heading', { name: 'Recent activities' })).toHaveLength(2)
 		expect(screen.getAllByRole('region', { name: 'Balances table' })).toHaveLength(2)
+	})
+	it('omits an empty positions ledger while retaining cash-account balances and activities', async () => {
+		installShowcase({ accounts: [{
+			label: 'Cash Account (•••• 3001)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
+			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '250.00' }], positions: [], activities: [] },
+			positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [], positions: [], activities: [] },
+			activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [], positions: [], activities: [] },
+		}] })
+
+		render(<App />)
+
+		await screen.findAllByText('Cash Account (•••• 3001)')
+		expect(screen.queryByRole('heading', { name: 'Positions' })).not.toBeInTheDocument()
+		expect(screen.getByRole('heading', { name: 'Balances' })).toBeVisible()
+		expect(screen.getByRole('heading', { name: 'Recent activities' })).toBeVisible()
+	})
+	it('uses the progress cursor while checking on a syncing account', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		let showcaseCalls = 0
+		let resolveReload: (response: Response) => void = () => undefined
+		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/portfolio/showcase') {
+				showcaseCalls += 1
+				return showcaseCalls === 1
+					? Promise.resolve(jsonResponseBody(preparingShowcase()))
+					: new Promise<Response>((resolve) => { resolveReload = resolve })
+			}
+			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 1, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] } }))
+			return Promise.resolve(new Response(null, { status: 404 }))
+		}))
+
+		render(<App />)
+		const checkAgain = await screen.findByRole('button', { name: /Check again/ })
+		fireEvent.click(checkAgain)
+		expect(checkAgain).toBeDisabled()
+		expect(checkAgain).toHaveClass('text-link--refreshing')
+
+		resolveReload(jsonResponseBody(preparingShowcase()))
+		await waitFor(() => expect(checkAgain).not.toBeDisabled())
 	})
 	it('hides expired facts and offers a safe reconnect action', async () => {
 		installShowcase({ accounts: [{
@@ -421,6 +460,24 @@ describe('public site', () => {
 		expect(fetchMock).toHaveBeenCalledTimes(3)
 	})
 
+	it('skips onboarding account selection when saved accounts already exist', async () => {
+		window.history.replaceState(null, '', '/onboarding/accounts')
+		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 1, committed: ['account-1'] }))
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
+			throw new Error(`unexpected request ${path}`)
+		})
+		vi.stubGlobal('fetch', fetchMock)
+
+		render(<App />)
+
+		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+		await waitFor(() => expect(screen.getByRole('heading', { name: 'Your portfolio' })).toBeVisible())
+		expect(screen.queryByRole('heading', { name: 'Choose what Findur may use.' })).not.toBeInTheDocument()
+		expect(fetchMock.mock.calls.some(([path]) => path === '/api/portfolio/inventory')).toBe(false)
+	})
+
 	it('keeps the draft separate, reviews changes compactly, and continues after a committed save', async () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		document.cookie = 'findur_csrf=inclusion-csrf; Path=/'
@@ -518,7 +575,7 @@ describe('public site', () => {
 	})
 
 	it('keeps an existing durable selection available to review without a just-saved notice', async () => {
-		window.history.replaceState(null, '', '/onboarding/accounts')
+		window.history.replaceState(null, '', '/portfolio/accounts')
 		const inventory = inclusionInventory([
 			inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready'),
 			inclusionAccount('account-2', 'Growth (•••• 2002)', true, 'ready'),
@@ -527,19 +584,19 @@ describe('public site', () => {
 		render(<App />)
 
 		expect(await screen.findByRole('checkbox', { name: /Retirement/ })).toBeChecked()
-		expect(window.location.pathname).toBe('/onboarding/accounts')
+		expect(window.location.pathname).toBe('/portfolio/accounts')
 		expect(screen.getByRole('button', { name: 'Review my choices' })).toBeEnabled()
 		expect(screen.queryByText(/Account choices saved/)).not.toBeInTheDocument()
 	})
 
 	it('keeps account setup visible for recovery when durable choices exist', async () => {
-		window.history.replaceState(null, '', '/onboarding/accounts')
+		window.history.replaceState(null, '', '/portfolio/accounts')
 		const inventory = { state: 'unavailable', generation: 4, updatedAt: '2026-09-20T12:00:00Z', connections: [] }
 		installInclusionFetch(inventory, { version: 4, committed: ['account-1'] })
 		render(<App />)
 
 		expect(await screen.findByRole('button', { name: 'Try again' })).toBeVisible()
-		expect(window.location.pathname).toBe('/onboarding/accounts')
+		expect(window.location.pathname).toBe('/portfolio/accounts')
 		expect(screen.queryByText(/Account choices saved/)).not.toBeInTheDocument()
 	})
 
@@ -569,7 +626,7 @@ describe('public site', () => {
 	})
 
 	it('offers one clear retry for a durable pending addition with the same scoped draft', async () => {
-		window.history.replaceState(null, '', '/onboarding/accounts')
+		window.history.replaceState(null, '', '/portfolio/accounts')
 		document.cookie = 'findur_csrf=pending-csrf; Path=/'
 		const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
 		const pending = {
@@ -897,12 +954,14 @@ describe('public site', () => {
 	})
 
 	it('shares one in-flight initial inventory request across a development remount', async () => {
-		window.history.replaceState(null, '', '/onboarding/accounts')
+		window.history.replaceState(null, '', '/portfolio/accounts')
 		let resolveInventory!: (response: Response) => void
 		const inventoryResponse = new Promise<Response>((resolve) => { resolveInventory = resolve })
 		const fetchMock = vi.fn().mockImplementation((path: string) => path === '/api/auth/status'
 			? Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
-			: inventoryResponse)
+			: path === '/api/portfolio/inclusion'
+				? Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
+				: inventoryResponse)
 		vi.stubGlobal('fetch', fetchMock)
 		const first = render(<App />)
 		await waitFor(() => expect(fetchMock.mock.calls.filter(([path]) => path === '/api/portfolio/inventory')).toHaveLength(1))

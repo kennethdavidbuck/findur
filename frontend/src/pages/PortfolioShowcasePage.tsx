@@ -103,6 +103,7 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
   const [data, setData] = useState<PortfolioShowcase | null>(null)
   const [failed, setFailed] = useState(false)
   const [preparing, setPreparing] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [reload, setReload] = useState(0)
 
   useEffect(() => {
@@ -122,6 +123,7 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
         if (error instanceof InventorySessionExpiredError) onSessionExpired()
         else if (alive) setFailed(true)
       })
+      .finally(() => { if (alive) setRefreshing(false) })
     return () => { alive = false }
   }, [onSessionExpired, reload])
 
@@ -157,6 +159,11 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
     </section>
   }
 
+  const refreshShowcase = () => {
+    setRefreshing(true)
+    setReload((value) => value + 1)
+  }
+
   return <div className="showcase-layout">
     <section className="portfolio-showcase showcase-reference">
       <header className="topline">
@@ -171,13 +178,13 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
           <span aria-hidden="true">◇</span>
           <p>{preparing ? text.preparing : text.empty}</p>
           {preparing
-            ? <button className="text-link" onClick={() => { setPreparing(false); setData(null); setReload((value) => value + 1) }}>{text.checkAgain} →</button>
+            ? <button className={`text-link${refreshing ? ' text-link--refreshing' : ''}`} disabled={refreshing} onClick={() => { setPreparing(false); setData(null); refreshShowcase() }}>{text.checkAgain} →</button>
             : <button className="text-link" onClick={onEdit}>{text.edit} →</button>}
         </div>
         : <>
           {preparing && <div className="showcase-preparing" role="status">
             <p>{text.preparing}</p>
-            <button className="text-link" onClick={() => setReload((value) => value + 1)}>{text.checkAgain} →</button>
+            <button className={`text-link${refreshing ? ' text-link--refreshing' : ''}`} disabled={refreshing} onClick={refreshShowcase}>{text.checkAgain} →</button>
           </div>}
           <section className="coverage" aria-label={text.coverage}>
             <div>
@@ -212,7 +219,7 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
                 </header>
                 <div className="dataset-list">
                   <Evidence title={text.balances} dataset={account.balances} rows={account.balances.balances} columns={columns.balances} locale={locale} onReconnect={onReconnect} preparing={preparing} />
-                  <Evidence title={text.positions} dataset={account.positions} rows={account.positions.positions} columns={columns.positions} locale={locale} onReconnect={onReconnect} preparing={preparing} />
+                  {shouldShowPositions(account.positions) && <Evidence title={text.positions} dataset={account.positions} rows={account.positions.positions} columns={columns.positions} locale={locale} onReconnect={onReconnect} preparing={preparing} />}
                   <Evidence title={text.activities} dataset={account.activities} rows={account.activities.activities} columns={columns.activities} locale={locale} onReconnect={onReconnect} preparing={preparing} activity />
                 </div>
               </section>
@@ -221,6 +228,10 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
         </>}
     </section>
   </div>
+}
+
+function shouldShowPositions(dataset: Dataset) {
+  return dataset.positions.length > 0
 }
 
 function BalanceSummary({ dataset, locale, preparing }: { dataset: Dataset; locale: Locale; preparing: boolean }) {
