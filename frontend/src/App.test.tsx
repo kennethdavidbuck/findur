@@ -356,12 +356,17 @@ describe('public site', () => {
 	expect(fetchMock).toHaveBeenCalledWith('/api/auth/status', expect.objectContaining({ cache: 'no-store', credentials: 'same-origin' }))
   })
 
-  it('sends an active session from staged consent to the portfolio and removes the authorization action', async () => {
+  it('sends an active session from staged consent through inclusion resolution to the portfolio', async () => {
     window.history.replaceState(null, '', '/connect')
     const statusResolvers: Array<(response: Response) => void> = []
+    let statusCalls = 0
     const fetchMock = vi.fn().mockImplementation((path: string) => {
-      if (path === '/api/auth/status') return new Promise<Response>((resolve) => { statusResolvers.push(resolve) })
-      if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+      if (path === '/api/auth/status') {
+        statusCalls += 1
+        return statusCalls === 1 ? new Promise<Response>((resolve) => { statusResolvers.push(resolve) }) : Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+      }
+      if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 1, committed: ['account-1'] }))
+      if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
       return Promise.resolve(new Response(null, { status: 404 }))
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -373,14 +378,22 @@ describe('public site', () => {
     await waitFor(() => expect(statusResolvers.length).toBeGreaterThan(0))
     statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true })))
     await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+    expect((await screen.findAllByText('Retirement (•••• 8443)'))[0]).toBeVisible()
+    const requestPaths = fetchMock.mock.calls.map(([path]) => path)
+    expect(requestPaths.indexOf('/api/portfolio/inclusion')).toBeLessThan(requestPaths.indexOf('/api/portfolio/showcase'))
     expect(document.querySelector('form[action="/api/auth/snaptrade/authorize"]')).toBeNull()
   })
 
   it('keeps the public page visible while the Login link checks an active session', async () => {
     const statusResolvers: Array<(response: Response) => void> = []
+    let statusCalls = 0
     const fetchMock = vi.fn().mockImplementation((path: string) => {
-      if (path === '/api/auth/status') return new Promise<Response>((resolve) => { statusResolvers.push(resolve) })
-      if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+      if (path === '/api/auth/status') {
+        statusCalls += 1
+        return statusCalls === 1 ? new Promise<Response>((resolve) => { statusResolvers.push(resolve) }) : Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+      }
+      if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 1, committed: ['account-1'] }))
+      if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
       return Promise.resolve(new Response(null, { status: 404 }))
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -393,6 +406,41 @@ describe('public site', () => {
     await waitFor(() => expect(statusResolvers.length).toBeGreaterThan(0))
     statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true })))
     await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+  })
+
+  it('sends an active session without included accounts to account selection', async () => {
+    const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
+    const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+      if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 1, committed: [] }))
+      if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+
+    fireEvent.click(screen.getAllByRole('link', { name: 'Log in' })[0])
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Choose what Findur may use.' })).toBeVisible()
+    expect(window.location.pathname).toBe('/onboarding/accounts')
+    expect(fetchMock).toHaveBeenCalledWith('/api/portfolio/inventory', expect.objectContaining({ method: 'GET', credentials: 'same-origin' }))
+  })
+
+  it('sends a direct active consent visit without included accounts to account selection', async () => {
+    window.history.replaceState(null, '', '/connect')
+    const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
+    const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+      if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+      if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 1, committed: [] }))
+      if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Choose what Findur may use.' })).toBeVisible()
+    expect(window.location.pathname).toBe('/onboarding/accounts')
   })
 
   it('opens staged consent without a second status check after a logged-out Login click', async () => {

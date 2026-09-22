@@ -79,7 +79,7 @@ function PublicApp({ route, onNavigate, connectHandoff }: { route: PublicRoute; 
         if (controller.signal.aborted || requestID !== authorizationRequestID.current) return
         authorizationRequest.current = null
         if (status.authenticated) {
-          onNavigate('/portfolio', true)
+          onNavigate('/onboarding/accounts', true)
           return
         }
         onNavigate('/connect', false, { id: requestID, status })
@@ -93,7 +93,7 @@ function PublicApp({ route, onNavigate, connectHandoff }: { route: PublicRoute; 
   return (
     <PublicLayout route={route} onNavigate={navigatePublic}>
       {route === '/about' ? <AboutPage headingRef={headingRef} onNavigate={navigatePublic} />
-        : route === '/connect' ? <ConsentPage key={connectHandoff?.id ?? 'unverified'} headingRef={headingRef} onNavigate={navigatePublic} onAuthenticated={() => onNavigate('/portfolio', true)} initialStatus={connectHandoff?.status} />
+        : route === '/connect' ? <ConsentPage key={connectHandoff?.id ?? 'unverified'} headingRef={headingRef} onNavigate={navigatePublic} onAuthenticated={() => onNavigate('/onboarding/accounts', true)} initialStatus={connectHandoff?.status} />
           : <LandingPage headingRef={headingRef} onNavigate={navigatePublic} />}
     </PublicLayout>
   )
@@ -169,7 +169,7 @@ function OnboardingAccountSelection({ headingRef, onComplete, onReconnect, onSes
     let active = true
     void getPortfolioInclusion().then((inclusion) => {
       if (!active) return
-      if (inclusion.committed.length > 0 || inclusion.change?.status === 'pending' && inclusion.change.additions.length > 0) onComplete()
+      if (inclusion.committed.length > 0) onComplete()
       else { setInclusion(inclusion); setChecking(false) }
     }).catch((error) => {
       if (!active) return
