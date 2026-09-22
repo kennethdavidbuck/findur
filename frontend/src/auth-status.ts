@@ -17,10 +17,13 @@ export async function getAuthorizationStatus(signal?: AbortSignal): Promise<Auth
   return value as AuthorizationStatus
 }
 
-export function useAuthorizationStatus(): StatusState {
-  const [state, setState] = useState<StatusState>({ resolving: true, status: null })
+export function useAuthorizationStatus(initialStatus?: AuthorizationStatus): StatusState {
+  const [state, setState] = useState<StatusState>(() => initialStatus
+    ? { resolving: false, status: initialStatus }
+    : { resolving: true, status: null })
 
   useEffect(() => {
+    if (initialStatus) return
     const controller = new AbortController()
     let disposed = false
     const timeout = window.setTimeout(() => controller.abort(), 10_000)
@@ -39,7 +42,7 @@ export function useAuthorizationStatus(): StatusState {
       window.clearTimeout(timeout)
       controller.abort()
     }
-  }, [])
+  }, [initialStatus])
 
   return state
 }

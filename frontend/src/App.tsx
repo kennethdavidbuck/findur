@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { getAuthorizationStatus, useAuthorizationStatus } from './auth-status'
+import { getAuthorizationStatus, useAuthorizationStatus, type AuthorizationStatus } from './auth-status'
 import { AuthenticatedLayout, type ProtectedRoute } from './components/AuthenticatedLayout'
 import { PublicLayout } from './components/PublicLayout'
 import { I18nProvider, useI18n } from './i18n'
@@ -19,6 +19,7 @@ type PublicRoute = '/' | '/about' | '/connect' | '/__status'
 type OnboardingRoute = '/onboarding/accounts'
 type AccountEditRoute = '/portfolio/accounts'
 type AppRoute = PublicRoute | ProtectedRoute | OnboardingRoute | AccountEditRoute
+type ConnectHandoff = { id: number; status: AuthorizationStatus }
 
 function routeFromPath(pathname: string): AppRoute {
   if (pathname === '/__status' || pathname === '/__status/') return '/__status'
@@ -37,9 +38,11 @@ function normalizePath(): AppRoute {
   return route
 }
 
-function PublicApp({ route, onNavigate }: { route: PublicRoute; onNavigate: (route: AppRoute, replace?: boolean) => void }) {
+function PublicApp({ route, onNavigate, connectHandoff }: { route: PublicRoute; onNavigate: (route: AppRoute, replace?: boolean, connectHandoff?: ConnectHandoff) => void; connectHandoff?: ConnectHandoff }) {
   const headingRef = useRef<HTMLHeadingElement>(null)
   const mounted = useRef(false)
+  const authorizationRequest = useRef<AbortController | null>(null)
+  const authorizationRequestID = useRef(0)
   const { messages } = useI18n()
 
   useEffect(() => {
@@ -57,20 +60,40 @@ function PublicApp({ route, onNavigate }: { route: PublicRoute; onNavigate: (rou
     else mounted.current = true
   }, [route])
 
+  useEffect(() => () => authorizationRequest.current?.abort(), [route])
+
   if (route === '/__status') return <StatusPage />
   const navigatePublic = (next: '/' | '/about' | '/connect') => {
     if (next !== '/connect') {
+      authorizationRequest.current?.abort()
+      authorizationRequest.current = null
       onNavigate(next)
       return
     }
-    void getAuthorizationStatus()
-      .then((status) => onNavigate(status.authenticated ? '/portfolio' : '/connect', status.authenticated))
-      .catch(() => onNavigate('/connect'))
+    authorizationRequest.current?.abort()
+    const controller = new AbortController()
+    const requestID = ++authorizationRequestID.current
+    authorizationRequest.current = controller
+    void getAuthorizationStatus(controller.signal)
+      .then((status) => {
+        if (controller.signal.aborted || requestID !== authorizationRequestID.current) return
+        authorizationRequest.current = null
+        if (status.authenticated) {
+          onNavigate('/onboarding/accounts', true)
+          return
+        }
+        onNavigate('/connect', false, { id: requestID, status })
+      })
+      .catch(() => {
+        if (controller.signal.aborted || requestID !== authorizationRequestID.current) return
+        authorizationRequest.current = null
+        onNavigate('/connect')
+      })
   }
   return (
     <PublicLayout route={route} onNavigate={navigatePublic}>
       {route === '/about' ? <AboutPage headingRef={headingRef} onNavigate={navigatePublic} />
-        : route === '/connect' ? <ConsentPage headingRef={headingRef} onNavigate={navigatePublic} onAuthenticated={() => onNavigate('/portfolio', true)} />
+        : route === '/connect' ? <ConsentPage key={connectHandoff?.id ?? 'unverified'} headingRef={headingRef} onNavigate={navigatePublic} onAuthenticated={() => onNavigate('/onboarding/accounts', true)} initialStatus={connectHandoff?.status} />
           : <LandingPage headingRef={headingRef} onNavigate={navigatePublic} />}
     </PublicLayout>
   )
@@ -146,7 +169,7 @@ function OnboardingAccountSelection({ headingRef, onComplete, onReconnect, onSes
     let active = true
     void getPortfolioInclusion().then((inclusion) => {
       if (!active) return
-      if (inclusion.committed.length > 0 || inclusion.change?.status === 'pending' && inclusion.change.additions.length > 0) onComplete()
+      if (inclusion.committed.length > 0) onComplete()
       else { setInclusion(inclusion); setChecking(false) }
     }).catch((error) => {
       if (!active) return
@@ -165,20 +188,20 @@ function OnboardingAccountSelection({ headingRef, onComplete, onReconnect, onSes
 }
 
 function RoutedApp() {
-  const [route, setRoute] = useState<AppRoute>(normalizePath)
+  const [{ route, connectHandoff }, setRoute] = useState<{ route: AppRoute; connectHandoff?: ConnectHandoff }>(() => ({ route: normalizePath() }))
   useEffect(() => {
-    const onPopState = () => setRoute(normalizePath())
+    const onPopState = () => setRoute({ route: normalizePath() })
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
   }, [])
-  const navigate = useCallback((next: AppRoute, replace = false) => {
-    if (next === route) return
+  const navigate = useCallback((next: AppRoute, replace = false, handoff?: ConnectHandoff) => {
+    if (next === route && !handoff) return
     window.history[replace ? 'replaceState' : 'pushState'](null, '', next)
-    setRoute(next)
+    setRoute({ route: next, connectHandoff: handoff })
   }, [route])
   return route === '/onboarding/accounts' || route === '/portfolio/accounts' || route === '/discovery' || route === '/portfolio' || route === '/profile'
     ? <ProtectedApp requestedRoute={route} onNavigate={navigate} />
-    : <PublicApp route={route} onNavigate={navigate} />
+    : <PublicApp route={route} onNavigate={navigate} connectHandoff={connectHandoff} />
 }
 
 export function App() {
