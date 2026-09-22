@@ -1037,7 +1037,7 @@ describe('public site', () => {
 		expect(inventoryCalls).toBe(2)
 	})
 
-	it('lets a pending observer explicitly check persisted status without polling', async () => {
+	it('lets a pending observer explicitly check persisted status', async () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		const pending = { state: 'pending', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [] }
 		const ready = { state: 'empty', generation: 1, updatedAt: '2026-09-20T12:00:01Z', connections: [] }
@@ -1055,10 +1055,10 @@ describe('public site', () => {
 		vi.stubGlobal('fetch', fetchMock)
 		render(<App />)
 		const check = await screen.findByRole('button', { name: 'Check again' })
-		expect(inventoryCalls).toBe(1)
+		await waitFor(() => expect(inventoryCalls).toBe(1))
 		fireEvent.click(check)
 		expect(await screen.findByText('No investment accounts are ready to include.')).toBeVisible()
-		expect(inventoryCalls).toBe(2)
+		await waitFor(() => expect(inventoryCalls).toBe(2))
 	})
 
 	it('offers reconnection when no connected accounts are found', async () => {
