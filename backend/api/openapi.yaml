@@ -3,6 +3,56 @@ info:
   title: Findur API
   version: 0.5.0
 paths:
+  /api/preferences/display:
+    get:
+      operationId: getDisplayPreferences
+      summary: Return the authenticated owner's display preferences
+      security:
+        - SessionCookie: []
+      responses:
+        '200':
+          description: Owner-private display preferences
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisplayPreferences' }
+        '204':
+          description: The owner has not saved display preferences yet
+        '401': { $ref: '#/components/responses/ProfileUnauthorized' }
+        '503': { $ref: '#/components/responses/ProfileUnavailable' }
+    put:
+      operationId: putDisplayPreferences
+      summary: Create or replace the authenticated owner's display preferences
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          required: true
+          schema: { type: string, minLength: 1 }
+      security:
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DisplayPreferencesInput' }
+      responses:
+        '200':
+          description: Saved owner-private display preferences
+          headers:
+            Cache-Control:
+              required: true
+              schema: { type: string, const: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DisplayPreferences' }
+        '400': { $ref: '#/components/responses/ProfileValidation' }
+        '401': { $ref: '#/components/responses/ProfileUnauthorized' }
+        '403': { $ref: '#/components/responses/ProfileForbidden' }
+        '409': { $ref: '#/components/responses/ProfileConflict' }
+        '503': { $ref: '#/components/responses/ProfileUnavailable' }
   /api/portfolio/showcase:
     get:
       operationId: getPortfolioShowcase
@@ -304,6 +354,22 @@ components:
         locale: { type: string, enum: [en, fr] }
         theme: { type: string, enum: [system, light, dark] }
         version: { type: integer, format: int64, minimum: 1 }
+    DisplayPreferences:
+      type: object
+      additionalProperties: false
+      required: [locale, theme, version]
+      properties:
+        locale: { type: string, enum: [en, fr] }
+        theme: { type: string, enum: [system, light, dark] }
+        version: { type: integer, format: int64, minimum: 1 }
+    DisplayPreferencesInput:
+      type: object
+      additionalProperties: false
+      required: [locale, theme, expectedVersion]
+      properties:
+        locale: { type: string, enum: [en, fr] }
+        theme: { type: string, enum: [system, light, dark] }
+        expectedVersion: { type: integer, format: int64, minimum: 0 }
     PersonalProfileSnapshot:
       type: object
       additionalProperties: false

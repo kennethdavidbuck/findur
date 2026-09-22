@@ -1,4 +1,5 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
+import { preferenceStorage } from './storage'
 
 export type ThemePreference = 'system' | 'light' | 'dark'
 type ResolvedTheme = 'light' | 'dark'
@@ -16,7 +17,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 function readPreference(): ThemePreference {
   try {
-    const stored = window.localStorage.getItem(themeStorageKey)
+    const stored = preferenceStorage.get(themeStorageKey)
     return stored === 'light' || stored === 'dark' ? stored : 'system'
   } catch {
     return 'system'
@@ -54,11 +55,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       resolvedTheme,
       setPreference: (nextPreference) => {
         setPreferenceState(nextPreference)
-        try {
-          window.localStorage.setItem(themeStorageKey, nextPreference)
-        } catch {
-          // Preferences remain usable for this session when storage is unavailable.
-        }
+        preferenceStorage.set(themeStorageKey, nextPreference)
       },
     }),
     [preference, resolvedTheme],

@@ -13,6 +13,7 @@ import { StatusPage } from './pages/StatusPage'
 import { getPortfolioInclusion, InventorySessionExpiredError, resetInitialInventoryRequest, type PortfolioInclusion } from './inventory'
 import { endCurrentSession } from './session'
 import { ThemeProvider } from './theme'
+import { AuthenticatedPreferences } from './authenticated-preferences'
 
 type PublicRoute = '/' | '/about' | '/connect' | '/__status'
 type OnboardingRoute = '/onboarding/accounts'
@@ -119,12 +120,12 @@ function ProtectedApp({ requestedRoute, onNavigate }: { requestedRoute: Protecte
   }
 
   return (
-    <AuthenticatedLayout route={route} setup={onboarding} loggingOut={loggingOut} logoutFailed={logoutFailed} onNavigate={navigateProtected} onLogout={() => { void logout() }}>
+    <AuthenticatedPreferences onSessionExpired={recoverSession}><AuthenticatedLayout route={route} setup={onboarding} loggingOut={loggingOut} logoutFailed={logoutFailed} onNavigate={navigateProtected} onLogout={() => { void logout() }}>
       {connectionSetup ? <OnboardingAccountSelection headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : accountSelection ? <PortfolioPage editing={editingAccounts} headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/portfolio' ? <PortfolioShowcasePage headingRef={headingRef} onEdit={() => onNavigate('/portfolio/accounts')} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/profile' ? <ProfilePage headingRef={headingRef} onSessionExpired={recoverSession} /> : <section className="private-placeholder">
         <h1 ref={headingRef} tabIndex={-1}>{messages.authenticated[`${route.slice(1)}Title` as 'discoveryTitle' | 'portfolioTitle' | 'profileTitle']}</h1>
         <p className="large-copy">{messages.authenticated[`${route.slice(1)}Body` as 'discoveryBody' | 'portfolioBody' | 'profileBody']}</p>
       </section>}
-    </AuthenticatedLayout>
+    </AuthenticatedLayout></AuthenticatedPreferences>
   )
 }
 
