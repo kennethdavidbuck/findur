@@ -244,7 +244,7 @@ func buildPortfolioServices(cfg config.Config, pool *pgxpool.Pool, logger *slog.
 	if err != nil {
 		return portfolioComponents{}, err
 	}
-	syncService, err := portfolio.NewSyncService(postgresadapter.NewSyncRepository(pool), providerClient, credentials, time.Now, config.ProviderTimeout, logger)
+	syncService, err := portfolio.NewSyncService(postgresadapter.NewSyncRepository(pool), inventory, providerClient, credentials, time.Now, config.ProviderTimeout, logger)
 	if err != nil {
 		return portfolioComponents{}, err
 	}

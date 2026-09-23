@@ -28,11 +28,15 @@ the integration fixture intentionally uses simulated accounts.
 
 ## Request and persistence behavior
 
-- Account inventory is bootstrapped only once. A returning login rotates
-  credentials and fences stale in-flight work without clearing or refetching the
-  published inventory. Explicit retry/reconnect remains the refresh path.
+- A returning login rotates credentials and fences stale in-flight work without
+  synchronously calling SnapTrade. Independently, the minute worker repairs
+  incomplete inventory and refreshes successful connection/account inventory
+  every 24 hours.
 - Discovery uses one `GET /authorizations` and one `GET /accounts` when an active
   connection exists. Empty or entirely disabled connections need no account call.
+- Each immutable account inventory row retains the provider-denominated
+  `/accounts.balance.total` amount and currency when supplied. This is distinct
+  from per-currency cash and buying-power rows fetched from `/balances`.
 - `/accounts` returns SnapTrade’s daily cached inventory, including on real-time
   plans. Explicit retry reloads that provider cache; it does not force a fresh
   brokerage sync.
@@ -58,6 +62,12 @@ the integration fixture intentionally uses simulated accounts.
 - Included accounts are refreshed when their complete bundle is at least 24
   hours old. A minute worker uses durable database leases, bounded backoff, a
   45-second pass limit, and a shared paced/circuit-broken SnapTrade client.
+- Each leased worker pass refreshes at most one due user inventory before it
+  drains included-account resource work. Inventory refresh preserves saved
+  historical resource data by stable account identity. An included account that
+  no longer meets current eligibility is removed from active inclusion and
+  receives no new resource work; its retained identity and history are not
+  deleted.
 - Balances and positions replace their current snapshots. Activities append by
   stable provider ID from the newest 50 returned rows, and the Showcase exposes
   only its newest accumulated 50 rows.

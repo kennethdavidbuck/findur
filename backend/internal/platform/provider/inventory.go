@@ -57,6 +57,18 @@ type requestGate struct {
 	failures    int
 }
 
+type rawInventoryAccount struct {
+	providergenerated.Account
+	Balance rawInventoryAccountBalance `json:"balance"`
+}
+
+type rawInventoryAccountBalance struct {
+	Total *struct {
+		Amount   *rawDecimal `json:"amount"`
+		Currency *string     `json:"currency"`
+	} `json:"total"`
+}
+
 // NewInventoryClient validates and constructs the purpose-limited bearer client.
 func NewInventoryClient(baseURL *url.URL, httpClient doer, clock func() time.Time) (*InventoryClient, error) {
 	if baseURL == nil || httpClient == nil || clock == nil || baseURL.Scheme == "" || baseURL.Host == "" {
@@ -132,14 +144,14 @@ func normalizeConnections(rawConnections []providergenerated.BrokerageAuthorizat
 	return connections, nil
 }
 
-func (c *InventoryClient) fetchAccounts(ctx context.Context, bearer string) ([]providergenerated.Account, error) {
+func (c *InventoryClient) fetchAccounts(ctx context.Context, bearer string) ([]rawInventoryAccount, error) {
 	request, err := providergenerated.NewAccountInformationListUserAccountsRequest(c.baseURL)
 	if err != nil {
 		return nil, err
 	}
 	request = request.WithContext(ctx)
 	setBearer(request, bearer)
-	var accounts []providergenerated.Account
+	var accounts []rawInventoryAccount
 	if err := c.doJSONLimit(request, &accounts, accountListResponseLimit); err != nil {
 		return nil, err
 	}
@@ -151,7 +163,7 @@ func (c *InventoryClient) fetchAccounts(ctx context.Context, bearer string) ([]p
 
 // Validate every row before publishing any accounts. Disabled or unsupported
 // rows cannot bypass identity checks, and malformed lists never publish partially.
-func groupAccounts(connections []portfolio.Connection, rawAccounts []providergenerated.Account) error {
+func groupAccounts(connections []portfolio.Connection, rawAccounts []rawInventoryAccount) error {
 	indices := make(map[string]int, len(connections))
 	for index, connection := range connections {
 		indices[connection.ID] = index
@@ -163,7 +175,10 @@ func groupAccounts(connections []portfolio.Connection, rawAccounts []providergen
 			return &portfolio.ProviderError{State: portfolio.StateMalformed}
 		}
 		seen[raw.Id] = true
-		account, valid := normalizeAccount(raw, connections[index].ID)
+		account, valid := normalizeAccount(raw.Account, connections[index].ID)
+		if valid {
+			valid = normalizeAccountTotal(&account, raw.Balance.Total)
+		}
 		if !valid {
 			return &portfolio.ProviderError{State: portfolio.StateMalformed}
 		}
@@ -173,6 +188,25 @@ func groupAccounts(connections []portfolio.Connection, rawAccounts []providergen
 		connections[index].Accounts = append(connections[index].Accounts, account)
 	}
 	return nil
+}
+
+func normalizeAccountTotal(account *portfolio.Account, total *struct {
+	Amount   *rawDecimal `json:"amount"`
+	Currency *string     `json:"currency"`
+}) bool {
+	if total == nil {
+		return true
+	}
+	if total.Amount == nil || total.Currency == nil {
+		return false
+	}
+	currency, valid := normalizedCode(total.Currency)
+	if !valid {
+		return false
+	}
+	account.TotalBalanceAmount = decimalPointer(total.Amount)
+	account.TotalBalanceCurrency = &currency
+	return true
 }
 
 func (c *InventoryClient) doJSON(request *http.Request, target any) error {

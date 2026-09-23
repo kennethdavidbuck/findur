@@ -200,8 +200,19 @@ func storeAuthorization(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value a
             AND (next_attempt_at IS NOT NULL OR claim_id IS NOT NULL)`, owner, value.CompletedAt); err != nil {
 		return err
 	}
+	// Authorization-required inventory work stays paused while credentials are
+	// inactive. Fresh credentials make it immediately eligible for the worker.
+	if _, err = tx.Exec(ctx, `UPDATE portfolio_inventory_state
+        SET retry_at = NULL,
+            failure_count = 0,
+            claim_expires_at = NULL,
+            updated_at = $2
+        WHERE user_id = $1
+			AND (current_status = 'unauthorized' OR retry_at IS NOT NULL)`, owner, value.CompletedAt); err != nil {
+		return err
+	}
 	// Returning logins rotate credentials and fence in-flight portfolio work, but
-	// preserve the first successfully published account inventory.
+	// preserve the last successfully published account inventory.
 	return nil
 }
 

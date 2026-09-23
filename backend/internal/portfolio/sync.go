@@ -18,6 +18,10 @@ const (
 	SyncClaimLease = time.Minute
 	// SyncPassLimit prevents one minute tick from running without bound.
 	SyncPassLimit = 45 * time.Second
+	// InventoryRefreshAge is the successful-head age at which inventory is due.
+	InventoryRefreshAge = 24 * time.Hour
+	// InventoryClaimLease bounds recovery after an inventory worker disappears.
+	InventoryClaimLease = time.Minute
 )
 
 // SyncClaim is a durable, guarded lease for one account resource.
@@ -40,9 +44,15 @@ type SyncRepository interface {
 	FinishSync(context.Context, SyncClaim, *AccountData, string, *time.Time, time.Time) (bool, error)
 }
 
+// InventoryRefresher claims and refreshes at most one due user inventory.
+type InventoryRefresher interface {
+	RefreshDue(context.Context, time.Duration, time.Duration) (bool, error)
+}
+
 // SyncService drains due account work within a bounded pass.
 type SyncService struct {
 	repository  SyncRepository
+	inventory   InventoryRefresher
 	provider    AccountDataProvider
 	credentials CredentialReader
 	clock       func() time.Time
@@ -51,11 +61,11 @@ type SyncService struct {
 }
 
 // NewSyncService validates and constructs the scheduled synchronization service.
-func NewSyncService(repository SyncRepository, provider AccountDataProvider, credentials CredentialReader, clock func() time.Time, timeout time.Duration, logger *slog.Logger) (*SyncService, error) {
-	if repository == nil || provider == nil || credentials == nil || clock == nil || timeout <= 0 || logger == nil {
+func NewSyncService(repository SyncRepository, inventory InventoryRefresher, provider AccountDataProvider, credentials CredentialReader, clock func() time.Time, timeout time.Duration, logger *slog.Logger) (*SyncService, error) {
+	if repository == nil || inventory == nil || provider == nil || credentials == nil || clock == nil || timeout <= 0 || logger == nil {
 		return nil, errors.New("incomplete portfolio sync configuration")
 	}
-	return &SyncService{repository: repository, provider: provider, credentials: credentials, clock: clock, timeout: timeout, logger: logger}, nil
+	return &SyncService{repository: repository, inventory: inventory, provider: provider, credentials: credentials, clock: clock, timeout: timeout, logger: logger}, nil
 }
 
 // RunPass serially drains work until empty, canceled, or the pass deadline.
@@ -80,6 +90,12 @@ func (s *SyncService) RunPass(ctx context.Context) {
 		}
 	}()
 	s.logger.Info("portfolio sync pass started", "event", "portfolio_sync_pass_started")
+	inventoryProcessed, inventoryErr := s.inventory.RefreshDue(passCtx, InventoryRefreshAge, InventoryClaimLease)
+	if inventoryErr != nil {
+		s.logger.Warn("portfolio inventory sync scheduled retry", "event", "portfolio_inventory_sync_scheduled_retry", "outcome", inclusionFailureReason(inventoryErr))
+	} else if inventoryProcessed {
+		s.logger.Info("portfolio inventory sync completed", "event", "portfolio_inventory_sync_completed")
+	}
 	processed := 0
 	for passCtx.Err() == nil {
 		claim, err := s.repository.ClaimDue(passCtx, s.clock().UTC(), SyncRefreshAge, SyncClaimLease)
@@ -94,7 +110,7 @@ func (s *SyncService) RunPass(ctx context.Context) {
 		processed++
 		s.syncClaim(passCtx, *claim)
 	}
-	s.logger.Info("portfolio sync pass finished", "event", "portfolio_sync_pass_finished", "processed", processed, "elapsed_ms", s.clock().UTC().Sub(started).Milliseconds(), "deadline_reached", errors.Is(passCtx.Err(), context.DeadlineExceeded))
+	s.logger.Info("portfolio sync pass finished", "event", "portfolio_sync_pass_finished", "inventory_processed", inventoryProcessed, "processed", processed, "elapsed_ms", s.clock().UTC().Sub(started).Milliseconds(), "deadline_reached", errors.Is(passCtx.Err(), context.DeadlineExceeded))
 }
 
 func (s *SyncService) syncClaim(ctx context.Context, claim SyncClaim) {

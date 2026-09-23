@@ -100,3 +100,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-centralize-snaptrade-token-refresh.md`
   summary: Design durable recovery when a second provider 401 cannot be recorded because PostgreSQL is unavailable.
   evidence: A failed reauthorization update is logged and requests fail while the database is unavailable, but another process may read the still-active row after recovery; a durable pending-validation state would close that cross-process gap.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-add-scheduled-connection-and-account-inventory-synchronization.md`
+  summary: Define and implement one unified retention policy for noncurrent inventory and financial-resource versions.
+  evidence: Scheduled inventory adds recurring immutable generations alongside recurring balance, position, and activity versions; this change intentionally preserves all existing retention behavior rather than inventing an inventory-only deletion rule.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-add-scheduled-connection-and-account-inventory-synchronization.md`
+  summary: Measure and, if necessary, optimize the scheduled inventory due query at production-scale user and generation counts.
+  evidence: Review noted that the broad due predicate and published-head ordering may not use the new state index; representative row counts plus `EXPLAIN (ANALYZE, BUFFERS)` are needed to establish whether the minute pass incurs a material scan or sort.

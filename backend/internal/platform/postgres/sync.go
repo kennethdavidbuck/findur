@@ -184,11 +184,12 @@ func selectScheduledSyncClaim(ctx context.Context, tx pgx.Tx, now time.Time, ref
         LEFT JOIN portfolio_activity_heads activity
             ON activity.user_id = sync.user_id
             AND activity.account_id = sync.account_id
-        WHERE `+selectableInventoryAccountSQL+`
-            AND (sync.next_attempt_at IS NULL OR sync.next_attempt_at <= $2)
-            AND (sync.claim_expires_at IS NULL OR sync.claim_expires_at <= $2)
-            AND (sync.last_success_at IS NULL
-                OR sync.last_success_at <= $3
+		WHERE `+selectableInventoryAccountSQL+`
+			AND (sync.next_attempt_at IS NULL OR sync.next_attempt_at <= $2)
+			AND (sync.claim_expires_at IS NULL OR sync.claim_expires_at <= $2)
+			AND (sync.initialized_at IS NULL
+				OR sync.last_success_at IS NULL
+				OR sync.last_success_at <= $3
                 OR balance.version_id IS NULL
                 OR position.version_id IS NULL
                 OR activity.version_id IS NULL)

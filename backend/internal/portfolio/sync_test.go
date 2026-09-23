@@ -3,6 +3,7 @@ package portfolio
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"strings"
@@ -20,7 +21,7 @@ func TestSyncServiceRunPassDrainsClaimsAndLogsSafeOutcome(t *testing.T) {
 	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: accountID.String(), Resource: AccountResourceBalances}}}
 	provider := &accountDataProviderStub{data: completeTestAccountData(now)}
 	var logs bytes.Buffer
-	service, err := NewSyncService(repository, provider, &credentialStub{token: "secret-access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
+	service, err := NewSyncService(repository, &inventoryRefresherStub{}, provider, &credentialStub{token: "secret-access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,13 +36,52 @@ func TestSyncServiceRunPassDrainsClaimsAndLogsSafeOutcome(t *testing.T) {
 	}
 }
 
+func TestSyncServiceRunsOneInventoryBeforeDrainingAccountResources(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	events := make([]string, 0, 3)
+	inventory := &inventoryRefresherStub{processed: true, onRefresh: func() { events = append(events, "inventory") }}
+	repository := &syncRepositoryStub{
+		claims: []SyncClaim{
+			{ID: uuid.New(), AccountID: "first", Resource: AccountResourceBalances},
+			{ID: uuid.New(), AccountID: "second", Resource: AccountResourcePositions},
+		},
+		onClaim: func() { events = append(events, "account") },
+	}
+	service, err := NewSyncService(repository, inventory, &accountDataProviderStub{data: completeTestAccountData(now)}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	service.RunPass(context.Background())
+
+	if inventory.calls != 1 || len(events) != 3 || events[0] != "inventory" || events[1] != "account" || events[2] != "account" {
+		t.Fatalf("inventory calls=%d events=%v", inventory.calls, events)
+	}
+}
+
+func TestSyncServiceDrainsAccountResourcesAfterInventoryFailure(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), AccountID: "account", Resource: AccountResourceBalances}}}
+	inventory := &inventoryRefresherStub{processed: true, err: errors.New("scheduled inventory retry")}
+	service, err := NewSyncService(repository, inventory, &accountDataProviderStub{data: completeTestAccountData(now)}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	service.RunPass(context.Background())
+
+	if inventory.calls != 1 || repository.finishes != 1 {
+		t.Fatalf("inventory calls=%d account finishes=%d", inventory.calls, repository.finishes)
+	}
+}
+
 func TestSyncServiceCategorizesProviderFailureForDurableRetry(t *testing.T) {
 	now := time.Now().UTC()
 	owner := uuid.New()
 	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: "account", Resource: AccountResourceActivities}}}
 	retryAt := now.Add(7 * time.Minute)
 	provider := &accountDataProviderStub{failAt: 1, err: &ProviderError{State: StateRateLimited, RetryAt: &retryAt}}
-	service, _ := NewSyncService(repository, provider, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	service, _ := NewSyncService(repository, &inventoryRefresherStub{}, provider, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewTextHandler(io.Discard, nil)))
 
 	service.RunPass(context.Background())
 	if repository.failure != "rate_limited" || repository.data != nil || repository.finishes != 1 || repository.retryAt == nil || !repository.retryAt.Equal(retryAt) {
@@ -55,7 +95,7 @@ func TestSyncServiceOmitsMalformedPersistedAccountIDFromLogs(t *testing.T) {
 	const malformedAccountID = "private-persisted-account-reference"
 	repository := &syncRepositoryStub{claims: []SyncClaim{{ID: uuid.New(), Owner: owner, AccountID: malformedAccountID, Resource: AccountResourceBalances}}}
 	var logs bytes.Buffer
-	service, err := NewSyncService(repository, &accountDataProviderStub{data: completeTestAccountData(now)}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
+	service, err := NewSyncService(repository, &inventoryRefresherStub{}, &accountDataProviderStub{data: completeTestAccountData(now)}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +111,7 @@ func TestRunSyncWorkerStopsPromptlyOnCancellation(t *testing.T) {
 	now := time.Now().UTC()
 	repository := &syncRepositoryStub{}
 	var logs bytes.Buffer
-	service, _ := NewSyncService(repository, &accountDataProviderStub{}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
+	service, _ := NewSyncService(repository, &inventoryRefresherStub{}, &accountDataProviderStub{}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second, slog.New(slog.NewJSONHandler(&logs, nil)))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { defer close(done); RunSyncWorker(ctx, time.Millisecond, service) }()
@@ -99,6 +139,22 @@ type syncRepositoryStub struct {
 	data     *AccountData
 	failure  string
 	retryAt  *time.Time
+	onClaim  func()
+}
+
+type inventoryRefresherStub struct {
+	processed bool
+	err       error
+	calls     int
+	onRefresh func()
+}
+
+func (r *inventoryRefresherStub) RefreshDue(context.Context, time.Duration, time.Duration) (bool, error) {
+	r.calls++
+	if r.onRefresh != nil {
+		r.onRefresh()
+	}
+	return r.processed, r.err
 }
 
 func (r *syncRepositoryStub) AcquireWorkerLease(context.Context, time.Time, time.Duration) (uuid.UUID, bool, error) {
@@ -114,6 +170,9 @@ func (r *syncRepositoryStub) ClaimDue(context.Context, time.Time, time.Duration,
 	defer r.mu.Unlock()
 	if len(r.claims) == 0 {
 		return nil, nil
+	}
+	if r.onClaim != nil {
+		r.onClaim()
 	}
 	claim := r.claims[0]
 	r.claims = r.claims[1:]

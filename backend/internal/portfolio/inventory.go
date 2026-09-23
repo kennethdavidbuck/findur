@@ -114,6 +114,8 @@ type Connection struct {
 // Account is the complete persisted subset of one provider account.
 type Account struct {
 	ID, Type, MaskedLabel           string
+	TotalBalanceAmount              *string
+	TotalBalanceCurrency            *string
 	Category                        AccountCategory
 	SyncState                       AccountSyncState
 	Available, Eligible, Selectable bool
@@ -136,10 +138,19 @@ type Preparation struct {
 	ClaimExpiresAt *time.Time
 }
 
+// ScheduledInventoryClaim is a worker-owned lease for one user's inventory.
+type ScheduledInventoryClaim struct {
+	Owner                   uuid.UUID
+	Generation              int64
+	AuthorizationGeneration int64
+}
+
 // Repository persists claims, immutable normalized versions, and guarded heads.
 type Repository interface {
 	Prepare(context.Context, uuid.UUID, bool, time.Time) (Preparation, error)
+	ClaimDue(context.Context, time.Time, time.Duration, time.Duration) (*ScheduledInventoryClaim, error)
 	Finalize(context.Context, uuid.UUID, int64, State, *time.Time, []Connection, time.Time) (Snapshot, bool, error)
+	FinalizeScheduled(context.Context, ScheduledInventoryClaim, State, *time.Time, []Connection, time.Time) (Snapshot, bool, error)
 }
 
 // Provider performs the only allowlisted provider inventory operation.
@@ -190,12 +201,26 @@ func (s *Service) Retry(ctx context.Context, actor auth.Actor) (Snapshot, error)
 	return s.load(ctx, actor, true)
 }
 
+// RefreshDue claims and refreshes at most one worker-owned inventory.
+func (s *Service) RefreshDue(ctx context.Context, refreshAge, lease time.Duration) (bool, error) {
+	claim, err := s.repository.ClaimDue(ctx, s.clock().UTC(), refreshAge, lease)
+	if err != nil || claim == nil {
+		return false, err
+	}
+	_, err = s.refresh(ctx, claim.Owner, claim.Generation, claim)
+	return true, err
+}
+
 func (s *Service) load(ctx context.Context, actor auth.Actor, retry bool) (Snapshot, error) {
 	now := s.clock().UTC()
 	preparation, err := s.repository.Prepare(ctx, actor.UserID(), retry, now)
 	if err != nil || !preparation.Claimed {
 		return preparation.Snapshot, err
 	}
+	return s.refresh(ctx, actor.UserID(), preparation.Generation, nil)
+}
+
+func (s *Service) refresh(ctx context.Context, owner uuid.UUID, generation int64, scheduled *ScheduledInventoryClaim) (Snapshot, error) {
 	opCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	var connections []Connection
 	read := func(callCtx context.Context, token string) error {
@@ -203,7 +228,7 @@ func (s *Service) load(ctx context.Context, actor auth.Actor, retry bool) (Snaps
 		connections, loadErr = s.provider.Load(callCtx, token)
 		return loadErr
 	}
-	providerErr := s.credentials.Read(opCtx, actor.UserID(), read)
+	providerErr := s.credentials.Read(opCtx, owner, read)
 	cancel()
 	if providerErr != nil {
 		state, retryAt := StateUnavailable, (*time.Time)(nil)
@@ -214,7 +239,11 @@ func (s *Service) load(ctx context.Context, actor auth.Actor, retry bool) (Snaps
 		if errors.As(providerErr, &categorized) && validFailureState(categorized.State) {
 			state, retryAt = categorized.State, categorized.RetryAt
 		}
-		return s.finalizeFailure(ctx, actor.UserID(), preparation.Generation, state, retryAt, nil)
+		snapshot, err := s.finish(ctx, owner, generation, state, retryAt, nil, scheduled)
+		if err == nil && scheduled != nil {
+			err = providerErr
+		}
+		return snapshot, err
 	}
 	state := StateEmpty
 	allDisabled := len(connections) > 0
@@ -227,17 +256,19 @@ func (s *Service) load(ctx context.Context, actor auth.Actor, retry bool) (Snaps
 	if allDisabled {
 		state = StateDisabled
 	}
-	return s.finalize(ctx, actor.UserID(), preparation.Generation, state, nil, connections)
+	return s.finish(ctx, owner, generation, state, nil, connections, scheduled)
 }
 
-func (s *Service) finalizeFailure(ctx context.Context, owner uuid.UUID, generation int64, state State, retryAt *time.Time, connections []Connection) (Snapshot, error) {
-	return s.finalize(ctx, owner, generation, state, retryAt, connections)
-}
-
-func (s *Service) finalize(ctx context.Context, owner uuid.UUID, generation int64, state State, retryAt *time.Time, connections []Connection) (Snapshot, error) {
+func (s *Service) finish(ctx context.Context, owner uuid.UUID, generation int64, state State, retryAt *time.Time, connections []Connection, scheduled *ScheduledInventoryClaim) (Snapshot, error) {
 	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.timeout)
 	defer cancel()
-	snapshot, _, err := s.repository.Finalize(cleanupCtx, owner, generation, state, retryAt, connections, s.clock().UTC())
+	var snapshot Snapshot
+	var err error
+	if scheduled != nil {
+		snapshot, _, err = s.repository.FinalizeScheduled(cleanupCtx, *scheduled, state, retryAt, connections, s.clock().UTC())
+	} else {
+		snapshot, _, err = s.repository.Finalize(cleanupCtx, owner, generation, state, retryAt, connections, s.clock().UTC())
+	}
 	return snapshot, err
 }
 
