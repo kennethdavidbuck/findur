@@ -216,6 +216,7 @@ export function PortfolioPage({ editing = false, initialInclusion, headingRef, o
             <>
               <fieldset className="account-selection" disabled={saving}>
                 <legend>{copy.inclusion.groupName}</legend>
+                <p className="selection-policy">{copy.inclusion.selectionPolicy}</p>
                 <div className="selection-guidance">
                   <p>{copy.inclusion.selectionLimit}</p>
                   <p className="selection-count" aria-live="polite">{copy.inclusion.selectedCount(selectedVisibleCount)}</p>

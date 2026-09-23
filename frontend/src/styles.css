@@ -736,6 +736,7 @@ p { line-height: 1.65; }
 .connection-success strong { color: var(--secondary); }
 .account-selection { display: grid; gap: 0; padding: 0; margin: 0; border: 0; }
 .account-selection legend { width: 100%; padding: 1.0625rem 1.125rem 0.625rem; margin: 0; font-family: var(--font-display); font-size: 1rem; font-weight: 750; }
+.selection-policy { margin: 0 1.125rem 0.9rem; padding: 0.75rem 0.875rem; border-left: 3px solid var(--accent); background: var(--surface-subtle); color: var(--text-muted); font-size: 0.8125rem; line-height: 1.45; }
 .selection-guidance { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 0.3rem 1rem; padding: 0 1.125rem 0.9rem; color: var(--text-muted); font-size: 0.75rem; }
 .selection-guidance p { margin: 0; }
 .selection-count { color: var(--text); font: 750 0.6875rem/1.35 var(--font-mono); white-space: nowrap; }

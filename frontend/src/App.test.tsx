@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 
@@ -100,7 +100,7 @@ describe('portfolio showcase', () => {
     expect(document.querySelector('.showcase-reference .coverage')).toBeInTheDocument()
     expect(document.querySelector('.showcase-reference .account-grid')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Balances table' })).toHaveClass('table-wrap')
-    expect(screen.getAllByText('This complete dataset has no recorded rows.')).toHaveLength(1)
+    expect(screen.getAllByText('This complete dataset has no recorded rows.')).toHaveLength(2)
     fireEvent.click(screen.getByRole('button', { name: 'Edit included accounts →' }))
 		await waitFor(() => expect(window.location.pathname).toBe('/portfolio/accounts'))
 	})
@@ -126,7 +126,7 @@ describe('portfolio showcase', () => {
 		expect(screen.getAllByRole('heading', { name: 'Recent activities' })).toHaveLength(2)
 		expect(screen.getAllByRole('region', { name: 'Balances table' })).toHaveLength(2)
 	})
-	it('omits an empty positions ledger while retaining cash-account balances and activities', async () => {
+	it('renders an empty positions ledger with cash-account balances and activities', async () => {
 		installShowcase({ accounts: [{
 			label: 'Cash Account (•••• 3001)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
 			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '250.00' }], positions: [], activities: [] },
@@ -137,7 +137,9 @@ describe('portfolio showcase', () => {
 		render(<App />)
 
 		await screen.findAllByText('Cash Account (•••• 3001)')
-		expect(screen.queryByRole('heading', { name: 'Positions' })).not.toBeInTheDocument()
+		const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
+		expect(positions).not.toBeNull()
+		expect(within(positions as HTMLElement).getByText('This complete dataset has no recorded rows.')).toBeVisible()
 		expect(screen.getByRole('heading', { name: 'Balances' })).toBeVisible()
 		expect(screen.getByRole('heading', { name: 'Recent activities' })).toBeVisible()
 	})
@@ -178,6 +180,9 @@ describe('portfolio showcase', () => {
 
 		expect(await screen.findByText((_, element) => element?.classList.contains('freshness') === true && element.textContent?.includes('Expired') === true)).toBeVisible()
 		expect(screen.queryByText('CAD $999,999.00')).not.toBeInTheDocument()
+		const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
+		expect(positions).not.toBeNull()
+		expect(within(positions as HTMLElement).getByText('This dataset is unavailable. Reconnect or try again later.')).toBeVisible()
 		fireEvent.click(screen.getAllByRole('button', { name: 'Reconnect' })[0])
 		await waitFor(() => expect(window.location.pathname).toBe('/connect'))
 	})
@@ -186,8 +191,16 @@ describe('portfolio showcase', () => {
     expect(await screen.findByText('No included accounts are saved.')).toBeVisible()
     cleanup(); installShowcase({ accounts: [] }, 503); render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('saved portfolio evidence')
-    cleanup(); window.localStorage.setItem('findur-locale', 'fr'); installShowcase({ accounts: [] }); render(<App />)
+    cleanup(); window.localStorage.setItem('findur-locale', 'fr'); installShowcase({ accounts: [{
+      label: 'Compte au comptant (•••• 3001)', brokerage: 'Courtier synthétique', syncMode: 'realtime',
+      balances: { context: { source: 'SnapTrade', coverage: 'compte inclus', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] },
+      positions: { context: { source: 'SnapTrade', coverage: 'compte inclus', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] },
+      activities: { context: { source: 'SnapTrade', coverage: 'compte inclus', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] },
+    }] }); render(<App />)
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Votre portefeuille' })).toBeVisible())
+    const positions = (await screen.findByRole('heading', { name: 'Positions' })).closest('section')
+    expect(positions).not.toBeNull()
+    expect(within(positions as HTMLElement).getByText('Cet ensemble complet ne contient aucune ligne enregistrée.')).toBeVisible()
   })
 })
 
@@ -540,6 +553,7 @@ describe('public site', () => {
 		expect(screen.getByText('3 · Portfolio')).toBeInTheDocument()
 		expect(screen.getByText(/Pick the accounts you’d like to include/)).toBeVisible()
 		expect(screen.getByText(/You can change this anytime/)).toBeVisible()
+		expect(screen.getByText('Findur currently supports investment accounts. Accounts that are ready to use are available to select.')).toBeVisible()
 		const status = screen.getByRole('group', { name: 'Your accounts' })
 		const account = screen.getByText('Retirement (•••• 8443)')
 		expect(status.compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
@@ -561,6 +575,7 @@ describe('public site', () => {
 		fireEvent.click(screen.getAllByRole('radio', { name: 'FR' })[0])
 		const frenchHeading = await screen.findByRole('heading', { level: 1, name: 'Choisissez ce que Findur peut utiliser.' })
 		await waitFor(() => expect(frenchHeading).toHaveFocus())
+		expect(screen.getByText('Findur prend actuellement en charge les comptes de placement. Les comptes prêts à être utilisés peuvent être sélectionnés.')).toBeVisible()
 		expect(screen.getByText(/Enregistrés dans votre profil : 0 sur 2 comptes affichés/)).toBeVisible()
 		fireEvent.click(screen.getAllByRole('radio', { name: 'Sombre' })[0])
 		await waitFor(() => expect(document.documentElement).toHaveAttribute('data-theme', 'dark'))
@@ -821,7 +836,9 @@ describe('public site', () => {
 		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
 		expect((await screen.findAllByText('Retirement (•••• 8443)')).length).toBeGreaterThan(0)
 		expect(await screen.findByText(/Some portfolio data is still syncing/)).toBeVisible()
-		expect(screen.getAllByText('This account data is still syncing.').length).toBeGreaterThan(0)
+		const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
+		expect(positions).not.toBeNull()
+		expect(within(positions as HTMLElement).getByText('This account data is still syncing.')).toBeVisible()
 	})
 
 	it('reconciles an ambiguous failed request as success when durable choices match', async () => {

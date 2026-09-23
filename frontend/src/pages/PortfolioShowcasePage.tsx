@@ -219,7 +219,7 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
                 </header>
                 <div className="dataset-list">
                   <Evidence title={text.balances} dataset={account.balances} rows={account.balances.balances} columns={columns.balances} locale={locale} onReconnect={onReconnect} preparing={preparing} />
-                  {shouldShowPositions(account.positions) && <Evidence title={text.positions} dataset={account.positions} rows={account.positions.positions} columns={columns.positions} locale={locale} onReconnect={onReconnect} preparing={preparing} />}
+                  <Evidence title={text.positions} dataset={account.positions} rows={account.positions.positions} columns={columns.positions} locale={locale} onReconnect={onReconnect} preparing={preparing} />
                   <Evidence title={text.activities} dataset={account.activities} rows={account.activities.activities} columns={columns.activities} locale={locale} onReconnect={onReconnect} preparing={preparing} activity />
                 </div>
               </section>
@@ -228,10 +228,6 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
         </>}
     </section>
   </div>
-}
-
-function shouldShowPositions(dataset: Dataset) {
-  return dataset.positions.length > 0
 }
 
 function BalanceSummary({ dataset, locale, preparing }: { dataset: Dataset; locale: Locale; preparing: boolean }) {
