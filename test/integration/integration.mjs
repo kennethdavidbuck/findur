@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { verifyBrowserOAuth } from './browser-oauth.mjs'
 import { verifyBrowserSession } from './browser-session.mjs'
 import { verifyBrowserStatus } from './browser-status.mjs'
+import { installFindurFailureScenario } from './diagnostic-scenarios.mjs'
 
 const base = process.env.BASE_URL
 const expectedSha = process.env.EXPECTED_SHA
@@ -14,6 +15,22 @@ const request = (path, init = {}) => fetch(`${base}${path}`, {
 
 const resetJournal = await fetch(`${wiremock}/__admin/requests`, { method: 'DELETE', signal: AbortSignal.timeout(15_000) })
 assert.ok(resetJournal.ok, 'WireMock request journal reset for this run')
+
+for (const [path, message] of [
+  ['/accounts/b0000000-0000-4000-8000-000000000001/positions/all', 'positions refresh failure'],
+  ['/accounts/b0000000-0000-4000-8000-000000000003/activities', 'activities provider unavailable'],
+  ['/accounts/b0000000-0000-4000-8000-000000000004/balances', 'balances refresh failure'],
+]) {
+  const response = await fetch(`${wiremock}${path}`, { headers: { Authorization: 'Bearer synthetic-access-token' } })
+  assert.equal(response.status, 503, `the default ${message} account truthfully triggers its named failure`)
+}
+
+const scenarioAccountID = '03867fbb-41b4-4a05-8815-c96f94f8ba6b'
+const scenarioMappingID = await installFindurFailureScenario(wiremock, { accountID: scenarioAccountID, resource: 'activities' })
+const scenarioPath = `/accounts/${scenarioAccountID}/activities`
+const degradedScenario = await fetch(`${wiremock}${scenarioPath}`, { headers: { Authorization: 'Bearer synthetic-access-token' } })
+assert.equal(degradedScenario.status, 503, 'the temporary activities-refresh failure is deterministic')
+assert.ok((await fetch(`${wiremock}/__admin/requests`, { method: 'DELETE', signal: AbortSignal.timeout(15_000) })).ok, 'diagnostic scenario requests are isolated from the contract journal')
 
 const health = await request('/api/healthz')
 assert.equal(health.status, 200)
@@ -123,7 +140,12 @@ assert.equal(
 
 await verifyBrowserStatus({ browserUrl: browser, publicOrigin: base, expectedSha })
 await verifyBrowserOAuth({ browserUrl: browser, oauthOrigin: 'http://127.0.0.1:8080' })
-await verifyBrowserSession({ browserUrl: browser, publicOrigin: 'http://127.0.0.1:8080', wiremockUrl: wiremock })
+await verifyBrowserSession({
+  browserUrl: browser,
+  publicOrigin: 'http://127.0.0.1:8080',
+  wiremockUrl: wiremock,
+  diagnosticScenario: { accountID: scenarioAccountID, resource: 'activities', mappingID: scenarioMappingID },
+})
 
 const journal = await (await fetch(`${wiremock}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
 const inventoryEvents = journal.requests
@@ -145,6 +167,7 @@ const accountDataRequests = journal.requests
 assert.deepEqual(
   accountDataRequests.map(({ url }) => new URL(url, 'http://wiremock').pathname).sort(),
   [
+    '/accounts/03867fbb-41b4-4a05-8815-c96f94f8ba6b/activities',
     '/accounts/03867fbb-41b4-4a05-8815-c96f94f8ba6b/activities',
     '/accounts/03867fbb-41b4-4a05-8815-c96f94f8ba6b/balances',
     '/accounts/03867fbb-41b4-4a05-8815-c96f94f8ba6b/positions/all',

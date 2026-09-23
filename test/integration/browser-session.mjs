@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { withWebDriverSession } from './webdriver.mjs'
 import { exerciseLargeInventory } from './browser-large-inventory.mjs'
+import { removeDiagnosticScenario } from './diagnostic-scenarios.mjs'
 
 async function establishSession(webdriver, sessionId, origin) {
   await webdriver(`/session/${sessionId}/url`, {
@@ -120,7 +121,7 @@ async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
   }
 }
 
-async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCommitted) {
+async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, diagnosticScenario, onCommitted) {
   let inventory
   for (let attempt = 0; attempt < 40; attempt += 1) {
     inventory = await webdriver(`/session/${sessionId}/execute/async`, {
@@ -154,18 +155,18 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCom
   for (let attempt = 0; attempt < 40; attempt += 1) {
     chooserReady = await webdriver(`/session/${sessionId}/execute/sync`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: `const text=document.body.innerText;const steps=document.querySelectorAll('.setup-progress li');return document.querySelector('h1')?.innerText==='Choose what Findur may use.'&&steps.length===3&&getComputedStyle(steps[0],'::after').borderLeftWidth==='1px'&&getComputedStyle(steps[2],'::after').borderLeftWidth==='0px'&&text.includes('Individual')&&text.includes('IRA')&&text.includes('Cash Account')`, args: [] }),
+      body: JSON.stringify({ script: `const text=document.body.innerText;const steps=document.querySelectorAll('.setup-progress li');return document.querySelector('h1')?.innerText==='Choose what Findur may use.'&&steps.length===3&&getComputedStyle(steps[0],'::after').borderLeftWidth==='1px'&&getComputedStyle(steps[2],'::after').borderLeftWidth==='0px'&&['Healthy Realtime — Full Data','Delayed Account — Empty Positions','Cash Only — No Positions','Positions — Refresh Failed','Balances — Initial Sync Pending','Activities — Provider Temporarily Unavailable','Unsupported Account Type','Connection Repair Required','Unavailable because Findur supports investment accounts only','This connection needs attention'].every(value=>text.includes(value))`, args: [] }),
     })
     if (chooserReady) break
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
-  assert.equal(chooserReady, true, 'account chooser is ready with the three-step initial progress rail')
+  assert.equal(chooserReady, true, 'account chooser renders the healthy and degraded mixed-state demo')
 
   const selected = await webdriver(`/session/${sessionId}/execute/sync`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ script: `const input=document.querySelector('.select-all input[type="checkbox"]');input?.click();return Boolean(input)`, args: [] }),
+    body: JSON.stringify({ script: `const labels=['Healthy Realtime — Full Data','Delayed Account — Empty Positions','Cash Only — No Positions'];const inputs=[...document.querySelectorAll('.account-choice')].filter(value=>labels.some(label=>value.innerText.includes(label))).map(value=>value.querySelector('input[type="checkbox"]'));inputs.forEach(input=>input?.click());return inputs.length`, args: [] }),
   })
-  assert.equal(selected, true, 'all three default synthetic accounts can be selected')
+  assert.equal(selected, 3, 'the three rich default accounts can be selected without selecting every demo account')
   let reviewOpened = false
   for (let attempt = 0; attempt < 30; attempt += 1) {
     reviewOpened = await webdriver(`/session/${sessionId}/execute/sync`, {
@@ -186,23 +187,73 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCom
   for (let attempt = 0; attempt < 40; attempt += 1) {
     preparingState = await webdriver(`/session/${sessionId}/execute/sync`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: `const text=document.body.innerText;return {path:location.pathname,accounts:document.querySelectorAll('.account h2').length,syncing:text.includes('Some portfolio data is still syncing')}`, args: [] }),
+      body: JSON.stringify({ script: `const text=document.body.innerText;return {path:location.pathname,accounts:document.querySelectorAll('.account h2').length,syncing:text.includes('Some portfolio data is still syncing'),unknown:text.includes('Findur could not determine why this data is unavailable')}`, args: [] }),
     })
     if (preparingState.path === '/portfolio' && preparingState.accounts === 3 && preparingState.syncing) break
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
-  assert.deepEqual(preparingState, { path: '/portfolio', accounts: 3, syncing: true }, 'saved accounts render immediately while their first datasets sync')
+  assert.deepEqual(preparingState, { path: '/portfolio', accounts: 3, syncing: true, unknown: false }, 'saved accounts render immediately with a friendly sync-pending diagnostic')
+
+  let degraded
+  for (let attempt = 0; attempt < 360; attempt += 1) {
+    degraded = await webdriver(`/session/${sessionId}/execute/async`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/portfolio/showcase',{credentials:'same-origin',cache:'no-store'}).then(async response=>done({status:response.status,body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+    })
+    const account = degraded?.body?.accounts?.find(({ label }) => label.startsWith('Healthy Realtime — Full Data'))
+    if (account?.activities?.context?.diagnostic?.reason === 'provider_unavailable') break
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  const degradedAccount = degraded?.body?.accounts?.find(({ label }) => label.startsWith('Healthy Realtime — Full Data'))
+  assert.equal(degraded?.status, 200, `degraded Showcase remains readable: ${JSON.stringify(degraded)}`)
+  assert.equal(degradedAccount?.activities?.context?.diagnostic?.reason, 'provider_unavailable', 'the worker persists the temporary activities failure')
+  assert.equal(degradedAccount?.activities?.context?.diagnostic?.recommendedAction, 'retry')
+  assert.ok(degradedAccount?.balances?.balances?.length > 0, 'successful balance evidence remains visible during the resource failure')
+  assert.ok(degradedAccount?.positions?.positions?.length > 0, 'successful position evidence remains visible during the resource failure')
+  assert.equal(degradedAccount?.balances?.context?.diagnostic, undefined, 'the balance resource remains healthy')
+  assert.equal(degradedAccount?.positions?.context?.diagnostic, undefined, 'the positions resource remains healthy')
+
+  await webdriver(`/session/${sessionId}/refresh`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+  let degradedReloaded = false
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    degradedReloaded = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const text=document.body.innerText;return location.pathname==='/portfolio'&&text.includes('This data could not be refreshed')&&text.includes('FDR')`, args: [] }),
+    })
+    if (degradedReloaded) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(degradedReloaded, true, 'the retained evidence and resource diagnostic survive a browser reload')
+
+  await removeDiagnosticScenario(wiremockUrl, diagnosticScenario.mappingID)
+
+  let recovered
+  for (let attempt = 0; attempt < 720; attempt += 1) {
+    recovered = await webdriver(`/session/${sessionId}/execute/async`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/portfolio/showcase',{credentials:'same-origin',cache:'no-store'}).then(async response=>done({status:response.status,body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+    })
+    const account = recovered?.body?.accounts?.find(({ label }) => label.startsWith('Healthy Realtime — Full Data'))
+    if (account?.activities?.activities?.length > 0 && account.activities.context.diagnostic === undefined) break
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  const recoveredAccount = recovered?.body?.accounts?.find(({ label }) => label.startsWith('Healthy Realtime — Full Data'))
+  assert.equal(recoveredAccount?.activities?.context?.diagnostic, undefined, 'the recovered resource diagnostic clears')
+  assert.equal(recoveredAccount?.balances?.context?.diagnostic, undefined, 'recovery does not invent a balance diagnostic')
+  assert.equal(recoveredAccount?.positions?.context?.diagnostic, undefined, 'recovery does not invent a positions diagnostic')
+  assert.deepEqual(recoveredAccount?.balances?.balances, degradedAccount?.balances?.balances, 'retained balances remain unchanged through recovery')
+  assert.deepEqual(recoveredAccount?.positions?.positions, degradedAccount?.positions?.positions, 'retained positions remain unchanged through recovery')
 
   let showcaseState
   for (let attempt = 0; attempt < 360; attempt += 1) {
     showcaseState = await webdriver(`/session/${sessionId}/execute/sync`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: `const text=document.body.innerText;const accounts=[...document.querySelectorAll('.account h2')].map(value=>value.innerText);return {path:location.pathname,heading:document.querySelector('h1')?.innerText,focused:document.activeElement===document.querySelector('h1'),accounts:accounts.length===3&&['Individual','IRA','Cash Account'].every(name=>accounts.some(value=>value.includes(name))),tables:document.querySelectorAll('.table-wrap').length,activity:text.includes('BUY'),mvpNav:[...document.querySelectorAll('.authenticated-nav a')].map(value=>value.innerText).join('|')}`, args: [] }),
+      body: JSON.stringify({ script: `const text=document.body.innerText;const accounts=[...document.querySelectorAll('.account h2')].map(value=>value.innerText);return {path:location.pathname,heading:document.querySelector('h1')?.innerText,focused:document.activeElement===document.querySelector('h1'),accounts:accounts.length===3&&['Healthy Realtime — Full Data','Delayed Account — Empty Positions','Cash Only — No Positions'].every(name=>accounts.some(value=>value.includes(name))),tables:document.querySelectorAll('.table-wrap').length,activity:text.includes('BUY'),expired:text.includes('has expired'),unknown:text.includes('could not determine why'),mvpNav:[...document.querySelectorAll('.authenticated-nav a')].map(value=>value.innerText).join('|')}`, args: [] }),
     })
     if (showcaseState.path === '/portfolio' && showcaseState.accounts && showcaseState.tables === 5 && showcaseState.activity) break
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
-  assert.deepEqual(showcaseState, { path: '/portfolio', heading: 'Your portfolio', focused: true, accounts: true, tables: 5, activity: true, mvpNav: 'Portfolio|Profile' }, 'the worker completes the Portfolio Showcase and renders the synthetic transaction')
+  assert.deepEqual(showcaseState, { path: '/portfolio', heading: 'Your portfolio', focused: true, accounts: true, tables: 5, activity: true, expired: false, unknown: false, mvpNav: 'Portfolio|Profile' }, 'the worker completes the Portfolio Showcase with current synthetic data and no unknown diagnostic')
 
   let inclusionState
   for (let attempt = 0; attempt < 360; attempt += 1) {
@@ -223,17 +274,17 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, onCom
   assert.equal(showcase.status, 200)
   assert.equal(showcase.cache, 'private, no-store')
   assert.equal(showcase.body.accounts.length, 3)
-  const individual = showcase.body.accounts.find(({ label }) => label.startsWith('Individual'))
-  const ira = showcase.body.accounts.find(({ label }) => label.startsWith('IRA'))
-  const cash = showcase.body.accounts.find(({ label }) => label.startsWith('Cash Account'))
+  const individual = showcase.body.accounts.find(({ label }) => label.startsWith('Healthy Realtime — Full Data'))
+  const ira = showcase.body.accounts.find(({ label }) => label.startsWith('Delayed Account — Empty Positions'))
+  const cash = showcase.body.accounts.find(({ label }) => label.startsWith('Cash Only — No Positions'))
   assert.equal(individual?.balances.balances[0].cash, '25000', 'the self-directed cash balance survives the full stack')
   assert.equal(individual?.balances.balances[0].buyingPower, '50000', 'the supplied buying power survives the full stack')
   assert.equal(individual?.positions.positions[0].units, '10.50000001', 'exact position precision survives the full stack')
   assert.equal(individual?.activities.activities[0].amount, '-123.45', 'bounded activities reach the Showcase')
-  assert.equal(ira?.balances.balances[0].cash, '12500', 'the IRA synthetic is fully selectable')
-  assert.deepEqual(ira?.positions.positions, [], 'the IRA empty positions dataset remains complete')
-  assert.equal(cash?.balances.balances[0].cash, '5000', 'the Cash Account synthetic is fully selectable')
-  assert.deepEqual(cash?.activities.activities, [], 'the Cash Account empty activities dataset remains complete')
+  assert.equal(ira?.balances.balances[0].cash, '12500', 'the delayed empty-positions synthetic is fully selectable')
+  assert.deepEqual(ira?.positions.positions, [], 'the delayed account empty positions dataset remains complete')
+  assert.equal(cash?.balances.balances[0].cash, '5000', 'the cash-only synthetic is fully selectable')
+  assert.deepEqual(cash?.activities.activities, [], 'the cash-only empty activities dataset remains complete')
   assert.doesNotMatch(JSON.stringify(showcase.body), /03867fbb|7e7dcb86|50bb0405|synthetic-access-token/, 'Showcase response omits IDs, raw payload fields, and credentials')
 
   const requestsBeforeReload = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
@@ -462,7 +513,7 @@ async function waitForProfileValue(webdriver, sessionId, displayName) {
   return state
 }
 
-export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockUrl }) {
+export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockUrl, diagnosticScenario }) {
   await withWebDriverSession(browserUrl, async (first) => {
     await establishSession(first.webdriver, first.sessionId, publicOrigin)
     await verifyIncompleteActiveSessionBypassesConsent(first.webdriver, first.sessionId, publicOrigin)
@@ -524,7 +575,7 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script: `return getComputedStyle(document.querySelector('.authenticated-header')).position`, args: [] }),
       })
       assert.equal(desktopHeader, 'sticky', 'desktop authenticated header remains visible above the fixed rail')
-      await exerciseAccountInclusion(second.webdriver, second.sessionId, wiremockUrl, async () => {
+      await exerciseAccountInclusion(second.webdriver, second.sessionId, wiremockUrl, diagnosticScenario, async () => {
         await verifyCompletedActiveSessionBypassesConsent(second.webdriver, second.sessionId, publicOrigin)
       })
       await exercisePersonalProfile(second.webdriver, second.sessionId, publicOrigin)

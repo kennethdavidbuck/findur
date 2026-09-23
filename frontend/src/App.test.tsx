@@ -10,14 +10,15 @@ const emptyInventory = () => new Response(JSON.stringify({
 
 const jsonResponseBody = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
 const emptyShowcase = () => ({ accounts: [] })
+const syncPendingDiagnostic = { reason: 'sync_pending', recommendedAction: 'wait' }
 const preparingShowcase = (label = 'Retirement (•••• 8443)') => ({
 	accounts: [{
 		label,
 		brokerage: 'Synthetic Broker',
 		syncMode: 'realtime',
-		balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: '', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
-		positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: '', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
-		activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 accumulated activities', currency: '', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
+		balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: '', freshness: 'unavailable', diagnostic: syncPendingDiagnostic }, balances: [], positions: [], activities: [] },
+		positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: '', freshness: 'unavailable', diagnostic: syncPendingDiagnostic }, balances: [], positions: [], activities: [] },
+		activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 accumulated activities', currency: '', freshness: 'unavailable', diagnostic: syncPendingDiagnostic }, balances: [], positions: [], activities: [] },
 	}],
 })
 
@@ -94,13 +95,16 @@ describe('portfolio showcase', () => {
     render(<App />)
     expect((await screen.findAllByText('Retirement (•••• 8443)'))[0].textContent).toBe('Retirement (•••• 8443)')
     expect(screen.getAllByText('CAD $1,234.50').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Currencies stay separate')).not.toBeInTheDocument()
+    expect(screen.getByText(/Currencies are never silently combined/)).toBeVisible()
     // These dedicated regions remain stacked at the 375 px / 400% reflow breakpoint;
     // only the bounded evidence table is permitted to provide horizontal scrolling.
     expect(document.querySelector('.showcase-reference .topline')).toBeInTheDocument()
     expect(document.querySelector('.showcase-reference .coverage')).toBeInTheDocument()
     expect(document.querySelector('.showcase-reference .account-grid')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Balances table' })).toHaveClass('table-wrap')
-    expect(screen.getAllByText('This complete dataset has no recorded rows.')).toHaveLength(2)
+    expect(screen.getByText('No positions were reported.')).toBeVisible()
+    expect(screen.getByText('No recent activity was reported.')).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Edit included accounts →' }))
 		await waitFor(() => expect(window.location.pathname).toBe('/portfolio/accounts'))
 	})
@@ -139,7 +143,7 @@ describe('portfolio showcase', () => {
 		await screen.findAllByText('Cash Account (•••• 3001)')
 		const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
 		expect(positions).not.toBeNull()
-		expect(within(positions as HTMLElement).getByText('This complete dataset has no recorded rows.')).toBeVisible()
+		expect(within(positions as HTMLElement).getByText('No positions were reported.')).toBeVisible()
 		expect(screen.getByRole('heading', { name: 'Balances' })).toBeVisible()
 		expect(screen.getByRole('heading', { name: 'Recent activities' })).toBeVisible()
 	})
@@ -168,12 +172,120 @@ describe('portfolio showcase', () => {
 		resolveReload(jsonResponseBody(preparingShowcase()))
 		await waitFor(() => expect(checkAgain).not.toBeDisabled())
 	})
+	it('renders one reason-correct recovery action for repeated dataset diagnostics', async () => {
+		installShowcase(preparingShowcase())
+		render(<App />)
+
+		await screen.findByRole('button', { name: /Check again/ })
+		expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+		expect(screen.getAllByRole('button', { name: /Check again/ })).toHaveLength(1)
+		expect(document.querySelector('.showcase-preparing')).toBeInTheDocument()
+		expect(screen.queryByText('This data is still syncing.')).not.toBeInTheDocument()
+		expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+		cleanup()
+		const authorization = { reason: 'authorization_required', recommendedAction: 'reconnect' }
+		const data = preparingShowcase()
+		for (const dataset of [data.accounts[0].balances, data.accounts[0].positions, data.accounts[0].activities]) dataset.context.diagnostic = authorization
+		installShowcase(data)
+		render(<App />)
+		await screen.findByRole('button', { name: 'Reconnect' })
+		expect(screen.getAllByRole('button', { name: 'Reconnect' })).toHaveLength(1)
+		expect(screen.queryByRole('button', { name: /Check again/ })).not.toBeInTheDocument()
+
+		cleanup()
+		const transient = { reason: 'provider_unavailable', recommendedAction: 'retry' }
+		const transientData = preparingShowcase()
+		for (const dataset of [transientData.accounts[0].balances, transientData.accounts[0].positions, transientData.accounts[0].activities]) dataset.context.diagnostic = transient
+		installShowcase(transientData)
+		render(<App />)
+		await screen.findAllByText('This data could not be refreshed. Saved values remain visible when safe.')
+		expect(screen.queryByRole('button', { name: /Check again/ })).not.toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: /Retry|Try again/ })).not.toBeInTheDocument()
+		expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+	})
+	it('refreshes persisted diagnostics without moving focus or scroll to the heading', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		let showcaseCalls = 0
+		const data = preparingShowcase()
+		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => {
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/portfolio/showcase') {
+				showcaseCalls += 1
+				return Promise.resolve(jsonResponseBody(data))
+			}
+			return Promise.resolve(new Response(null, { status: 404 }))
+		}))
+		render(<App />)
+
+		const check = await screen.findByRole('button', { name: /Check again/ })
+		const heading = screen.getByRole('heading', { name: 'Your portfolio' })
+		await waitFor(() => expect(heading).toHaveFocus())
+		Object.defineProperty(window, 'scrollY', { configurable: true, value: 240 })
+		check.focus()
+		fireEvent.click(check)
+		await waitFor(() => expect(showcaseCalls).toBe(2))
+		expect(check).toHaveFocus()
+		expect(heading).not.toHaveFocus()
+		expect(window.scrollY).toBe(240)
+	})
+	it('restores heading focus without scrolling after a failed check recovers', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		let showcaseCalls = 0
+		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string, init?: RequestInit) => {
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/portfolio/showcase') {
+				showcaseCalls += 1
+				return Promise.resolve(showcaseCalls === 2 ? new Response(null, { status: 503 }) : jsonResponseBody(preparingShowcase()))
+			}
+			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 1, committed: ['account-1'], change: { id: 'change', status: 'pending', additions: ['account-1'], removals: [] } }))
+			return Promise.resolve(new Response(null, { status: 404 }))
+		}))
+		render(<App />)
+
+		const check = await screen.findByRole('button', { name: /Check again/ })
+		const heading = screen.getByRole('heading', { name: 'Your portfolio' })
+		await waitFor(() => expect(heading).toHaveFocus())
+		Object.defineProperty(window, 'scrollY', { configurable: true, value: 240 })
+		check.focus()
+		fireEvent.click(check)
+		const retry = await screen.findByRole('button', { name: 'Try again' })
+		retry.focus()
+		fireEvent.click(retry)
+
+		await waitFor(() => expect(screen.getByRole('heading', { name: 'Your portfolio' })).toHaveFocus())
+		expect(window.scrollY).toBe(240)
+		expect(showcaseCalls).toBe(3)
+	})
+	it('keeps retained rows and passive retry timing visible during a transient diagnostic', async () => {
+		const lastSuccessfulAt = '2026-09-22T12:00:00Z'
+		const retryAt = '2026-09-23T12:15:00Z'
+		installShowcase({ accounts: [{
+			label: 'Retained account (•••• 5001)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
+			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current' }, balances: [{ currency: 'CAD', cash: '100.00' }], positions: [], activities: [] },
+			positions: {
+				context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'stale_usable', diagnostic: { reason: 'provider_unavailable', recommendedAction: 'retry', lastSuccessfulAt, retryAt } },
+				balances: [], positions: [{ symbol: 'FND', kind: 'equity', currency: 'CAD', units: '2.0' }], activities: [],
+			},
+			activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] },
+		}] })
+		render(<App />)
+
+		const positions = (await screen.findByRole('heading', { name: 'Positions' })).closest('section') as HTMLElement
+		expect(within(positions).getByText('FND')).toBeVisible()
+		expect(within(positions).getByText('This data could not be refreshed. Saved values remain visible when safe.')).toBeVisible()
+		expect(within(positions).getByText(new Date(lastSuccessfulAt).toLocaleString('en-CA'))).toBeVisible()
+		expect(within(positions).getByText(new Date(retryAt).toLocaleString('en-CA'))).toBeVisible()
+		expect(within(positions).queryByRole('status')).not.toBeInTheDocument()
+		expect(within(positions).queryByRole('alert')).not.toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: /Retry|Try again|Check again/ })).not.toBeInTheDocument()
+	})
 	it('hides expired facts and offers a safe reconnect action', async () => {
 		installShowcase({ accounts: [{
 			label: 'Expired account (•••• 9000)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
 			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'expired', observedAt: '2026-09-01T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '999999.00' }], positions: [], activities: [] },
-			positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
-			activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'unavailable' }, balances: [], positions: [], activities: [] },
+			positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'unavailable', diagnostic: { reason: 'authorization_required', recommendedAction: 'reconnect' } }, balances: [], positions: [], activities: [] },
+			activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'unavailable', diagnostic: { reason: 'authorization_required', recommendedAction: 'reconnect' } }, balances: [], positions: [], activities: [] },
 		}] })
 
 		render(<App />)
@@ -182,7 +294,7 @@ describe('portfolio showcase', () => {
 		expect(screen.queryByText('CAD $999,999.00')).not.toBeInTheDocument()
 		const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
 		expect(positions).not.toBeNull()
-		expect(within(positions as HTMLElement).getByText('This dataset is unavailable. Reconnect or try again later.')).toBeVisible()
+		expect(within(positions as HTMLElement).getByText('Authorization must be renewed for this data.')).toBeVisible()
 		fireEvent.click(screen.getAllByRole('button', { name: 'Reconnect' })[0])
 		await waitFor(() => expect(window.location.pathname).toBe('/connect'))
 	})
@@ -200,8 +312,30 @@ describe('portfolio showcase', () => {
     await waitFor(() => expect(screen.getByRole('heading', { name: 'Votre portefeuille' })).toBeVisible())
     const positions = (await screen.findByRole('heading', { name: 'Positions' })).closest('section')
     expect(positions).not.toBeNull()
-    expect(within(positions as HTMLElement).getByText('Cet ensemble complet ne contient aucune ligne enregistrée.')).toBeVisible()
+    expect(within(positions as HTMLElement).getByText('Aucune position n’a été déclarée.')).toBeVisible()
   })
+	it('uses truthful balance summary copy for pending, successful empty, and failed refresh states', async () => {
+		const base = preparingShowcase()
+		installShowcase(base)
+		render(<App />)
+		expect(await screen.findByText('Balance information is still syncing.')).toBeVisible()
+
+		cleanup()
+		const empty = preparingShowcase()
+		const emptyBalanceContext = empty.accounts[0].balances.context as { source: string; coverage: string; currency: string; freshness: string; diagnostic?: typeof syncPendingDiagnostic }
+		delete emptyBalanceContext.diagnostic
+		emptyBalanceContext.freshness = 'current'
+		installShowcase(empty)
+		render(<App />)
+		expect((await screen.findAllByText('No balance information is available.')).length).toBeGreaterThan(0)
+
+		cleanup()
+		const failed = preparingShowcase()
+		failed.accounts[0].balances.context.diagnostic = { reason: 'provider_unavailable', recommendedAction: 'retry' }
+		installShowcase(failed)
+		render(<App />)
+		expect(await screen.findByText('Balance information couldn’t be refreshed.')).toBeVisible()
+	})
 })
 
 afterEach(() => {
@@ -775,7 +909,7 @@ describe('public site', () => {
 		fireEvent.click(pendingChoice)
 		expect(screen.getByText('1 of 5 selected')).toBeVisible()
 		const retry = screen.getByRole('button', { name: 'Review my choices' })
-		expect(screen.getByText('Finishing your update…')).toBeVisible()
+		expect(screen.getByText('Sync in progress')).toBeVisible()
 		fireEvent.click(retry)
 		expect(screen.getByRole('dialog', { name: 'Ready to save your choices?' })).toBeVisible()
 		fireEvent.click(screen.getByRole('button', { name: 'Save my choices' }))
@@ -838,7 +972,7 @@ describe('public site', () => {
 		expect(await screen.findByText(/Some portfolio data is still syncing/)).toBeVisible()
 		const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
 		expect(positions).not.toBeNull()
-		expect(within(positions as HTMLElement).getByText('This account data is still syncing.')).toBeVisible()
+		expect(within(positions as HTMLElement).getByText(/Syncing/)).toBeVisible()
 	})
 
 	it('reconciles an ambiguous failed request as success when durable choices match', async () => {
@@ -1027,6 +1161,49 @@ describe('public site', () => {
 
 		expect(await screen.findByRole('checkbox', { name: /^Select up to 5 accounts/ })).toBeDisabled()
 		expect(screen.getByRole('checkbox', { name: /Daily cash/ })).toBeDisabled()
+	})
+
+	it('orders selectable accounts first and sorts labels within each availability group', async () => {
+		window.history.replaceState(null, '', '/onboarding/accounts')
+		const inventory = inclusionInventory([
+			inclusionAccount('unavailable-b', 'Beta unavailable', false, 'unsupported_category', 'deposit'),
+			inclusionAccount('selectable-z', 'Zulu selectable', true, 'ready'),
+			inclusionAccount('unavailable-a', 'Alpha unavailable', false, 'connection_disabled'),
+			inclusionAccount('selectable-a', 'Able selectable', true, 'ready'),
+		])
+		installInclusionFetch(inventory, { version: 0, committed: [] })
+		render(<App />)
+
+		await screen.findByRole('checkbox', { name: /Able selectable/ })
+		expect([...document.querySelectorAll('.account-choice strong')].map((node) => node.textContent)).toEqual([
+			'Able selectable',
+			'Zulu selectable',
+			'Alpha unavailable',
+			'Beta unavailable',
+		])
+		expect(screen.getByRole('checkbox', { name: /Alpha unavailable/ })).toBeDisabled()
+		expect(screen.getByText('This connection needs attention.')).toBeVisible()
+	})
+
+	it('uses French collation and account IDs to stabilize equivalent labels', async () => {
+		window.localStorage.setItem('findur-locale', 'fr')
+		window.history.replaceState(null, '', '/onboarding/accounts')
+		const inventory = inclusionInventory([
+			inclusionAccount('equivalent-z', 'Côte', true, 'ready'),
+			inclusionAccount('savings-10', 'Épargne 10', true, 'ready'),
+			inclusionAccount('equivalent-a', 'cote', true, 'ready'),
+			inclusionAccount('savings-2', 'Épargne 2', true, 'ready'),
+		])
+		installInclusionFetch(inventory, { version: 0, committed: [] })
+		render(<App />)
+
+		await screen.findByRole('checkbox', { name: /Épargne 2/ })
+		expect([...document.querySelectorAll('.account-choice strong')].map((node) => node.textContent)).toEqual([
+			'cote',
+			'Côte',
+			'Épargne 2',
+			'Épargne 10',
+		])
 	})
 
 	it('keeps a durable failure visible when filtering leaves the chooser with no rows', async () => {

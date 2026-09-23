@@ -15,7 +15,12 @@ import (
 // SyncRepository owns durable account refresh claims and guarded publication.
 type SyncRepository struct{ pool *pgxpool.Pool }
 
-const maxSyncRetryExponent = 5
+const (
+	maxSyncRetryExponent           = 5
+	syncFailureAuthorization       = "authorization_required"
+	syncFailureRateLimited         = "rate_limited"
+	syncFailureProviderUnavailable = "provider_unavailable"
+)
 
 // NewSyncRepository constructs a PostgreSQL synchronization repository.
 func NewSyncRepository(pool *pgxpool.Pool) *SyncRepository { return &SyncRepository{pool: pool} }
@@ -234,7 +239,7 @@ func (r *SyncRepository) FinishSync(ctx context.Context, claim portfolio.SyncCla
 	case !guarded:
 		err = clearSyncClaim(ctx, tx, claim, now)
 	case failure != "":
-		err = scheduleSyncRetry(ctx, tx, claim, guard.failureCount, providerRetryAt, now)
+		err = scheduleSyncRetry(ctx, tx, claim, guard.failureCount, failure, providerRetryAt, now)
 	default:
 		err = publishScheduledSync(ctx, tx, claim, *data, now)
 	}
@@ -324,15 +329,57 @@ func clearSyncClaim(ctx context.Context, tx pgx.Tx, claim portfolio.SyncClaim, n
 	return err
 }
 
-func scheduleSyncRetry(ctx context.Context, tx pgx.Tx, claim portfolio.SyncClaim, failures int, providerRetryAt *time.Time, now time.Time) error {
+func scheduleSyncRetry(ctx context.Context, tx pgx.Tx, claim portfolio.SyncClaim, failures int, failure string, providerRetryAt *time.Time, now time.Time) error {
 	retryAt := now.Add(time.Minute << min(failures, maxSyncRetryExponent))
 	if providerRetryAt != nil && providerRetryAt.After(retryAt) {
 		retryAt = *providerRetryAt
 	}
-	_, err := tx.Exec(ctx, `UPDATE portfolio_account_sync_state SET failure_count=failure_count+1,
-		next_attempt_at=$3,claim_id=NULL,claim_expires_at=NULL,claimed_resource=NULL,claimed_change_id=NULL,updated_at=$4
-		WHERE user_id=$1 AND account_id=$2 AND claim_id=$5`, claim.Owner, claim.AccountID, retryAt, now, claim.ID)
+	reasonColumn, actionColumn, retryColumn, err := diagnosticColumns(claim.Resource)
+	if err != nil {
+		return err
+	}
+	reason := syncFailureDiagnosticReason(failure)
+	action := syncFailureDiagnosticAction(failure)
+	_, err = tx.Exec(ctx, `UPDATE portfolio_account_sync_state SET failure_count=failure_count+1,
+		next_attempt_at=$3,`+reasonColumn+`=$6,`+actionColumn+`=$7,`+retryColumn+`=$3,
+		claim_id=NULL,claim_expires_at=NULL,claimed_resource=NULL,claimed_change_id=NULL,updated_at=$4
+		WHERE user_id=$1 AND account_id=$2 AND claim_id=$5`, claim.Owner, claim.AccountID, retryAt, now, claim.ID, reason, action)
 	return err
+}
+
+func syncFailureDiagnosticReason(failure string) portfolio.ResourceDiagnosticReason {
+	switch failure {
+	case syncFailureAuthorization:
+		return portfolio.DiagnosticAuthorizationRequired
+	case syncFailureRateLimited, syncFailureProviderUnavailable:
+		return portfolio.DiagnosticProviderUnavailable
+	default:
+		return portfolio.DiagnosticUnknown
+	}
+}
+
+func syncFailureDiagnosticAction(failure string) portfolio.ResourceDiagnosticAction {
+	switch failure {
+	case syncFailureAuthorization:
+		return portfolio.DiagnosticActionReconnect
+	case syncFailureRateLimited:
+		return portfolio.DiagnosticActionWait
+	default:
+		return portfolio.DiagnosticActionRetry
+	}
+}
+
+func diagnosticColumns(resource portfolio.AccountResource) (string, string, string, error) {
+	switch resource {
+	case portfolio.AccountResourceBalances:
+		return "balances_failure_reason", "balances_failure_action", "balances_retry_at", nil
+	case portfolio.AccountResourcePositions:
+		return "positions_failure_reason", "positions_failure_action", "positions_retry_at", nil
+	case portfolio.AccountResourceActivities:
+		return "activities_failure_reason", "activities_failure_action", "activities_retry_at", nil
+	default:
+		return "", "", "", errors.New("unsupported portfolio sync resource")
+	}
 }
 
 func publishScheduledSync(ctx context.Context, tx pgx.Tx, claim portfolio.SyncClaim, data portfolio.AccountData, now time.Time) error {
@@ -373,7 +420,11 @@ func checkpointSyncResource(ctx context.Context, tx pgx.Tx, claim portfolio.Sync
 	default:
 		return errors.New("unsupported portfolio sync resource")
 	}
-	_, err := tx.Exec(ctx, `UPDATE portfolio_account_sync_state SET `+column+`=$3,
+	reasonColumn, actionColumn, retryColumn, err := diagnosticColumns(claim.Resource)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `UPDATE portfolio_account_sync_state SET `+column+`=$3,
 		last_success_at=CASE WHEN
 			(CASE WHEN $4='balances' THEN $3 ELSE balances_success_at END)>COALESCE(last_success_at,'-infinity') AND
 			(CASE WHEN $4='positions' THEN $3 ELSE positions_success_at END)>COALESCE(last_success_at,'-infinity') AND
@@ -384,6 +435,7 @@ func checkpointSyncResource(ctx context.Context, tx pgx.Tx, claim portfolio.Sync
 			(CASE WHEN $4='positions' THEN $3 ELSE positions_success_at END)>COALESCE(last_success_at,'-infinity') AND
 			(CASE WHEN $4='activities' THEN $3 ELSE activities_success_at END)>COALESCE(last_success_at,'-infinity')
 			THEN COALESCE(initialized_at,$3) ELSE initialized_at END,
+		`+reasonColumn+`=NULL,`+actionColumn+`=NULL,`+retryColumn+`=NULL,
 		next_attempt_at=NULL,failure_count=0,claim_id=NULL,claim_expires_at=NULL,
 		claimed_resource=NULL,claimed_change_id=NULL,updated_at=$3
 		WHERE user_id=$1 AND account_id=$2 AND claim_id=$5`, claim.Owner, claim.AccountID, now, claim.Resource, claim.ID)

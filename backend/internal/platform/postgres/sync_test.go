@@ -102,8 +102,32 @@ func TestSyncRepositoryLeasesGloballyRetriesAndPublishesAccumulatedData(t *testi
 	if balance != oldBalance || position != oldPosition || activity != oldActivity || !nextAttempt.Equal(providerRetryAt) {
 		t.Fatalf("failure changed heads or retry: heads=%v/%v/%v retry=%v", balance, position, activity, nextAttempt)
 	}
+	var balanceReason, balanceAction string
+	var balanceRetryAt time.Time
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT balances_failure_reason,balances_failure_action,balances_retry_at
+		FROM portfolio_account_sync_state WHERE user_id=$1 AND account_id=$2`, owner, "account-1").Scan(&balanceReason, &balanceAction, &balanceRetryAt); err != nil {
+		t.Fatal(err)
+	}
+	if balanceReason != string(portfolio.DiagnosticProviderUnavailable) || balanceAction != string(portfolio.DiagnosticActionWait) || !balanceRetryAt.Equal(providerRetryAt) {
+		t.Fatalf("balance diagnostic=%s/%s retry=%v", balanceReason, balanceAction, balanceRetryAt)
+	}
+	degraded, err := postgresadapter.NewShowcaseRepository(fixture.pool, func() time.Time { return fixture.now }).GetShowcase(fixture.ctx, owner)
+	if err != nil || len(degraded.Accounts) != 1 || degraded.Accounts[0].Balances.Context.Diagnostic == nil || degraded.Accounts[0].Balances.Context.Diagnostic.LastSuccessfulAt == nil {
+		t.Fatalf("degraded showcase=%+v err=%v", degraded, err)
+	}
+	if diagnostic := degraded.Accounts[0].Balances.Context.Diagnostic; diagnostic.Reason != portfolio.DiagnosticProviderUnavailable || diagnostic.RecommendedAction != portfolio.DiagnosticActionWait || diagnostic.RetryAt == nil || !diagnostic.RetryAt.Equal(providerRetryAt) {
+		t.Fatalf("balance diagnostic projection=%+v", diagnostic)
+	}
 	if early, err := first.ClaimDue(fixture.ctx, providerRetryAt.Add(-time.Nanosecond), 24*time.Hour, time.Minute); err != nil || early != nil {
 		t.Fatalf("early=%+v err=%v", early, err)
+	}
+	preservedPositionRetryAt := providerRetryAt.Add(5 * time.Minute)
+	if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_account_sync_state SET
+		positions_failure_reason=$3,
+		positions_failure_action=$4,
+		positions_retry_at=$5
+		WHERE user_id=$1 AND account_id=$2`, owner, "account-1", portfolio.DiagnosticProviderUnavailable, portfolio.DiagnosticActionRetry, preservedPositionRetryAt); err != nil {
+		t.Fatal(err)
 	}
 
 	retry, err := first.ClaimDue(fixture.ctx, providerRetryAt, 24*time.Hour, time.Minute)
@@ -115,6 +139,26 @@ func TestSyncRepositoryLeasesGloballyRetriesAndPublishesAccumulatedData(t *testi
 	if accepted, err := first.FinishSync(fixture.ctx, *retry, &refreshed, "", nil, providerRetryAt); err != nil || !accepted {
 		t.Fatalf("balance refresh accepted=%v err=%v", accepted, err)
 	}
+	var clearedBalanceReason, clearedBalanceAction, untouchedPositionReason, untouchedPositionAction *string
+	var clearedBalanceRetryAt, untouchedPositionRetryAt *time.Time
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT
+		balances_failure_reason,
+		balances_failure_action,
+		balances_retry_at,
+		positions_failure_reason,
+		positions_failure_action,
+		positions_retry_at
+		FROM portfolio_account_sync_state
+		WHERE user_id=$1
+		AND account_id=$2`, owner, "account-1").Scan(&clearedBalanceReason, &clearedBalanceAction, &clearedBalanceRetryAt, &untouchedPositionReason, &untouchedPositionAction, &untouchedPositionRetryAt); err != nil {
+		t.Fatal(err)
+	}
+	if clearedBalanceReason != nil || clearedBalanceAction != nil || clearedBalanceRetryAt != nil ||
+		untouchedPositionReason == nil || *untouchedPositionReason != string(portfolio.DiagnosticProviderUnavailable) ||
+		untouchedPositionAction == nil || *untouchedPositionAction != string(portfolio.DiagnosticActionRetry) ||
+		untouchedPositionRetryAt == nil || !untouchedPositionRetryAt.Equal(preservedPositionRetryAt) {
+		t.Fatalf("resource-scoped clear balance=%v/%v/%v position=%v/%v/%v", clearedBalanceReason, clearedBalanceAction, clearedBalanceRetryAt, untouchedPositionReason, untouchedPositionAction, untouchedPositionRetryAt)
+	}
 
 	positionClaim, err := first.ClaimDue(fixture.ctx, providerRetryAt, 24*time.Hour, time.Minute)
 	if err != nil || positionClaim == nil || positionClaim.Resource != portfolio.AccountResourcePositions {
@@ -124,6 +168,15 @@ func TestSyncRepositoryLeasesGloballyRetriesAndPublishesAccumulatedData(t *testi
 		t.Fatalf("position failure accepted=%v err=%v", accepted, err)
 	}
 	positionRetryAt := providerRetryAt.Add(time.Minute)
+	var positionReason, positionAction string
+	var positionDiagnosticRetry time.Time
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT positions_failure_reason,positions_failure_action,positions_retry_at
+		FROM portfolio_account_sync_state WHERE user_id=$1 AND account_id=$2`, owner, "account-1").Scan(&positionReason, &positionAction, &positionDiagnosticRetry); err != nil {
+		t.Fatal(err)
+	}
+	if positionReason != string(portfolio.DiagnosticProviderUnavailable) || positionAction != string(portfolio.DiagnosticActionRetry) || !positionDiagnosticRetry.Equal(positionRetryAt) {
+		t.Fatalf("position diagnostic=%s/%s retry=%v", positionReason, positionAction, positionDiagnosticRetry)
+	}
 	positionRetry, err := first.ClaimDue(fixture.ctx, positionRetryAt, 24*time.Hour, time.Minute)
 	if err != nil || positionRetry == nil || positionRetry.Resource != portfolio.AccountResourcePositions {
 		t.Fatalf("position retry=%+v err=%v", positionRetry, err)

@@ -165,8 +165,11 @@ func (c *InventoryClient) fetchAccounts(ctx context.Context, bearer string) ([]r
 // rows cannot bypass identity checks, and malformed lists never publish partially.
 func groupAccounts(connections []portfolio.Connection, rawAccounts []rawInventoryAccount) error {
 	indices := make(map[string]int, len(connections))
+	returned := make([]int, len(connections))
+	reasons := make([]map[portfolio.UsabilityReason]int, len(connections))
 	for index, connection := range connections {
 		indices[connection.ID] = index
+		reasons[index] = make(map[portfolio.UsabilityReason]int)
 	}
 	seen := make(map[uuid.UUID]bool, len(rawAccounts))
 	for _, raw := range rawAccounts {
@@ -182,12 +185,45 @@ func groupAccounts(connections []portfolio.Connection, rawAccounts []rawInventor
 		if !valid {
 			return &portfolio.ProviderError{State: portfolio.StateMalformed}
 		}
-		if connections[index].Status != portfolio.ConnectionStatusActive || !account.Selectable {
-			continue
+		returned[index]++
+		reasons[index][account.UsabilityReason]++
+		if connections[index].Status != portfolio.ConnectionStatusActive {
+			account.Available = false
+			account.Eligible = false
+			account.Selectable = false
+			account.UsabilityReason = portfolio.UsabilityConnectionDisabled
 		}
 		connections[index].Accounts = append(connections[index].Accounts, account)
 	}
+	for index := range connections {
+		connections[index].Diagnostic = connectionDiagnostic(connections[index], returned[index], reasons[index])
+	}
 	return nil
+}
+
+func connectionDiagnostic(connection portfolio.Connection, returned int, reasons map[portfolio.UsabilityReason]int) *portfolio.ResourceDiagnostic {
+	if connection.Status == portfolio.ConnectionStatusDisabled {
+		return &portfolio.ResourceDiagnostic{Reason: portfolio.DiagnosticConnectionDisabled, RecommendedAction: portfolio.DiagnosticActionReconnect}
+	}
+	if returned == 0 {
+		return &portfolio.ResourceDiagnostic{Reason: portfolio.DiagnosticNoAccountsReturned, RecommendedAction: portfolio.DiagnosticActionRetry}
+	}
+	for _, account := range connection.Accounts {
+		if account.Selectable {
+			return nil
+		}
+	}
+	if reasons[portfolio.UsabilitySyncPending] == returned {
+		return &portfolio.ResourceDiagnostic{Reason: portfolio.DiagnosticSyncPending, RecommendedAction: portfolio.DiagnosticActionWait}
+	}
+	if reasons[portfolio.UsabilityAccountUnavailable]+reasons[portfolio.UsabilitySyncUnavailable] == returned {
+		return &portfolio.ResourceDiagnostic{Reason: portfolio.DiagnosticProviderUnavailable, RecommendedAction: portfolio.DiagnosticActionRetry}
+	}
+	unsupported := reasons[portfolio.UsabilityUnsupportedCategory] + reasons[portfolio.UsabilityProvisionalCategory] + reasons[portfolio.UsabilityProvisionalStatus]
+	if unsupported == returned {
+		return &portfolio.ResourceDiagnostic{Reason: portfolio.DiagnosticNoSupportedAccounts, RecommendedAction: portfolio.DiagnosticActionNone}
+	}
+	return &portfolio.ResourceDiagnostic{Reason: portfolio.DiagnosticUnknown, RecommendedAction: portfolio.DiagnosticActionRetry}
 }
 
 func normalizeAccountTotal(account *portfolio.Account, total *struct {
@@ -340,6 +376,7 @@ func normalizeConnection(raw providergenerated.BrokerageAuthorization) (portfoli
 	}
 	if *raw.Disabled {
 		result.Status, result.Available, result.Eligible = portfolio.ConnectionStatusDisabled, false, false
+		result.Diagnostic = &portfolio.ResourceDiagnostic{Reason: portfolio.DiagnosticConnectionDisabled, RecommendedAction: portfolio.DiagnosticActionReconnect}
 	}
 	if raw.DataFreshnessMode != nil {
 		institution := raw.DataFreshnessMode.Institution

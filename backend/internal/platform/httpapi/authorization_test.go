@@ -465,9 +465,10 @@ func TestInclusionPOSTEnforcesItsByteLimit(t *testing.T) {
 }
 
 func TestInventoryGETIsOwnerDerivedMinimizedAndPrivateNoStore(t *testing.T) {
+	lastSuccessfulAt := time.Date(2026, 9, 19, 12, 0, 0, 0, time.UTC)
 	inventory := &inventoryLifecycleStub{snapshot: portfolio.Snapshot{
 		State: portfolio.StateReady, Generation: 2, UpdatedAt: time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC),
-		Connections: []portfolio.Connection{{ID: "connection", BrokerageLabel: "Synthetic Broker", Status: "active", SyncMode: "delayed", Available: true, Accounts: []portfolio.Account{{ID: "account", Category: "investment", Type: "Margin", MaskedLabel: "Retirement (•••• 8443)", Available: true, Eligible: true, SyncState: "complete"}}}},
+		Connections: []portfolio.Connection{{ID: "connection", BrokerageLabel: "Synthetic Broker", Status: "disabled", SyncMode: "unknown", Diagnostic: &portfolio.ResourceDiagnostic{Reason: portfolio.DiagnosticConnectionDisabled, RecommendedAction: portfolio.DiagnosticActionReconnect, LastSuccessfulAt: &lastSuccessfulAt}, Accounts: []portfolio.Account{{ID: "account", Category: "investment", Type: "Margin", MaskedLabel: "Retirement (•••• 8443)", Available: false, Eligible: false, SyncState: "complete"}}}},
 	}}
 	request := httptest.NewRequest(http.MethodGet, "/api/portfolio/inventory", nil)
 	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "opaque-session"})
@@ -483,6 +484,11 @@ func TestInventoryGETIsOwnerDerivedMinimizedAndPrivateNoStore(t *testing.T) {
 	}
 	if !strings.Contains(response.Body.String(), `"maskedLabel":"Retirement (•••• 8443)"`) {
 		t.Fatalf("body=%q", response.Body.String())
+	}
+	for _, diagnosticField := range []string{`"reason":"connection_disabled"`, `"recommendedAction":"reconnect"`, `"lastSuccessfulAt":"2026-09-19T12:00:00Z"`} {
+		if !strings.Contains(response.Body.String(), diagnosticField) {
+			t.Fatalf("response omitted persisted connection diagnostic %s: %s", diagnosticField, response.Body.String())
+		}
 	}
 }
 

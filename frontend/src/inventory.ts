@@ -94,6 +94,7 @@ function isInventory(value: unknown): value is PortfolioInventory {
     && knownString(syncModes, connection.syncMode)
     && typeof connection.available === 'boolean'
     && typeof connection.eligible === 'boolean'
+    && (connection.diagnostic === undefined || isDiagnostic(connection.diagnostic))
     && Array.isArray(connection.accounts)
     && connection.accounts.every((account) => isRecord(account)
       && typeof account.id === 'string'
@@ -105,6 +106,16 @@ function isInventory(value: unknown): value is PortfolioInventory {
       && typeof account.selectable === 'boolean'
       && knownString(usabilityReasons, account.usabilityReason)
       && knownString(accountSyncStates, account.syncState)))
+}
+
+function isDiagnostic(value: unknown) {
+  return isRecord(value)
+    && Object.keys(value).every((key) => diagnosticFields.has(key))
+    && knownString(diagnosticReasons, value.reason)
+    && knownString(diagnosticActions, value.recommendedAction)
+    && diagnosticActionsByReason[value.reason].has(value.recommendedAction)
+    && optionalDateTime(value.retryAt)
+    && optionalDateTime(value.lastSuccessfulAt)
 }
 
 function isInclusion(value: unknown): value is PortfolioInclusion {
@@ -126,6 +137,15 @@ function knownString(values: Set<string>, value: unknown): value is string {
   return typeof value === 'string' && values.has(value)
 }
 
+function optionalDateTime(value: unknown) {
+  if (value === undefined) return true
+  if (typeof value !== 'string') return false
+  const match = rfc3339DateTime.exec(value)
+  if (!match || !Number.isFinite(Date.parse(value))) return false
+  const year = Number(match[1]); const month = Number(match[2]); const day = Number(match[3])
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
+
 const inventoryStates = new Set(['pending', 'ready', 'empty', 'disabled', 'unauthorized', 'rate_limited', 'unavailable', 'malformed'])
 const connectionStatuses = new Set(['active', 'disabled', 'unavailable'])
 const syncModes = new Set(['realtime', 'delayed', 'unknown'])
@@ -134,3 +154,16 @@ const accountSyncStates = new Set(['complete', 'pending', 'unavailable', 'unknow
 const usabilityReasons = new Set(['ready', 'provisional_status', 'provisional_category', 'sync_pending', 'connection_disabled', 'connection_unavailable', 'account_closed', 'account_unavailable', 'unsupported_category', 'sync_unavailable'])
 const inclusionStatuses = new Set(['pending', 'committed', 'failed'])
 const inclusionFailureReasons = new Set(['authorization_required', 'rate_limited', 'provider_unavailable', 'unusable_data', 'stale_guard'])
+const diagnosticReasons = new Set(['no_accounts_returned', 'no_supported_accounts', 'connection_disabled', 'authorization_required', 'provider_unavailable', 'sync_pending', 'unknown'])
+const diagnosticActions = new Set(['none', 'wait', 'retry', 'reconnect'])
+const diagnosticActionsByReason: Record<string, Set<string>> = {
+  no_accounts_returned: new Set(['retry']),
+  no_supported_accounts: new Set(['none']),
+  connection_disabled: new Set(['reconnect']),
+  authorization_required: new Set(['reconnect']),
+  provider_unavailable: new Set(['retry', 'wait']),
+  sync_pending: new Set(['wait']),
+  unknown: new Set(['retry']),
+}
+const diagnosticFields = new Set(['reason', 'recommendedAction', 'retryAt', 'lastSuccessfulAt'])
+const rfc3339DateTime = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/

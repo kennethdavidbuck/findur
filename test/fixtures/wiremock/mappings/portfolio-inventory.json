@@ -116,6 +116,121 @@
         "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" }, "userId": { "absent": true }, "userSecret": { "absent": true }, "Signature": { "absent": true } }
       },
       "response": { "status": 200, "headers": { "Content-Type": "application/json" }, "bodyFileName": "inventory/success-empty-activities.json" }
+    },
+    {
+      "priority": 2,
+      "request": {
+        "method": "GET",
+        "urlPath": "/accounts/b0000000-0000-4000-8000-000000000001/positions/all",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" } }
+      },
+      "response": { "status": 503, "headers": { "Content-Type": "application/json" }, "jsonBody": { "scenario": "synthetic positions refresh failure" } }
+    },
+    {
+      "priority": 2,
+      "request": {
+        "method": "GET",
+        "urlPath": "/accounts/b0000000-0000-4000-8000-000000000003/activities",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" } }
+      },
+      "response": { "status": 503, "headers": { "Content-Type": "application/json" }, "jsonBody": { "scenario": "synthetic activities provider unavailable" } }
+    },
+    {
+      "priority": 2,
+      "request": {
+        "method": "GET",
+        "urlPath": "/accounts/b0000000-0000-4000-8000-000000000004/balances",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" } }
+      },
+      "response": { "status": 503, "headers": { "Content-Type": "application/json" }, "jsonBody": { "scenario": "synthetic balances refresh failure" } }
+    },
+    {
+      "priority": 8,
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/accounts/b0000000-0000-4000-8000-00000000000[1-9]/balances",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" } }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": [{ "currency": { "code": "USD" }, "cash": 321.45, "buying_power": 640.00 }]
+      }
+    },
+    {
+      "priority": 8,
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/accounts/b0000000-0000-4000-8000-0000000000(0[1-5]|1[1-3])/positions/all",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" } }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "data_freshness": { "as_of": "{{now format='yyyy-MM-dd' timezone='UTC'}}T{{now format='HH:mm:ssXXX' timezone='UTC'}}" },
+          "results": [{
+            "instrument": { "id": "d0000000-0000-4000-8000-000000000001", "symbol": "SYNX", "kind": "equity" },
+            "currency": "USD",
+            "units": 4.25,
+            "price": 18.75,
+            "cost_basis": 61.50
+          }]
+        }
+      }
+    },
+    {
+      "priority": 8,
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/accounts/b0000000-0000-4000-8000-0000000000(0[6-9]|1[0-4])/activities",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" } }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": {
+          "data": [{
+            "id": "synthetic-activity-1",
+            "type": "DIVIDEND",
+            "trade_date": "2026-09-19T12:00:00Z",
+            "currency": { "code": "USD" },
+            "amount": 7.25,
+            "fee": 0
+          }]
+        }
+      }
+    },
+    {
+      "priority": 10,
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/accounts/[0-9a-f-]+/balances",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" } }
+      },
+      "response": { "status": 200, "headers": { "Content-Type": "application/json" }, "jsonBody": [] }
+    },
+    {
+      "priority": 10,
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/accounts/[0-9a-f-]+/positions/all",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" } }
+      },
+      "response": {
+        "status": 200,
+        "headers": { "Content-Type": "application/json" },
+        "jsonBody": { "data_freshness": { "as_of": "{{now format='yyyy-MM-dd' timezone='UTC'}}T{{now format='HH:mm:ssXXX' timezone='UTC'}}" }, "results": [] }
+      }
+    },
+    {
+      "priority": 10,
+      "request": {
+        "method": "GET",
+        "urlPathPattern": "/accounts/[0-9a-f-]+/activities",
+        "headers": { "Authorization": { "equalTo": "Bearer synthetic-access-token" } }
+      },
+      "response": { "status": 200, "headers": { "Content-Type": "application/json" }, "jsonBody": { "data": [] } }
     }
   ]
 }

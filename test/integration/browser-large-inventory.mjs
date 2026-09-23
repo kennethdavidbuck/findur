@@ -42,21 +42,25 @@ export async function exerciseLargeInventory(webdriver, sessionId, origin, wirem
       assert.equal(response.status, 201, `large ${path} fixture registered`)
       mappings.push((await response.json()).id)
     }
-    // Prove filtering-to-empty through the real provider, persistence, and UI,
-    // before replacing the accounts mapping with the full mixed fixture.
-    const empty = await retry()
-    assert.equal(empty.status, 200)
-    assert.equal(empty.body.state, 'empty', 'active connections with no eligible accounts publish empty')
-    assert.equal(empty.body.connections.length, expected.connections)
-    assert.equal(empty.body.connections.flatMap((connection) => connection.accounts).length, 0)
+    // Prove unsupported rows remain visible but cannot be selected through the
+    // real provider, persistence, and UI before restoring the mixed fixture.
+    const passive = await retry()
+    assert.equal(passive.status, 200)
+    assert.equal(passive.body.state, 'ready', 'unsupported accounts publish passive explanatory rows')
+    assert.equal(passive.body.connections.length, expected.connections)
+    const passiveAccounts = passive.body.connections.flatMap((connection) => connection.accounts)
+    assert.equal(passiveAccounts.length, expected.passiveOnlyVisible, 'closed, unavailable, and pending rows remain excluded')
+    assert.equal(passiveAccounts.filter((account) => account.selectable).length, 0)
+    assert.ok(passiveAccounts.every((account) => account.usabilityReason === 'unsupported_category' || account.usabilityReason === 'connection_disabled'))
     await navigate('/portfolio/accounts')
-    let emptyRendered = false
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      emptyRendered = await execute(`return /No investment accounts are ready to include\\.|Aucun compte de placement n’est prêt à être inclus\\./.test(document.body.textContent) && document.querySelectorAll('.account-choice input').length===0`)
-      if (emptyRendered) break
+    let passiveRendered
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      passiveRendered = await execute(rowState)
+      if (passiveRendered.rows === expected.passiveOnlyVisible) break
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
-    assert.equal(emptyRendered, true, 'persisted filtered-empty state has accurate browser copy and no choices')
+    assert.equal(passiveRendered.rows, expected.passiveOnlyVisible, 'selector explains every permitted passive unsupported account')
+    assert.equal(passiveRendered.disabled, expected.passiveOnlyVisible, 'crafted selection is unavailable in the browser')
     const restoredMapping = await fetch(`${wiremockUrl}/__admin/mappings/${mappings[1]}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15_000),
       body: JSON.stringify({ id: mappings[1], priority: 1, request: { method: 'GET', urlPath: '/accounts' }, response: { status: 200, headers: { 'Content-Type': 'application/json' }, jsonBody: fixture.accounts } }),
@@ -72,9 +76,11 @@ export async function exerciseLargeInventory(webdriver, sessionId, origin, wirem
     assert.equal(new Set(normalized.map((account) => account.id)).size, expected.normalized, 'every normalized account remains distinct')
     assert.equal(normalized.filter((account) => account.eligible).length, expected.eligible)
     assert.equal(normalized.filter((account) => account.selectable).length, expected.selectable)
-    assert.deepEqual(normalized.map((account) => account.id).sort(), [...expected.accountIds].sort(), 'exact selectable account set matches the independent fixture oracle')
+    assert.deepEqual(normalized.map((account) => account.id).sort(), [...expected.accountIds].sort(), 'exact selectable and passive account set matches the independent fixture oracle')
+    assert.deepEqual(normalized.filter((account) => account.selectable).map((account) => account.id).sort(), [...expected.selectableAccountIds].sort(), 'exact selectable account set matches the independent fixture oracle')
     const disabledConnection = loaded.body.connections.find((connection) => connection.status === 'disabled')
-    assert.equal(disabledConnection?.accounts.length, 0, 'disabled connection accounts are excluded from the selectable inventory')
+    assert.equal(disabledConnection?.accounts.length, 20, 'disabled connection accounts remain visible as passive rows')
+    assert.ok(disabledConnection.accounts.every((account) => !account.selectable && account.usabilityReason === 'connection_disabled'))
     for (const connection of fixture.connections) {
       const actual = loaded.body.connections.find((candidate) => candidate.id === connection.id)
       assert.equal(actual?.brokerageLabel, connection.brokerage.display_name, 'brokerage label stays attached to its connection')
@@ -94,7 +100,7 @@ export async function exerciseLargeInventory(webdriver, sessionId, origin, wirem
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
     assert.equal(rendered.rows, expected.visible, 'chooser renders every visible row, including the end of the list')
-    assert.equal(rendered.disabled, expected.disabled, 'every returned account is usable and selectable')
+    assert.equal(rendered.disabled, expected.disabled, 'only passive unsupported and repair-required rows are disabled')
     assert.equal(expected.accounts - rendered.rows, expected.hidden, 'all excluded accounts are removed by the server')
     assert.equal(rendered.checked, 0, 'stress test begins with an empty draft')
     assert.ok(rendered.elapsedMs < loadBudgetMs, `document navigation and render took ${rendered.elapsedMs} ms`)
@@ -144,13 +150,13 @@ export async function exerciseLargeInventory(webdriver, sessionId, origin, wirem
         assert.ok(response.ok, 'large inventory mapping removed')
       })
     }
-    // Discard the unsaved browser draft and restore the normal three-account
+    // Discard the unsaved browser draft and restore the normal rich mixed-state
     // snapshot. This also preserves the later categorical/rate-limit scenarios.
     await cleanup('discard browser draft', () => navigate('/profile'))
     await cleanup('restore normal inventory', async () => {
       const restored = await retry()
       assert.equal(restored.body?.state, 'ready', 'normal inventory restored after the stress test')
-      assert.equal(restored.body.connections.flatMap((connection) => connection.accounts).length, 3)
+      assert.equal(restored.body.connections.flatMap((connection) => connection.accounts).length, 28)
     })
     if (primaryError) {
       for (const error of cleanupErrors) console.error(error)

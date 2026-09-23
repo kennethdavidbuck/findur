@@ -97,12 +97,25 @@ func TestShowcaseRepositoryReadsOnlyOwnerCommittedHeadsAndFailsClosed(t *testing
 		t.Fatalf("missing head did not fail closed: showcase=%+v err=%v", showcase, err)
 	}
 
-	if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_inventory_accounts SET sync_state='pending' WHERE user_id=$1 AND account_id='included'`, owner); err != nil {
-		t.Fatal(err)
-	}
-	showcase, err = repository.GetShowcase(fixture.ctx, owner)
-	if err != nil || showcase.Accounts[0].Balances.Context.Freshness != portfolio.FreshnessUnavailable || len(showcase.Accounts[0].Balances.Balances) != 0 {
-		t.Fatalf("pending account did not suppress facts: showcase=%+v err=%v", showcase, err)
+	for _, test := range []struct {
+		name, state string
+		reason      portfolio.ResourceDiagnosticReason
+		action      portfolio.ResourceDiagnosticAction
+	}{
+		{name: "pending waits", state: string(portfolio.AccountSyncStatePending), reason: portfolio.DiagnosticSyncPending, action: portfolio.DiagnosticActionWait},
+		{name: "unavailable retries", state: string(portfolio.AccountSyncStateUnavailable), reason: portfolio.DiagnosticProviderUnavailable, action: portfolio.DiagnosticActionRetry},
+		{name: "unknown retries without invented cause", state: string(portfolio.AccountSyncStateUnknown), reason: portfolio.DiagnosticUnknown, action: portfolio.DiagnosticActionRetry},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_inventory_accounts SET sync_state=$3 WHERE user_id=$1 AND account_id=$2`, owner, "included", test.state); err != nil {
+				t.Fatal(err)
+			}
+			showcase, err = repository.GetShowcase(fixture.ctx, owner)
+			diagnostic := showcase.Accounts[0].Balances.Context.Diagnostic
+			if err != nil || showcase.Accounts[0].Balances.Context.Freshness != portfolio.FreshnessUnavailable || len(showcase.Accounts[0].Balances.Balances) != 0 || diagnostic == nil || diagnostic.Reason != test.reason || diagnostic.RecommendedAction != test.action {
+				t.Fatalf("state=%q showcase=%+v diagnostic=%+v err=%v", test.state, showcase, diagnostic, err)
+			}
+		})
 	}
 
 	if _, err := fixture.pool.Exec(fixture.ctx, `DELETE FROM portfolio_included_accounts WHERE user_id=$1 AND account_id='included'`, owner); err != nil {

@@ -249,6 +249,17 @@ export interface components {
         };
         /** @enum {string} */
         InventoryState: "pending" | "ready" | "empty" | "disabled" | "unauthorized" | "rate_limited" | "unavailable" | "malformed";
+        /** @enum {string} */
+        ResourceDiagnosticReason: "no_accounts_returned" | "no_supported_accounts" | "connection_disabled" | "authorization_required" | "provider_unavailable" | "sync_pending" | "unknown";
+        ResourceDiagnostic: {
+            reason: components["schemas"]["ResourceDiagnosticReason"];
+            /** @enum {string} */
+            recommendedAction: "none" | "wait" | "retry" | "reconnect";
+            /** Format: date-time */
+            retryAt?: string;
+            /** Format: date-time */
+            lastSuccessfulAt?: string;
+        };
         InventoryAccount: {
             id: string;
             /** @enum {string} */
@@ -272,6 +283,7 @@ export interface components {
             syncMode: "realtime" | "delayed" | "unknown";
             available: boolean;
             eligible: boolean;
+            diagnostic?: components["schemas"]["ResourceDiagnostic"];
             accounts: components["schemas"]["InventoryAccount"][];
         };
         PortfolioInventory: {
@@ -296,6 +308,7 @@ export interface components {
             publishedAt?: string;
             /** @enum {string} */
             freshness: "current" | "stale_usable" | "expired" | "unavailable";
+            diagnostic?: components["schemas"]["ResourceDiagnostic"];
         };
         ShowcaseBalance: {
             currency: string;

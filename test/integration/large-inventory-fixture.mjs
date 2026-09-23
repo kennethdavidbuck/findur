@@ -36,11 +36,20 @@ export function largeInventoryFixture() {
       account_category: slot === 1 ? 'LOC' : slot === 2 ? 'DEPOSIT' : slot === 5 ? null : slot === 12 ? 'FUTURE_CATEGORY' : 'INVESTMENT',
     }
   }))
+  const selectableAccountIds = connections.slice(0, 49).flatMap((_, index) => [4, 5, 6, 14, 15, 16, 17, 18, 19].map((slot) => id('b', index * 20 + slot)))
+  const passiveAccountIds = [
+    ...connections.slice(0, 49).flatMap((_, index) => [1, 2].map((slot) => id('b', index * 20 + slot))),
+    ...Array.from({ length: 20 }, (_, slot) => id('b', 49 * 20 + slot)),
+  ]
   return {
     connections, accounts,
-    expected: { connections: 50, accounts: 1000, normalized: 441, eligible: 392, selectable: 441, visible: 441, disabled: 0, hidden: 559,
-      // Independent oracle: these slots alone satisfy the documented rules.
-      accountIds: connections.slice(0, 49).flatMap((_, index) => [4, 5, 6, 14, 15, 16, 17, 18, 19].map((slot) => id('b', index * 20 + slot))) },
+    expected: {
+      connections: 50, accounts: 1000, passiveOnlyVisible: 804, normalized: 559, eligible: 392, selectable: 441, visible: 559, disabled: 118, hidden: 441,
+      // Independent oracle: selectable rows plus the two deliberately passive
+      // categories exposed for explanation in the existing account selector.
+      accountIds: [...selectableAccountIds, ...passiveAccountIds],
+      selectableAccountIds,
+    },
   }
 }
 

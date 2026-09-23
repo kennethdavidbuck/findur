@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import type { components } from '../generated/api'
 import { useI18n } from '../i18n'
 import { getPortfolioInclusion, InventorySessionExpiredError } from '../inventory'
@@ -20,7 +20,6 @@ const copy = {
     reconnect: 'Reconnect',
     empty: 'No included accounts are saved.',
     preparing: 'Your accounts are saved. Some portfolio data is still syncing. Check back in a few minutes.',
-    preparingDataset: 'This account data is still syncing.',
     checkAgain: 'Check again',
     includedAccount: 'Included account',
     included: 'Included',
@@ -37,14 +36,29 @@ const copy = {
     retrieved: 'Retrieved',
     published: 'Published',
     current: 'Current',
+    syncing: 'Syncing',
     stale: 'Stale, still usable',
     expired: 'Expired',
     unavailable: 'Unavailable',
-    emptyDataset: 'This complete dataset has no recorded rows.',
-    unavailableDataset: 'This dataset is unavailable. Reconnect or try again later.',
-    expiredDataset: 'This dataset has expired, so its saved values are hidden. Reconnect to recover it.',
+    balancePending: 'Balance information is still syncing.',
+    balanceEmpty: 'No balance information is available.',
+    balanceFailure: 'Balance information couldn’t be refreshed.',
+    positionsEmpty: 'No positions were reported.',
+    activitiesEmpty: 'No recent activity was reported.',
+    unavailableDataset: 'This data is unavailable right now.',
+    expiredDataset: 'This data has expired, so its saved values are hidden until fresh data is available.',
+    retryAt: 'Next attempt',
+    lastSuccessful: 'Last successful refresh',
+    diagnosticReasons: {
+      no_accounts_returned: 'No accounts were returned.',
+      no_supported_accounts: 'The returned accounts are not supported.',
+      connection_disabled: 'The connection needs repair.',
+      authorization_required: 'Authorization must be renewed for this data.',
+      provider_unavailable: 'This data could not be refreshed. Saved values remain visible when safe.',
+      sync_pending: 'This data is still syncing.',
+      unknown: 'Findur could not determine why this data is unavailable.',
+    },
     recordedRows: 'recorded rows',
-    separateCurrencies: 'Currencies stay separate',
     activityCoverage: 'Newest 50 accumulated activities',
     activityCadence: 'Activities are bounded records, often daily; they are not real-time orders.',
     table: 'table',
@@ -60,7 +74,6 @@ const copy = {
     reconnect: 'Reconnecter',
     empty: 'Aucun compte inclus enregistré.',
     preparing: 'Vos comptes sont enregistrés. Certaines données du portefeuille sont encore en cours de synchronisation. Revenez dans quelques minutes.',
-    preparingDataset: 'Les données de ce compte sont encore en cours de synchronisation.',
     checkAgain: 'Vérifier à nouveau',
     includedAccount: 'Compte inclus',
     included: 'Inclus',
@@ -77,14 +90,29 @@ const copy = {
     retrieved: 'Récupéré',
     published: 'Publié',
     current: 'À jour',
+    syncing: 'Synchronisation',
     stale: 'Ancien, encore utilisable',
     expired: 'Expiré',
     unavailable: 'Indisponible',
-    emptyDataset: 'Cet ensemble complet ne contient aucune ligne enregistrée.',
-    unavailableDataset: 'Cet ensemble est indisponible. Reconnectez-vous ou réessayez plus tard.',
-    expiredDataset: 'Cet ensemble a expiré; ses valeurs enregistrées sont donc masquées. Reconnectez-vous pour le récupérer.',
+    balancePending: 'Les renseignements sur le solde sont encore en cours de synchronisation.',
+    balanceEmpty: 'Aucun renseignement sur le solde n’est disponible.',
+    balanceFailure: 'Les renseignements sur le solde n’ont pas pu être actualisés.',
+    positionsEmpty: 'Aucune position n’a été déclarée.',
+    activitiesEmpty: 'Aucune activité récente n’a été déclarée.',
+    unavailableDataset: 'Ces données sont indisponibles pour le moment.',
+    expiredDataset: 'Ces données ont expiré; leurs valeurs enregistrées sont masquées jusqu’à ce que de nouvelles données soient disponibles.',
+    retryAt: 'Prochaine tentative',
+    lastSuccessful: 'Dernière actualisation réussie',
+    diagnosticReasons: {
+      no_accounts_returned: 'Aucun compte n’a été retourné.',
+      no_supported_accounts: 'Les comptes retournés ne sont pas pris en charge.',
+      connection_disabled: 'La connexion doit être réparée.',
+      authorization_required: 'L’autorisation doit être renouvelée pour ces données.',
+      provider_unavailable: 'Ces données n’ont pas pu être actualisées. Les valeurs enregistrées restent visibles lorsqu’elles sont utilisables.',
+      sync_pending: 'Ces données sont encore en cours de synchronisation.',
+      unknown: 'Findur n’a pas pu déterminer pourquoi ces données sont indisponibles.',
+    },
     recordedRows: 'lignes enregistrées',
-    separateCurrencies: 'Les devises restent distinctes',
     activityCoverage: '50 activités cumulées les plus récentes',
     activityCadence: 'Les activités sont des enregistrements bornés, souvent quotidiens; elles ne sont pas des ordres en temps réel.',
     table: 'tableau',
@@ -105,6 +133,8 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
   const [preparing, setPreparing] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [reload, setReload] = useState(0)
+  const focusedHeading = useRef(false)
+  const recoveryFocusPending = useRef(false)
 
   useEffect(() => {
     let alive = true
@@ -137,7 +167,14 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
   }, [preparing, reload])
 
   useEffect(() => {
-    if (data) requestAnimationFrame(() => headingRef.current?.focus())
+    if (data && recoveryFocusPending.current) {
+      recoveryFocusPending.current = false
+      focusedHeading.current = true
+      requestAnimationFrame(() => headingRef.current?.focus({ preventScroll: true }))
+    } else if (data && !focusedHeading.current) {
+      focusedHeading.current = true
+      requestAnimationFrame(() => headingRef.current?.focus())
+    }
   }, [data, headingRef])
 
   if (failed) {
@@ -146,7 +183,7 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
       <h1 ref={headingRef} tabIndex={-1}>{text.title}</h1>
       <div className="showcase-recovery" role="alert">
         <p>{text.failed}</p>
-        <button className="action action--secondary" onClick={() => { setFailed(false); setData(null); setReload((value) => value + 1) }}>{text.retry}</button>
+        <button className="action action--secondary" onClick={() => { recoveryFocusPending.current = true; setFailed(false); setData(null); setReload((value) => value + 1) }}>{text.retry}</button>
       </div>
     </section>
   }
@@ -163,6 +200,9 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
     setRefreshing(true)
     setReload((value) => value + 1)
   }
+  const diagnostics = data.accounts.flatMap((account) => [account.balances.context.diagnostic, account.positions.context.diagnostic, account.activities.context.diagnostic]).filter((diagnostic) => diagnostic !== undefined)
+  const reconnectRequired = diagnostics.some((diagnostic) => diagnostic.recommendedAction === 'reconnect')
+  const initialSyncPending = diagnostics.some((diagnostic) => diagnostic.reason === 'sync_pending')
 
   return <div className="showcase-layout">
     <section className="portfolio-showcase showcase-reference">
@@ -177,14 +217,15 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
         ? <div className="showcase-empty" role="status">
           <span aria-hidden="true">◇</span>
           <p>{preparing ? text.preparing : text.empty}</p>
-          {preparing
-            ? <button className={`text-link${refreshing ? ' text-link--refreshing' : ''}`} disabled={refreshing} onClick={() => { setPreparing(false); setData(null); refreshShowcase() }}>{text.checkAgain} →</button>
-            : <button className="text-link" onClick={onEdit}>{text.edit} →</button>}
+          {!preparing && <button className="text-link" onClick={onEdit}>{text.edit} →</button>}
         </div>
         : <>
-          {preparing && <div className="showcase-preparing" role="status">
+          {initialSyncPending && <div className="showcase-preparing" role="status">
             <p>{text.preparing}</p>
             <button className={`text-link${refreshing ? ' text-link--refreshing' : ''}`} disabled={refreshing} onClick={refreshShowcase}>{text.checkAgain} →</button>
+          </div>}
+          {reconnectRequired && <div className="showcase-recovery" aria-label={locale === 'fr' ? 'Actions de récupération des données' : 'Data recovery actions'}>
+            <button className="action action--secondary" onClick={onReconnect}>{text.reconnect}</button>
           </div>}
           <section className="coverage" aria-label={text.coverage}>
             <div>
@@ -202,7 +243,7 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
                 </div>
                 <span className="included">◆ {text.included}</span>
               </header>
-              <BalanceSummary dataset={account.balances} locale={locale} preparing={preparing} />
+              <BalanceSummary dataset={account.balances} locale={locale} />
               <span className="account-index">{text.includedAccount} {String(index + 1).padStart(2, '0')}</span>
             </article>)}
           </section>
@@ -218,9 +259,9 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
                   </div>
                 </header>
                 <div className="dataset-list">
-                  <Evidence title={text.balances} dataset={account.balances} rows={account.balances.balances} columns={columns.balances} locale={locale} onReconnect={onReconnect} preparing={preparing} />
-                  <Evidence title={text.positions} dataset={account.positions} rows={account.positions.positions} columns={columns.positions} locale={locale} onReconnect={onReconnect} preparing={preparing} />
-                  <Evidence title={text.activities} dataset={account.activities} rows={account.activities.activities} columns={columns.activities} locale={locale} onReconnect={onReconnect} preparing={preparing} activity />
+                  <Evidence title={text.balances} dataset={account.balances} rows={account.balances.balances} columns={columns.balances} locale={locale} emptyMessage={text.balanceEmpty} />
+                  <Evidence title={text.positions} dataset={account.positions} rows={account.positions.positions} columns={columns.positions} locale={locale} emptyMessage={text.positionsEmpty} />
+                  <Evidence title={text.activities} dataset={account.activities} rows={account.activities.activities} columns={columns.activities} locale={locale} emptyMessage={text.activitiesEmpty} activity />
                 </div>
               </section>
             })}
@@ -230,32 +271,35 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
   </div>
 }
 
-function BalanceSummary({ dataset, locale, preparing }: { dataset: Dataset; locale: Locale; preparing: boolean }) {
+function BalanceSummary({ dataset, locale }: { dataset: Dataset; locale: Locale }) {
   const text = copy[locale]
-  if (dataset.context.freshness === 'expired') return <div className="money"><p>{text.expiredDataset}</p></div>
-  if (dataset.context.freshness === 'unavailable') return <div className="money"><p>{preparing ? text.preparingDataset : text.unavailableDataset}</p></div>
-  if (dataset.balances.length === 0) return <div className="money"><p>{text.emptyDataset}</p></div>
+  if (dataset.context.freshness === 'expired') return <div className="money"><p className="balance-state balance-state--error">{text.expiredDataset}</p></div>
+  if (dataset.balances.length === 0 && dataset.context.diagnostic?.reason === 'sync_pending') return <div className="money"><p className="balance-state balance-state--info">{text.balancePending}</p></div>
+  if (dataset.balances.length === 0 && dataset.context.diagnostic) return <div className="money"><p className={`balance-state balance-state--${diagnosticTone(dataset.context.diagnostic.reason)}`}>{text.balanceFailure}</p></div>
+  if (dataset.context.freshness === 'unavailable') return <div className="money"><p className="balance-state balance-state--error">{text.balanceFailure}</p></div>
+  if (dataset.balances.length === 0) return <div className="money"><p className="balance-state">{text.balanceEmpty}</p></div>
   return <div className="money">
     {dataset.balances.map((row, index) => <div key={`${row.currency}-${index}`}>
       <b>{formatMoney(row.cash, row.currency, locale)}</b>
       <span>{text.balances.toLowerCase()} · {row.currency}</span>
     </div>)}
-    <span className="no-total">△ {text.separateCurrencies}</span>
   </div>
 }
 
-function Evidence({ title, dataset, rows, columns, locale, onReconnect, preparing, activity = false }: { title: string; dataset: Dataset; rows: Array<Record<string, unknown>>; columns: readonly string[]; locale: Locale; onReconnect: () => void; preparing: boolean; activity?: boolean }) {
+function Evidence({ title, dataset, rows, columns, locale, emptyMessage, activity = false }: { title: string; dataset: Dataset; rows: Array<Record<string, unknown>>; columns: readonly string[]; locale: Locale; emptyMessage: string; activity?: boolean }) {
   const text = copy[locale]
   const context = dataset.context
   const recorded = context.observedAt ?? context.retrievedAt
   const recordedLabel = context.observedAt ? text.observed : text.retrieved
-  const freshness = context.freshness === 'current' ? text.current : context.freshness === 'stale_usable' ? text.stale : context.freshness === 'expired' ? text.expired : text.unavailable
+  const freshness = context.diagnostic?.reason === 'sync_pending' ? text.syncing : context.freshness === 'current' ? text.current : context.freshness === 'stale_usable' ? text.stale : context.freshness === 'expired' ? text.expired : text.unavailable
+  const freshnessTone = context.diagnostic?.reason === 'sync_pending' ? ' freshness--info' : context.diagnostic?.reason === 'provider_unavailable' ? ' freshness--waiting' : ''
+  const freshnessIcon = context.diagnostic?.reason === 'sync_pending' ? '◇' : context.freshness === 'current' ? '◆' : context.freshness === 'stale_usable' ? '◇' : '×'
 
   return <section className="dataset">
     <header>
       <h3>{title}</h3>
-      <span className={`freshness freshness--${context.freshness}`}>
-        <i aria-hidden="true">{context.freshness === 'current' ? '◆' : context.freshness === 'stale_usable' ? '◇' : '×'}</i>
+      <span className={`freshness freshness--${context.freshness}${freshnessTone}`}>
+        <i aria-hidden="true">{freshnessIcon}</i>
         {freshness} · {recorded ? <time dateTime={recorded}>{formatTimestamp(recorded, locale)}</time> : '—'}
       </span>
     </header>
@@ -267,24 +311,35 @@ function Evidence({ title, dataset, rows, columns, locale, onReconnect, preparin
       <div><dt>{text.published}</dt><dd>{context.publishedAt ? <time dateTime={context.publishedAt}>{formatTimestamp(context.publishedAt, locale)}</time> : '—'}</dd></div>
     </dl>
     {activity && <p className="activity-cadence">△ {text.activityCadence}</p>}
-    {context.freshness === 'expired' || context.freshness === 'unavailable'
+    {context.diagnostic && context.diagnostic.reason !== 'sync_pending' && <div className={`showcase-note showcase-note--diagnostic showcase-note--${diagnosticTone(context.diagnostic.reason)}`}>
+      <p>{text.diagnosticReasons[context.diagnostic.reason]}</p>
+      {context.diagnostic.lastSuccessfulAt && <p>{text.lastSuccessful}: <time dateTime={context.diagnostic.lastSuccessfulAt}>{formatTimestamp(context.diagnostic.lastSuccessfulAt, locale)}</time></p>}
+      {context.diagnostic.retryAt && <p>{text.retryAt}: <time dateTime={context.diagnostic.retryAt}>{formatTimestamp(context.diagnostic.retryAt, locale)}</time></p>}
+    </div>}
+    {context.freshness === 'expired' || context.freshness === 'unavailable' && !context.diagnostic
       ? <div className="showcase-note showcase-note--unavailable">
-        <p>{context.freshness === 'expired' ? text.expiredDataset : preparing ? text.preparingDataset : text.unavailableDataset}</p>
-        {!preparing && <button className="action action--secondary" onClick={onReconnect}>{text.reconnect}</button>}
+        <p>{context.freshness === 'expired' ? text.expiredDataset : text.unavailableDataset}</p>
       </div>
       : rows.length === 0
-        ? <p className="showcase-note">{text.emptyDataset}</p>
+        ? context.diagnostic ? null : <p className="showcase-note">{emptyMessage}</p>
         : <>
-          <p className="dataset-summary"><strong>{rows.length}</strong> {text.recordedRows} · {text.separateCurrencies}</p>
+          <p className="dataset-summary"><strong>{rows.length}</strong> {text.recordedRows}</p>
           <div className="table-wrap" role="region" aria-label={`${title} ${text.table}`} tabIndex={0}>
             <table className="data">
-              <caption><strong>{rows.length}</strong> {text.recordedRows} · {text.separateCurrencies}</caption>
+              <caption><strong>{rows.length}</strong> {text.recordedRows}</caption>
               <thead><tr>{columns.map((column) => <th key={column} scope="col">{columnLabel(column, locale)}</th>)}</tr></thead>
               <tbody>{rows.map((row, rowIndex) => <tr key={rowIndex}>{columns.map((column) => <td key={column}>{formatValue(column, row[column], row.currency, locale)}</td>)}</tr>)}</tbody>
             </table>
           </div>
         </>}
   </section>
+}
+
+function diagnosticTone(reason: components['schemas']['ResourceDiagnostic']['reason']) {
+  if (reason === 'sync_pending') return 'info'
+  if (reason === 'provider_unavailable') return 'warning'
+  if (reason === 'authorization_required' || reason === 'connection_disabled' || reason === 'unknown') return 'error'
+  return 'neutral'
 }
 
 const moneyFields = new Set(['cash', 'buyingPower', 'price', 'costBasis', 'amount', 'fee'])
