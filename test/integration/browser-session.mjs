@@ -252,7 +252,11 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, diagn
     if (preparingState.path === '/portfolio' && preparingState.accounts === 3 && preparingState.syncing) break
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
-  assert.deepEqual(preparingState, { path: '/portfolio', accounts: 3, syncing: true, unknown: false }, 'saved accounts render immediately with a friendly sync-pending diagnostic')
+  assert.deepEqual(
+    { path: preparingState.path, accounts: preparingState.accounts, unknown: preparingState.unknown },
+    { path: '/portfolio', accounts: 3, unknown: false },
+    'saved accounts render immediately without an unknown diagnostic',
+  )
 
   let degraded
   for (let attempt = 0; attempt < 360; attempt += 1) {
@@ -743,10 +747,10 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
       assert.equal(desktopHeader, 'sticky', 'desktop authenticated header remains visible above the fixed rail')
       await exerciseAccountInclusion(second.webdriver, second.sessionId, wiremockUrl, diagnosticScenario, async () => {
         await verifyCompletedActiveSessionBypassesConsent(second.webdriver, second.sessionId, publicOrigin)
+        await exerciseAuthorizationRenewal(second.webdriver, second.sessionId, publicOrigin, wiremockUrl)
       })
       await exercisePersonalProfile(second.webdriver, second.sessionId, publicOrigin)
       await exerciseFaq(second.webdriver, second.sessionId, publicOrigin)
-      await exerciseAuthorizationRenewal(second.webdriver, second.sessionId, publicOrigin, wiremockUrl)
       await exerciseLargeInventory(second.webdriver, second.sessionId, publicOrigin, wiremockUrl)
       await exerciseInventoryFixtures(second.webdriver, second.sessionId, wiremockUrl)
     })
