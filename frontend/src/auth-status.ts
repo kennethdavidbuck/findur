@@ -6,7 +6,9 @@ export type AuthorizationStatus = {
   reauthorizationRequired: boolean
 }
 
-type StatusState = { resolving: true; status: null } | { resolving: false; status: AuthorizationStatus }
+type StatusState =
+  | { resolving: true; status: null; validationKey?: string }
+  | { resolving: false; status: AuthorizationStatus; validationKey?: string }
 
 export async function getAuthorizationStatus(signal?: AbortSignal): Promise<AuthorizationStatus> {
   const response = await fetch('/api/auth/status', { cache: 'no-store', credentials: 'same-origin', signal })
@@ -22,10 +24,10 @@ export async function getAuthorizationStatus(signal?: AbortSignal): Promise<Auth
   }
 }
 
-export function useAuthorizationStatus(initialStatus?: AuthorizationStatus): StatusState {
+export function useAuthorizationStatus(initialStatus?: AuthorizationStatus, validationKey?: string): StatusState {
   const [state, setState] = useState<StatusState>(() => initialStatus
-    ? { resolving: false, status: initialStatus }
-    : { resolving: true, status: null })
+    ? { resolving: false, status: initialStatus, validationKey }
+    : { resolving: true, status: null, validationKey })
 
   useEffect(() => {
     if (initialStatus) return
@@ -35,19 +37,20 @@ export function useAuthorizationStatus(initialStatus?: AuthorizationStatus): Sta
     void getAuthorizationStatus(controller.signal)
       .then((value) => {
         window.clearTimeout(timeout)
-        setState({ resolving: false, status: value })
+        if (disposed) return
+        setState({ resolving: false, status: value, validationKey })
       })
       .catch(() => {
         window.clearTimeout(timeout)
         if (disposed) return
-        setState({ resolving: false, status: { authorizationAvailable: false, authenticated: false, reauthorizationRequired: false } })
+        setState({ resolving: false, status: { authorizationAvailable: false, authenticated: false, reauthorizationRequired: false }, validationKey })
       })
     return () => {
       disposed = true
       window.clearTimeout(timeout)
       controller.abort()
     }
-  }, [initialStatus])
+  }, [initialStatus, validationKey])
 
   return state
 }

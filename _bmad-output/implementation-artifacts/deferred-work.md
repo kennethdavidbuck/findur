@@ -124,3 +124,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-handle-snaptrade-authorization-recovery.md`
   summary: Explain brokerage connection-status refresh timing in the user FAQ.
   evidence: The user chose the guarded 24-hour inventory synchronization schedule over a live SnapTrade inventory request on every login, so a newly disconnected brokerage connection may take up to roughly 24 hours to appear in Findur.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-smooth-protected-navigation.md`
+  summary: Define retry behavior for transient authorization-status failures during protected navigation.
+  evidence: Protected transitions deliberately revalidate the server session and currently fail closed to Connect on timeout, network failure, or a malformed response; retaining the authenticated shell through such failures requires an explicit retry and security contract separate from the visual remount fix.
