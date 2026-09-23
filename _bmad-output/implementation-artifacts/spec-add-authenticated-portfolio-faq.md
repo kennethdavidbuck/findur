@@ -70,6 +70,8 @@ Portfolio datasets now present Published as neutral Last sync timing and use dia
 
 The responsive navigation has three equal phone destinations in one row and retains the existing desktop rail. Focus, keyboard activation, title, history, `/faq` and `/faq/` entry, locale-state preservation, English/French factual coverage, and narrow expanded-content reflow have focused unit or browser-harness coverage.
 
+The FAQ uses the same 64rem authenticated page container as Portfolio and Profile. Its 45rem reading column is left-aligned within that shared container, matching the Profile form rather than centering the entire page farther to the right.
+
 ## Spec Change Log
 
 ## Review Triage Log
@@ -102,6 +104,7 @@ FAQ is an authenticated utility destination, not a new primary product area. Its
 - `git diff --check` -- expected: no whitespace errors.
 
 **Results (2026-09-23):**
+- Layout follow-up passed 80 focused FAQ/App tests, frontend lint with the same four pre-existing warnings, production build, browser-script syntax, and the clean isolated Compose suite with an explicit 64rem page / 45rem left-aligned reading-column assertion (`integration contracts passed`, image tag `fa90000000000000000000000000000000000003`).
 - Review follow-up focused tests passed: `cd frontend && npm test -- --run src/pages/FaqPage.test.tsx src/App.test.tsx` (2 files, 80 tests). `node --check test/integration/browser-session.mjs` and `git diff --check` also passed.
 - Frontend tests passed on the final full run: 8 files and 122 tests. Typecheck and production build passed. ESLint completed with zero errors and four pre-existing warnings.
 - The first composed rerun encountered retained synthetic state in the preserved task volume before reaching the changed FAQ journey. After removing only the `findur-faq` containers, network, and synthetic database volume, the clean full browser/integration suite passed with `integration contracts passed` under project `findur-faq`, isolated ports 58080/55433/55173, and unique image tag `fa90000000000000000000000000000000000002`. The containers and network were removed afterward; the clean synthetic volume and images were preserved.

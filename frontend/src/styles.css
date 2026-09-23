@@ -594,14 +594,15 @@ p { line-height: 1.65; }
   margin-inline: auto;
 }
 .faq-page {
-  width: min(100%, var(--reading-max));
+  width: 100%;
+  max-width: 64rem;
   min-width: 0;
   margin-inline: auto;
 }
 .faq-intro { padding: 2rem 0; }
 .faq-page h1 { max-width: none; margin: 0.45rem 0; font-size: clamp(2rem, 4vw, 2.5rem); font-weight: 400; letter-spacing: -0.04em; line-height: 1.18; }
-.faq-intro > p:last-child { max-width: 38rem; margin-bottom: 0; color: var(--text-muted); font-size: 0.9rem; line-height: 1.6; }
-.faq-list { border-top: 1px solid var(--border-strong); }
+.faq-intro > p:last-child { max-width: 34rem; margin-bottom: 0; color: var(--text-muted); font-size: 0.82rem; line-height: 1.55; }
+.faq-list { width: min(100%, var(--reading-max)); border-top: 1px solid var(--border-strong); }
 .faq-list details { border-bottom: 1px solid var(--border-strong); }
 .faq-list summary {
   min-height: 4.75rem;

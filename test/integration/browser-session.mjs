@@ -536,13 +536,13 @@ async function exerciseFaq(webdriver, sessionId, origin) {
   }
   assert.equal(restoredQuestion, 'Quels comptes puis-je choisir?', 'French expanded content is restored before reflow checks')
 
-  for (const [width, layout] of [[767, 'grid'], [390, 'grid'], [320, 'grid'], [768, 'rail']]) {
+  for (const [width, layout] of [[767, 'grid'], [390, 'grid'], [320, 'grid'], [768, 'rail'], [1440, 'rail']]) {
     await webdriver(`/session/${sessionId}/window/rect`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ width, height: 900 }),
     })
     const state = await webdriver(`/session/${sessionId}/execute/sync`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: `const nav=document.querySelector('.authenticated-nav');const navStyle=getComputedStyle(nav);const links=[...nav.querySelectorAll('a')].map(link=>link.getBoundingClientRect());const summary=document.querySelector('.faq-list summary').getBoundingClientRect();const answer=document.querySelector('.faq-answer p').getBoundingClientRect();return {innerWidth,documentWidth:document.documentElement.scrollWidth,summaryLeft:summary.left,summaryRight:summary.right,answerLeft:answer.left,answerRight:answer.right,direction:navStyle.flexDirection,columns:navStyle.gridTemplateColumns,linkTops:links.map(link=>link.top),linkWidths:links.map(link=>link.width)}`, args: [] }),
+      body: JSON.stringify({ script: `const nav=document.querySelector('.authenticated-nav');const navStyle=getComputedStyle(nav);const links=[...nav.querySelectorAll('a')].map(link=>link.getBoundingClientRect());const page=document.querySelector('.faq-page').getBoundingClientRect();const list=document.querySelector('.faq-list').getBoundingClientRect();const summary=document.querySelector('.faq-list summary').getBoundingClientRect();const answer=document.querySelector('.faq-answer p').getBoundingClientRect();return {innerWidth,documentWidth:document.documentElement.scrollWidth,pageLeft:page.left,pageWidth:page.width,listLeft:list.left,listWidth:list.width,summaryLeft:summary.left,summaryRight:summary.right,answerLeft:answer.left,answerRight:answer.right,direction:navStyle.flexDirection,columns:navStyle.gridTemplateColumns,linkTops:links.map(link=>link.top),linkWidths:links.map(link=>link.width)}`, args: [] }),
     })
     assert.ok(state.documentWidth <= state.innerWidth, `${width}px FAQ has no page-level horizontal scrolling`)
     assert.ok(state.summaryLeft >= 0 && state.summaryRight <= state.innerWidth, `${width}px expanded French question stays in the viewport`)
@@ -552,7 +552,12 @@ async function exerciseFaq(webdriver, sessionId, origin) {
       assert.equal(columns.length, 3, `${width}px FAQ uses exactly three mobile navigation columns`)
       assert.ok(Math.max(...state.linkWidths) - Math.min(...state.linkWidths) < 1, `${width}px FAQ mobile navigation columns are equal`)
       assert.equal(new Set(state.linkTops).size, 1, `${width}px FAQ mobile navigation remains in one row`)
-    } else assert.equal(state.direction, 'column', '768px FAQ uses rail navigation')
+    } else assert.equal(state.direction, 'column', `${width}px FAQ uses rail navigation`)
+    if (width === 1440) {
+      assert.ok(Math.abs(state.pageWidth - 1024) < 1, 'desktop FAQ uses the same 64rem page width as Portfolio and Profile')
+      assert.ok(Math.abs(state.listWidth - 720) < 1, 'desktop FAQ keeps the shared 45rem reading width')
+      assert.ok(Math.abs(state.pageLeft - state.listLeft) < 1, 'desktop FAQ reading content aligns to the shared page left edge')
+    }
   }
 
   const profileOpened = await webdriver(`/session/${sessionId}/execute/sync`, {
