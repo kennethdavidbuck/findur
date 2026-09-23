@@ -3,7 +3,7 @@ import { PreferenceControls } from './PublicLayout'
 import { useI18n } from '../i18n'
 import { useAuthenticatedPreferences } from '../authenticated-preferences'
 
-export type ProtectedRoute = '/discovery' | '/portfolio' | '/profile'
+export type ProtectedRoute = '/discovery' | '/portfolio' | '/profile' | '/faq'
 
 type Props = {
   children: ReactNode
@@ -15,9 +15,10 @@ type Props = {
   onLogout: () => void
 }
 
-const destinations: Array<{ route: ProtectedRoute; key: 'portfolio' | 'profile' }> = [
+const destinations: Array<{ route: ProtectedRoute; key: 'portfolio' | 'profile' | 'faq' }> = [
   { route: '/portfolio', key: 'portfolio' },
   { route: '/profile', key: 'profile' },
+  { route: '/faq', key: 'faq' },
 ]
 
 function Navigation({ route, onNavigate }: Pick<Props, 'route' | 'onNavigate'>) {

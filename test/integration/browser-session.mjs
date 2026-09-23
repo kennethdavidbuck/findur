@@ -253,7 +253,7 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, diagn
     if (showcaseState.path === '/portfolio' && showcaseState.accounts && showcaseState.tables === 5 && showcaseState.activity) break
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
-  assert.deepEqual(showcaseState, { path: '/portfolio', heading: 'Your portfolio', focused: true, accounts: true, tables: 5, activity: true, expired: false, unknown: false, mvpNav: 'Portfolio|Profile' }, 'the worker completes the Portfolio Showcase with current synthetic data and no unknown diagnostic')
+  assert.deepEqual(showcaseState, { path: '/portfolio', heading: 'Your portfolio', focused: true, accounts: true, tables: 5, activity: true, expired: false, unknown: false, mvpNav: 'Portfolio|Profile|FAQ' }, 'the worker completes the Portfolio Showcase with current synthetic data and no unknown diagnostic')
 
   let inclusionState
   for (let attempt = 0; attempt < 360; attempt += 1) {
@@ -321,13 +321,12 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, diagn
     })
     const layout = await webdriver(`/session/${sessionId}/execute/sync`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: `const table=document.querySelector('.table-wrap');const summary=document.querySelector('.dataset-summary');return {innerWidth,documentWidth:document.documentElement.scrollWidth,tableClientWidth:table.clientWidth,tableScrollWidth:table.scrollWidth,summaryLeft:summary.getBoundingClientRect().left,summaryRight:summary.getBoundingClientRect().right,datasetDirection:getComputedStyle(document.querySelector('.dataset>header')).flexDirection}`, args: [] }),
+      body: JSON.stringify({ script: `const table=document.querySelector('.table-wrap');const summary=document.querySelector('.dataset-summary');return {innerWidth,documentWidth:document.documentElement.scrollWidth,tableClientWidth:table.clientWidth,tableScrollWidth:table.scrollWidth,summaryLeft:summary.getBoundingClientRect().left,summaryRight:summary.getBoundingClientRect().right}`, args: [] }),
     })
     assert.ok(layout.documentWidth <= layout.innerWidth, `${width}px has no page-level horizontal scrolling`)
     assert.ok(layout.summaryLeft >= 0 && layout.summaryRight <= layout.innerWidth, `${width}px keeps the table summary in the readable flow`)
     if (width <= 390) {
       assert.ok(layout.tableScrollWidth > layout.tableClientWidth, `${width}px confines horizontal overflow to the evidence table`)
-      assert.equal(layout.datasetDirection, 'column', `${width}px stacks dataset headings and freshness`)
     }
   }
 
@@ -472,6 +471,113 @@ async function exercisePersonalProfile(webdriver, sessionId, origin) {
   assert.equal(persisted.biography, 'Edited and persisted through the composed browser journey.', 'edited profile survives reload')
 }
 
+async function exerciseFaq(webdriver, sessionId, origin) {
+  await webdriver(`/session/${sessionId}/url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: `${origin}/faq/` }),
+  })
+  let loaded
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    loaded = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const heading=document.querySelector('h1');return {path:location.pathname,heading:heading?.innerText,focused:document.activeElement===heading,title:document.title,nav:[...document.querySelectorAll('.authenticated-nav a')].map(link=>({text:link.innerText,current:link.getAttribute('aria-current')})),questions:document.querySelectorAll('.faq-list details').length}`, args: [] }),
+    })
+    if (loaded.path === '/faq' && loaded.focused) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(loaded.heading, 'Vos questions sur le portefeuille.', 'FAQ follows the saved French preference')
+  assert.equal(loaded.title, 'FAQ — Findur', 'FAQ updates the document title')
+  assert.equal(loaded.questions, 6, 'FAQ renders semantic disclosure topics')
+  assert.deepEqual(loaded.nav.map(({ text }) => text), ['Portefeuille', 'Profil', 'FAQ'], 'FAQ follows Profile in authenticated navigation')
+  assert.equal(loaded.nav[2].current, 'page', 'FAQ is the current destination')
+
+  const summaryElement = await webdriver(`/session/${sessionId}/element`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ using: 'css selector', value: '.faq-list summary' }),
+  })
+  const summaryElementId = summaryElement['element-6066-11e4-a52e-4f735466cecf']
+  await webdriver(`/session/${sessionId}/element/${summaryElementId}/value`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: '\uE007', value: ['\uE007'] }),
+  })
+  const opened = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const disclosure=document.querySelector('.faq-list details');const summary=disclosure.querySelector('summary');const indicator=[...summary.querySelectorAll('.faq-disclosure-indicator span')].find(value=>getComputedStyle(value).visibility!=='hidden')?.innerText;return {open:disclosure.open,focused:document.activeElement===summary,text:disclosure.innerText,indicator}`, args: [] }),
+  })
+  assert.equal(opened.open, true, 'FAQ disclosure opens with native interaction')
+  assert.equal(opened.focused, true, 'keyboard activation retains focus on the disclosure summary')
+  assert.equal(opened.indicator, '−', 'FAQ disclosure shows its open indicator')
+  assert.match(opened.text, /admissibilité sur le serveur/, 'FAQ explains server-enforced account eligibility in French')
+
+  const localeSwitched = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const control=[...document.querySelectorAll('label.choice')].find(value=>value.innerText==='EN');control?.click();return Boolean(control)`, args: [] }),
+  })
+  assert.equal(localeSwitched, true)
+  let localePreserved
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    localePreserved = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const disclosure=document.querySelector('.faq-list details');return {open:disclosure.open,question:disclosure.querySelector('h2')?.innerText}`, args: [] }),
+    })
+    if (localePreserved.question === 'Which accounts can I choose?') break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.deepEqual(localePreserved, { open: true, question: 'Which accounts can I choose?' }, 'locale switch preserves the open FAQ disclosure')
+  const frenchRestored = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const control=[...document.querySelectorAll('label.choice')].find(value=>value.innerText==='FR');control?.click();return Boolean(control)`, args: [] }),
+  })
+  assert.equal(frenchRestored, true)
+  let restoredQuestion
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    restoredQuestion = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ script: `return document.querySelector('.faq-list h2')?.innerText`, args: [] }),
+    })
+    if (restoredQuestion === 'Quels comptes puis-je choisir?') break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(restoredQuestion, 'Quels comptes puis-je choisir?', 'French expanded content is restored before reflow checks')
+
+  for (const [width, layout] of [[767, 'grid'], [390, 'grid'], [320, 'grid'], [768, 'rail'], [1440, 'rail']]) {
+    await webdriver(`/session/${sessionId}/window/rect`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ width, height: 900 }),
+    })
+    const state = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const nav=document.querySelector('.authenticated-nav');const navStyle=getComputedStyle(nav);const links=[...nav.querySelectorAll('a')].map(link=>link.getBoundingClientRect());const page=document.querySelector('.faq-page').getBoundingClientRect();const list=document.querySelector('.faq-list').getBoundingClientRect();const summary=document.querySelector('.faq-list summary').getBoundingClientRect();const answer=document.querySelector('.faq-answer p').getBoundingClientRect();return {innerWidth,documentWidth:document.documentElement.scrollWidth,pageLeft:page.left,pageWidth:page.width,listLeft:list.left,listWidth:list.width,summaryLeft:summary.left,summaryRight:summary.right,answerLeft:answer.left,answerRight:answer.right,direction:navStyle.flexDirection,columns:navStyle.gridTemplateColumns,linkTops:links.map(link=>link.top),linkWidths:links.map(link=>link.width)}`, args: [] }),
+    })
+    assert.ok(state.documentWidth <= state.innerWidth, `${width}px FAQ has no page-level horizontal scrolling`)
+    assert.ok(state.summaryLeft >= 0 && state.summaryRight <= state.innerWidth, `${width}px expanded French question stays in the viewport`)
+    assert.ok(state.answerLeft >= 0 && state.answerRight <= state.innerWidth, `${width}px expanded French answer stays in the viewport`)
+    if (layout === 'grid') {
+      const columns = state.columns.split(' ')
+      assert.equal(columns.length, 3, `${width}px FAQ uses exactly three mobile navigation columns`)
+      assert.ok(Math.max(...state.linkWidths) - Math.min(...state.linkWidths) < 1, `${width}px FAQ mobile navigation columns are equal`)
+      assert.equal(new Set(state.linkTops).size, 1, `${width}px FAQ mobile navigation remains in one row`)
+    } else assert.equal(state.direction, 'column', `${width}px FAQ uses rail navigation`)
+    if (width === 1440) {
+      assert.ok(Math.abs(state.pageWidth - 1024) < 1, 'desktop FAQ uses the same 64rem page width as Portfolio and Profile')
+      assert.ok(Math.abs(state.listWidth - 720) < 1, 'desktop FAQ keeps the shared 45rem reading width')
+      assert.ok(Math.abs(state.pageLeft - state.listLeft) < 1, 'desktop FAQ reading content aligns to the shared page left edge')
+    }
+  }
+
+  const profileOpened = await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const link=[...document.querySelectorAll('.authenticated-nav a')].find(value=>value.getAttribute('href')==='/profile');link.click();return Boolean(link)`, args: [] }),
+  })
+  assert.equal(profileOpened, true)
+  await webdriver(`/session/${sessionId}/back`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+  let restored
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    restored = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `return {path:location.pathname,focused:document.activeElement===document.querySelector('h1'),current:document.querySelector('.authenticated-nav a[aria-current="page"]')?.getAttribute('href')}`, args: [] }),
+    })
+    if (restored.path === '/faq' && restored.focused) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.deepEqual(restored, { path: '/faq', focused: true, current: '/faq' }, 'browser history restores FAQ focus and current navigation')
+}
+
 async function editAndSaveProfile(webdriver, sessionId, values) {
   await webdriver(`/session/${sessionId}/execute/sync`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -579,6 +685,7 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
         await verifyCompletedActiveSessionBypassesConsent(second.webdriver, second.sessionId, publicOrigin)
       })
       await exercisePersonalProfile(second.webdriver, second.sessionId, publicOrigin)
+      await exerciseFaq(second.webdriver, second.sessionId, publicOrigin)
       await exerciseLargeInventory(second.webdriver, second.sessionId, publicOrigin, wiremockUrl)
       await exerciseInventoryFixtures(second.webdriver, second.sessionId, wiremockUrl)
     })

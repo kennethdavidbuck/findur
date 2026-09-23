@@ -5,6 +5,7 @@ import { PublicLayout } from './components/PublicLayout'
 import { I18nProvider, useI18n } from './i18n'
 import { AboutPage } from './pages/AboutPage'
 import { ConsentPage } from './pages/ConsentPage'
+import { FaqPage } from './pages/FaqPage'
 import { LandingPage } from './pages/LandingPage'
 import { PortfolioPage } from './pages/PortfolioPage'
 import { PortfolioShowcasePage } from './pages/PortfolioShowcasePage'
@@ -29,6 +30,7 @@ function routeFromPath(pathname: string): AppRoute {
   if (pathname === '/discovery' || pathname === '/discovery/') return '/discovery'
   if (pathname === '/portfolio' || pathname === '/portfolio/') return '/portfolio'
   if (pathname === '/profile' || pathname === '/profile/') return '/profile'
+  if (pathname === '/faq' || pathname === '/faq/') return '/faq'
   return pathname === '/about' || pathname === '/about/' ? '/about' : '/'
 }
 
@@ -129,7 +131,7 @@ function ProtectedApp({ requestedRoute, onNavigate }: { requestedRoute: Protecte
   }, [authorization.resolving, authorization.status, connectionSetup, requestedRoute, route])
 
   useEffect(() => {
-    const title = accountSelection ? messages.authenticated.inventory.inclusion.setupTitle : messages.authenticated[route.slice(1) as 'discovery' | 'portfolio' | 'profile']
+    const title = accountSelection ? messages.authenticated.inventory.inclusion.setupTitle : messages.authenticated[route.slice(1) as 'discovery' | 'portfolio' | 'profile' | 'faq']
     document.title = `${title} — Findur`
     document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute('content', messages.authenticated.metaDescription)
   }, [accountSelection, messages, route])
@@ -152,7 +154,7 @@ function ProtectedApp({ requestedRoute, onNavigate }: { requestedRoute: Protecte
 
   return (
     <AuthenticatedPreferences onSessionExpired={recoverSession}><AuthenticatedLayout route={route} setup={onboarding} loggingOut={loggingOut} logoutFailed={logoutFailed} onNavigate={navigateProtected} onLogout={() => { void logout() }}>
-      {connectionSetup ? <OnboardingAccountSelection headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : accountSelection ? <PortfolioPage editing={editingAccounts} headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/portfolio' ? <PortfolioShowcasePage headingRef={headingRef} onEdit={() => onNavigate('/portfolio/accounts')} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/profile' ? <ProfilePage headingRef={headingRef} onSessionExpired={recoverSession} /> : <section className="private-placeholder">
+      {connectionSetup ? <OnboardingAccountSelection headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : accountSelection ? <PortfolioPage editing={editingAccounts} headingRef={headingRef} onComplete={completeSetup} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/portfolio' ? <PortfolioShowcasePage headingRef={headingRef} onEdit={() => onNavigate('/portfolio/accounts')} onReconnect={reconnect} onSessionExpired={recoverSession} /> : route === '/profile' ? <ProfilePage headingRef={headingRef} onSessionExpired={recoverSession} /> : route === '/faq' ? <FaqPage headingRef={headingRef} /> : <section className="private-placeholder">
         <h1 ref={headingRef} tabIndex={-1}>{messages.authenticated[`${route.slice(1)}Title` as 'discoveryTitle' | 'portfolioTitle' | 'profileTitle']}</h1>
         <p className="large-copy">{messages.authenticated[`${route.slice(1)}Body` as 'discoveryBody' | 'portfolioBody' | 'profileBody']}</p>
       </section>}
@@ -199,7 +201,7 @@ function RoutedApp() {
     window.history[replace ? 'replaceState' : 'pushState'](null, '', next)
     setRoute({ route: next, connectHandoff: handoff })
   }, [route])
-  return route === '/onboarding/accounts' || route === '/portfolio/accounts' || route === '/discovery' || route === '/portfolio' || route === '/profile'
+  return route === '/onboarding/accounts' || route === '/portfolio/accounts' || route === '/discovery' || route === '/portfolio' || route === '/profile' || route === '/faq'
     ? <ProtectedApp requestedRoute={route} onNavigate={navigate} />
     : <PublicApp route={route} onNavigate={navigate} connectHandoff={connectHandoff} />
 }
