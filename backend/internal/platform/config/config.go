@@ -23,6 +23,8 @@ const (
 	envAuthorizationGate = "AUTH_INITIATION_ENABLED"
 	envOAuthClientID     = "SNAPTRADE_OAUTH_CLIENT_ID"
 	envOAuthClientSecret = "SNAPTRADE_OAUTH_CLIENT_SECRET"
+	envConsumerKey       = "SNAPTRADE_CONSUMER_KEY"
+	envWebhookProcessing = "SNAPTRADE_WEBHOOK_PROCESSING_ENABLED"
 	envOAuthCallbackURL  = "SNAPTRADE_OAUTH_CALLBACK_URL"
 	envOIDCIssuer        = "SNAPTRADE_OIDC_ISSUER"
 	envOAuthHashKey      = "OAUTH_HASH_KEY"
@@ -62,7 +64,16 @@ type Config struct {
 	FixtureBaseURL       *url.URL
 	FixtureProviderToken string
 	Authorization        AuthorizationConfig
+	Webhook              WebhookConfig
 	Session              SessionConfig
+}
+
+// WebhookConfig enables the public SnapTrade receiver only when its secret is present.
+type WebhookConfig struct {
+	Enabled           bool
+	ProcessingEnabled bool
+	ClientID          string
+	ConsumerKey       []byte
 }
 
 // SessionConfig is independent of the OAuth initiation feature gate.
@@ -74,6 +85,7 @@ type SessionConfig struct {
 // AuthorizationConfig is explicit product policy and validated OIDC configuration.
 type AuthorizationConfig struct {
 	Enabled         bool
+	WebhookScope    bool
 	ClientID        string
 	ClientSecret    string
 	CallbackURL     string
@@ -123,7 +135,11 @@ func Load() (Config, error) {
 
 	appEnvironment := strings.ToLower(strings.TrimSpace(os.Getenv(envAppEnvironment)))
 	production := appEnvironment == environmentProduction
-	authorization, err := loadAuthorizationConfig(appEnvironment)
+	webhook, err := loadWebhookConfig()
+	if err != nil {
+		return Config{}, err
+	}
+	authorization, err := loadAuthorizationConfig(appEnvironment, webhook.Enabled)
 	if err != nil {
 		return Config{}, err
 	}
@@ -141,6 +157,7 @@ func Load() (Config, error) {
 		FixtureBaseURL:       fixtureBaseURL,
 		FixtureProviderToken: fixtureToken,
 		Authorization:        authorization,
+		Webhook:              webhook,
 		Session:              session,
 	}, nil
 }
@@ -162,7 +179,7 @@ func loadProviderBaseURL(appEnvironment string) (*url.URL, error) {
 	return parsed, nil
 }
 
-func loadAuthorizationConfig(appEnvironment string) (AuthorizationConfig, error) {
+func loadAuthorizationConfig(appEnvironment string, webhookEnabled bool) (AuthorizationConfig, error) {
 	enabled, err := strconv.ParseBool(defaultString(strings.TrimSpace(os.Getenv(envAuthorizationGate)), "false"))
 	if err != nil {
 		return AuthorizationConfig{}, errors.New(envAuthorizationGate + " must be true or false")
@@ -171,7 +188,7 @@ func loadAuthorizationConfig(appEnvironment string) (AuthorizationConfig, error)
 	if err != nil {
 		return AuthorizationConfig{}, err
 	}
-	result := AuthorizationConfig{Enabled: enabled, AllowedReturns: []string{auth.DefaultReturnRoute, auth.PortfolioReturnRoute}, ProviderBaseURL: providerBaseURL}
+	result := AuthorizationConfig{Enabled: enabled, WebhookScope: webhookEnabled, AllowedReturns: []string{auth.DefaultReturnRoute, auth.PortfolioReturnRoute}, ProviderBaseURL: providerBaseURL}
 	if !enabled {
 		if strings.TrimSpace(os.Getenv(envOAuthTokenKeyV1)) != "" {
 			if err := loadTokenKey(&result); err != nil {
@@ -187,6 +204,25 @@ func loadAuthorizationConfig(appEnvironment string) (AuthorizationConfig, error)
 		return AuthorizationConfig{}, err
 	}
 	return result, nil
+}
+
+func loadWebhookConfig() (WebhookConfig, error) {
+	processingEnabled, err := strconv.ParseBool(defaultString(strings.TrimSpace(os.Getenv(envWebhookProcessing)), "false"))
+	if err != nil {
+		return WebhookConfig{}, errors.New(envWebhookProcessing + " must be true or false")
+	}
+	consumerKey := strings.TrimSpace(os.Getenv(envConsumerKey))
+	if consumerKey == "" {
+		if processingEnabled {
+			return WebhookConfig{}, errors.New(envWebhookProcessing + " requires " + envConsumerKey)
+		}
+		return WebhookConfig{}, nil
+	}
+	clientID := strings.TrimSpace(os.Getenv(envOAuthClientID))
+	if clientID == "" {
+		return WebhookConfig{}, errors.New(envConsumerKey + " requires " + envOAuthClientID)
+	}
+	return WebhookConfig{Enabled: true, ProcessingEnabled: processingEnabled, ClientID: clientID, ConsumerKey: []byte(consumerKey)}, nil
 }
 
 func loadOAuthSettings(result *AuthorizationConfig, appEnvironment string) error {

@@ -4,7 +4,7 @@
     "urlPath": "/oauth/authorize",
     "queryParameters": {
       "response_type": { "equalTo": "code" },
-      "scope": { "equalTo": "openid read" },
+      "scope": { "equalTo": "openid read webhook" },
       "code_challenge_method": { "equalTo": "S256" }
     }
   },

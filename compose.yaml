@@ -44,6 +44,8 @@ services:
       AUTH_INITIATION_ENABLED: "${AUTH_INITIATION_ENABLED:-true}"
       SNAPTRADE_OAUTH_CLIENT_ID: "${SNAPTRADE_OAUTH_CLIENT_ID:-synthetic-oauth-client}"
       SNAPTRADE_OAUTH_CLIENT_SECRET: "${SNAPTRADE_OAUTH_CLIENT_SECRET:-synthetic-oauth-client-secret}"
+      SNAPTRADE_CONSUMER_KEY: "${SNAPTRADE_CONSUMER_KEY:-synthetic-webhook-consumer-key}"
+      SNAPTRADE_WEBHOOK_PROCESSING_ENABLED: "${SNAPTRADE_WEBHOOK_PROCESSING_ENABLED:-true}"
       # Browser-visible loopback callback; nginx forwards /api to the backend.
       SNAPTRADE_OAUTH_CALLBACK_URL: "${SNAPTRADE_OAUTH_CALLBACK_URL:-http://127.0.0.1:8080/api/auth/snaptrade/callback}"
       SNAPTRADE_OIDC_ISSUER: "${SNAPTRADE_OIDC_ISSUER:-http://wiremock:8080}"
@@ -140,6 +142,7 @@ services:
       BROWSER_URL: http://frontend:4444
       EXPECTED_SHA: ${BUILD_SHA:-0123456789abcdef0123456789abcdef01234567}
       WIREMOCK_URL: http://wiremock:8080
+      SNAPTRADE_CONSUMER_KEY: "${SNAPTRADE_CONSUMER_KEY:-synthetic-webhook-consumer-key}"
     volumes:
       - ./test/integration:/work:ro
     depends_on:

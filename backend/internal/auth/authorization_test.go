@@ -178,6 +178,34 @@ func TestBeginCreatesSecureRequestAndSanitizesReturn(t *testing.T) {
 	}
 }
 
+func TestBeginRequestsWebhookScopeOnlyWhenConfigured(t *testing.T) {
+	now := time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name    string
+		enabled bool
+		want    string
+	}{
+		{name: "disabled", want: "openid read"},
+		{name: "enabled", enabled: true, want: "openid read webhook"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := serviceForTest(t, newMemoryRepository(), &staticDiscovery{result: Discovery{AuthorizationEndpoint: testAuthorizationEndpoint}}, &now, true)
+			service.config.RequestWebhook = test.enabled
+			result, err := service.Begin(context.Background(), DefaultReturnRoute)
+			if err != nil {
+				t.Fatal(err)
+			}
+			location, err := url.Parse(result.AuthorizationURL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := location.Query().Get("scope"); got != test.want {
+				t.Fatalf("scope=%q want=%q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestBeginUsesSafeDefaultForEveryUnapprovedReturn(t *testing.T) {
 	for name, candidate := range map[string]string{
 		"external":          "https://evil.example/steal",

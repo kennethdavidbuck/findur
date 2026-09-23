@@ -23,6 +23,10 @@ services:
         sync: false
       - key: SNAPTRADE_OAUTH_CLIENT_SECRET
         sync: false
+      - key: SNAPTRADE_CONSUMER_KEY
+        sync: false
+      - key: SNAPTRADE_WEBHOOK_PROCESSING_ENABLED
+        value: "false"
       - key: SNAPTRADE_OAUTH_CALLBACK_URL
         sync: false
       - key: SNAPTRADE_OIDC_ISSUER

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHmac } from 'node:crypto'
 import { withWebDriverSession } from './webdriver.mjs'
 import { exerciseLargeInventory } from './browser-large-inventory.mjs'
 import { removeDiagnosticScenario } from './diagnostic-scenarios.mjs'
@@ -685,7 +686,49 @@ async function waitForProfileValue(webdriver, sessionId, displayName) {
   return state
 }
 
-export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockUrl, diagnosticScenario }) {
+async function exerciseSnapTradeWebhook(webdriver, sessionId, publicOrigin, apiOrigin, wiremockUrl, consumerKey) {
+  const before = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
+  const providerCallsBefore = before.requests.length
+  const payload = {
+    schemaVersion: 'oauth_v1',
+    webhookId: '10000000-0000-4000-8000-000000000001',
+    oauthClientId: 'synthetic-oauth-client',
+    eventTimestamp: new Date().toISOString(),
+    userId: 'synthetic-test-subject',
+    eventType: 'NEW_ACCOUNT_AVAILABLE',
+    connectionId: '10000000-0000-4000-8000-000000000002',
+    accountId: '10000000-0000-4000-8000-000000000003',
+  }
+  const canonical = JSON.stringify(payload, Object.keys(payload).sort())
+  const signature = createHmac('sha256', consumerKey).update(canonical).digest('base64')
+  for (let delivery = 0; delivery < 2; delivery += 1) {
+    const response = await fetch(`${apiOrigin}/api/webhooks/snaptrade`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Signature: signature },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15_000),
+    })
+    assert.equal(response.status, 204, `signed webhook delivery ${delivery + 1} is accepted`)
+  }
+  const after = await (await fetch(`${wiremockUrl}/__admin/requests`, { signal: AbortSignal.timeout(15_000) })).json()
+  assert.equal(after.requests.length, providerCallsBefore, 'webhook processing makes no SnapTrade provider request')
+
+  await webdriver(`/session/${sessionId}/url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: `${publicOrigin}/portfolio/accounts` }),
+  })
+  let state
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    state = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const text=document.body.innerText;return {path:location.pathname,provisional:text.includes('Account details unavailable'),selectable:[...document.querySelectorAll('.account-choice')].some(value=>value.innerText.includes('Account details unavailable')&&value.querySelector('input')?.disabled===false)}`, args: [] }),
+    })
+    if (state.path === '/portfolio/accounts' && state.provisional) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.deepEqual(state, { path: '/portfolio/accounts', provisional: true, selectable: false }, 'a normal browser load renders the provisional account without making it selectable')
+}
+
+export async function verifyBrowserSession({ browserUrl, publicOrigin, apiOrigin, wiremockUrl, webhookConsumerKey, diagnosticScenario }) {
   await withWebDriverSession(browserUrl, async (first) => {
     await establishSession(first.webdriver, first.sessionId, publicOrigin)
     await verifyIncompleteActiveSessionBypassesConsent(first.webdriver, first.sessionId, publicOrigin)
@@ -750,6 +793,7 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
       await exerciseAccountInclusion(second.webdriver, second.sessionId, wiremockUrl, diagnosticScenario, async () => {
         await verifyCompletedActiveSessionBypassesConsent(second.webdriver, second.sessionId, publicOrigin)
       })
+      await exerciseSnapTradeWebhook(second.webdriver, second.sessionId, publicOrigin, apiOrigin, wiremockUrl, webhookConsumerKey)
       await exercisePersonalProfile(second.webdriver, second.sessionId, publicOrigin)
       await exerciseFaq(second.webdriver, second.sessionId, publicOrigin)
       await exerciseAuthorizationRenewal(second.webdriver, second.sessionId, publicOrigin, wiremockUrl)

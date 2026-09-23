@@ -138,6 +138,11 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		pool.Close()
 		return errInvalidConfiguration
 	}
+	webhookHandler, err := buildWebhook(cfg, pool, logger)
+	if err != nil {
+		pool.Close()
+		return errInvalidConfiguration
+	}
 	showcaseService, err := portfolio.NewShowcaseService(postgresadapter.NewShowcaseRepository(pool, time.Now), time.Now)
 	if err != nil {
 		pool.Close()
@@ -153,7 +158,7 @@ func run(rootCtx context.Context, logger *slog.Logger) error {
 		pool.Close()
 		return errInvalidConfiguration
 	}
-	server := newServer(cfg.Address, httpapi.NewHandlerWithProfilePreferences(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, portfolioServices.inventory, portfolioServices.inclusion, showcaseService, profiles, preferences, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
+	server := newServer(cfg.Address, httpapi.NewHandlerWithProfilePreferencesAndWebhook(logger, readiness, buildinfo.SHA, diagnostics, authorization.initiator, authorization.callback, sessions, portfolioServices.inventory, portfolioServices.inclusion, showcaseService, profiles, preferences, webhookHandler, cfg.Authorization.Enabled, cfg.Session.PublicOrigin, authorization.fixture), logger)
 	serverErrors := make(chan error, 1)
 	workerCtx, stopWorker := context.WithCancel(rootCtx)
 	defer stopWorker()
@@ -251,6 +256,17 @@ func buildPortfolioServices(cfg config.Config, pool *pgxpool.Pool, logger *slog.
 	return portfolioComponents{inventory: inventory, inclusion: inclusion, sync: syncService}, nil
 }
 
+func buildWebhook(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger) (http.Handler, error) {
+	if !cfg.Webhook.Enabled {
+		return nil, nil
+	}
+	service, err := portfolio.NewWebhookService(postgresadapter.NewInventoryLifecycleRepository(pool), time.Now)
+	if err != nil {
+		return nil, err
+	}
+	return httpapi.NewSnapTradeWebhookHandler(service, cfg.Webhook.ConsumerKey, cfg.Webhook.ClientID, cfg.Webhook.ProcessingEnabled, logger)
+}
+
 func buildInventory(cfg config.Config, pool *pgxpool.Pool) (*portfolio.Service, error) {
 	if len(cfg.Session.HashKey) == 0 || len(cfg.Authorization.TokenKeys) == 0 || cfg.Authorization.ProviderBaseURL == nil {
 		return nil, nil
@@ -301,6 +317,7 @@ func buildAuthorization(cfg config.Config, pool *pgxpool.Pool) (authorizationCom
 		Random:           rand.Reader,
 		Clock:            time.Now,
 		OperationTimeout: config.AuthorizationTimeout,
+		RequestWebhook:   cfg.Authorization.WebhookScope,
 	}, repository, discovery)
 	if err != nil {
 		return authorizationComponents{}, err
@@ -330,6 +347,9 @@ func buildAuthorization(cfg config.Config, pool *pgxpool.Pool) (authorizationCom
 func buildOIDCFixture(cfg config.Config) (http.Handler, error) {
 	if !cfg.Integration || cfg.FixtureBaseURL == nil {
 		return nil, nil
+	}
+	if cfg.Authorization.WebhookScope {
+		return oidcfixture.NewWithWebhookScope(cfg.Authorization.Issuer, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL)
 	}
 	return oidcfixture.New(cfg.Authorization.Issuer, cfg.Authorization.ClientID, cfg.Authorization.ClientSecret, cfg.Authorization.CallbackURL)
 }
