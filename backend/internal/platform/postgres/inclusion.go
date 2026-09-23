@@ -87,11 +87,17 @@ func (r *InclusionRepository) PrepareInclusion(ctx context.Context, owner uuid.U
 
 	var inventoryGeneration int64
 	var inventoryHead *int64
-	if err := tx.QueryRow(ctx, `SELECT current_generation,head_generation FROM portfolio_inventory_state WHERE user_id=$1 FOR UPDATE`, owner).Scan(&inventoryGeneration, &inventoryHead); err != nil || inventoryHead == nil {
+	var inventoryStatus portfolio.State
+	var inventoryClaimExpiresAt *time.Time
+	if err := tx.QueryRow(ctx, `SELECT current_generation,current_status,head_generation,claim_expires_at
+		FROM portfolio_inventory_state WHERE user_id=$1 FOR UPDATE`, owner).Scan(&inventoryGeneration, &inventoryStatus, &inventoryHead, &inventoryClaimExpiresAt); err != nil || inventoryHead == nil {
 		if errors.Is(err, pgx.ErrNoRows) || inventoryHead == nil {
 			return portfolio.InclusionPreparation{}, portfolio.ErrInvalidAccountSelection
 		}
 		return portfolio.InclusionPreparation{}, err
+	}
+	if inventoryStatus == portfolio.StatePending && inventoryClaimExpiresAt != nil && inventoryClaimExpiresAt.After(now) {
+		return portfolio.InclusionPreparation{}, portfolio.ErrInclusionConflict
 	}
 	committed, err := loadCommittedAccountIDs(ctx, tx, owner)
 	if err != nil {
@@ -440,7 +446,7 @@ func loadCommittedAccountIDs(ctx context.Context, tx pgx.Tx, owner uuid.UUID) ([
 		return nil, err
 	}
 	defer rows.Close()
-	var result []string
+	result := make([]string, 0)
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {

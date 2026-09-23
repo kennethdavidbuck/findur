@@ -52,7 +52,8 @@ func TestInventoryListsConnectionsBeforeAccountsAndMinimizesOutput(t *testing.T)
 		t.Fatalf("connections = %+v", connections)
 	}
 	account := connections[0].Accounts[0]
-	if account.MaskedLabel != "Retirement (•••• 8443)" || !account.Eligible || account.Category != "investment" || account.SyncState != "complete" {
+	if account.MaskedLabel != "Retirement (•••• 8443)" || !account.Eligible || account.Category != "investment" || account.SyncState != "complete" ||
+		account.TotalBalanceAmount == nil || *account.TotalBalanceAmount != "15363.23" || account.TotalBalanceCurrency == nil || *account.TotalBalanceCurrency != "CAD" {
 		t.Fatalf("account = %+v", account)
 	}
 	serialized := strings.Join([]string{account.ID, string(account.Category), account.Type, account.MaskedLabel, string(account.SyncState)}, " ")
@@ -60,6 +61,18 @@ func TestInventoryListsConnectionsBeforeAccountsAndMinimizesOutput(t *testing.T)
 		if strings.Contains(serialized, forbidden) {
 			t.Fatalf("normalized inventory retained %q: %s", forbidden, serialized)
 		}
+	}
+
+	withoutTotal := strings.Replace(fixtureBody(t, "success-accounts.json"), `"balance": { "total": { "amount": 15363.23, "currency": "CAD" } }`, `"balance": {}`, 1)
+	client, _ = NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/accounts") {
+			return jsonResponse(http.StatusOK, withoutTotal), nil
+		}
+		return jsonResponse(http.StatusOK, fixtureBody(t, "success-connections.json")), nil
+	}), time.Now)
+	connections, err = client.Load(context.Background(), "access-token")
+	if err != nil || connections[0].Accounts[0].TotalBalanceAmount != nil || connections[0].Accounts[0].TotalBalanceCurrency != nil {
+		t.Fatalf("missing total connections=%+v err=%v", connections, err)
 	}
 }
 
@@ -250,6 +263,8 @@ func TestInventoryNormalizesMaskingFreshnessAndRejectsDuplicateIDs(t *testing.T)
 	}{
 		{name: "duplicate connection", connections: `[{"id":"87b24961-b51e-4db8-9226-f198f6518a89","disabled":true},{"id":"87b24961-b51e-4db8-9226-f198f6518a89","disabled":true}]`},
 		{name: "duplicate account", connections: fixtureBody(t, "success-connections.json"), accounts: `[{"id":"917c8734-8470-4a3e-a18f-57c3f2ee6631","brokerage_authorization":"87b24961-b51e-4db8-9226-f198f6518a89","name":"One","number":"12345","institution_name":"Broker","status":"open","sync_status":{},"balance":{},"is_paper":false},{"id":"917c8734-8470-4a3e-a18f-57c3f2ee6631","brokerage_authorization":"87b24961-b51e-4db8-9226-f198f6518a89","name":"Two","number":"67890","institution_name":"Broker","status":"open","sync_status":{},"balance":{},"is_paper":false}]`},
+		{name: "partial account total", connections: fixtureBody(t, "success-connections.json"), accounts: strings.Replace(fixtureBody(t, "success-accounts.json"), `"amount": 15363.23, "currency": "CAD"`, `"amount": 15363.23`, 1)},
+		{name: "invalid account total", connections: fixtureBody(t, "success-connections.json"), accounts: strings.Replace(fixtureBody(t, "success-accounts.json"), `15363.23`, `"not-a-decimal"`, 1)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			client, _ := NewInventoryClient(baseURL, roundTripFunc(func(request *http.Request) (*http.Response, error) {
@@ -300,7 +315,8 @@ func TestInventorySelectsInvestmentAccountsWithProviderMaskedNumbers(t *testing.
 	for index, account := range connections[0].Accounts {
 		sourceIndex := []int{0, 2, 3}[index]
 		wantLabel := fmt.Sprintf("Synthetic account %d (•••• %04d)", sourceIndex+1, 1001+sourceIndex)
-		if account.ID != globalAccountID(sourceIndex+1) || account.MaskedLabel != wantLabel || !account.Selectable || !account.Eligible || account.UsabilityReason != portfolio.UsabilityReady {
+		if account.ID != globalAccountID(sourceIndex+1) || account.MaskedLabel != wantLabel || !account.Selectable || !account.Eligible || account.UsabilityReason != portfolio.UsabilityReady ||
+			account.TotalBalanceAmount == nil || *account.TotalBalanceAmount != "100" || account.TotalBalanceCurrency == nil || *account.TotalBalanceCurrency != "USD" {
 			t.Fatalf("account=%+v want label=%q", account, wantLabel)
 		}
 	}

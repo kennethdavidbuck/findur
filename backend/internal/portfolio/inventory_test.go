@@ -82,13 +82,42 @@ func TestServiceTreatsCredentialFailureAsUnauthorizedWithoutProviderCall(t *test
 	}
 }
 
+func TestServiceRefreshDueFinalizesScheduledFailureBeforeReturningProviderError(t *testing.T) {
+	now := time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
+	retryAt := now.Add(7 * time.Minute)
+	providerErr := &ProviderError{State: StateRateLimited, RetryAt: &retryAt}
+	repository := &memoryRepository{preparation: Preparation{Snapshot: Snapshot{State: StatePending, Generation: 4}, Claimed: true}}
+	service, err := NewService(repository, &providerStub{err: providerErr}, &credentialStub{token: "access-token"}, func() time.Time { return now }, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	processed, err := service.RefreshDue(context.Background(), 24*time.Hour, time.Minute)
+	if !processed || !errors.Is(err, providerErr) {
+		t.Fatalf("processed=%v err=%v", processed, err)
+	}
+	if repository.scheduledFinalized != 1 || repository.lastState != StateRateLimited || repository.lastRetryAt == nil || !repository.lastRetryAt.Equal(retryAt) {
+		t.Fatalf("scheduled=%d state=%s retryAt=%v", repository.scheduledFinalized, repository.lastState, repository.lastRetryAt)
+	}
+}
+
 type memoryRepository struct {
-	preparation Preparation
-	finalized   int
+	preparation        Preparation
+	finalized          int
+	scheduledFinalized int
+	lastState          State
+	lastRetryAt        *time.Time
 }
 
 func (r *memoryRepository) Prepare(context.Context, uuid.UUID, bool, time.Time) (Preparation, error) {
 	return r.preparation, nil
+}
+
+func (r *memoryRepository) ClaimDue(context.Context, time.Time, time.Duration, time.Duration) (*ScheduledInventoryClaim, error) {
+	if !r.preparation.Claimed {
+		return nil, nil
+	}
+	return &ScheduledInventoryClaim{Generation: r.preparation.Generation}, nil
 }
 
 func (r *memoryRepository) Finalize(_ context.Context, _ uuid.UUID, generation int64, state State, retryAt *time.Time, connections []Connection, now time.Time) (Snapshot, bool, error) {
@@ -96,8 +125,14 @@ func (r *memoryRepository) Finalize(_ context.Context, _ uuid.UUID, generation i
 		return Snapshot{}, false, errors.New("stale generation")
 	}
 	r.finalized++
+	r.lastState, r.lastRetryAt = state, retryAt
 	r.preparation = Preparation{Snapshot: Snapshot{State: state, Generation: generation, RetryAt: retryAt, UpdatedAt: now, Connections: connections}}
 	return r.preparation.Snapshot, true, nil
+}
+
+func (r *memoryRepository) FinalizeScheduled(ctx context.Context, claim ScheduledInventoryClaim, state State, retryAt *time.Time, connections []Connection, now time.Time) (Snapshot, bool, error) {
+	r.scheduledFinalized++
+	return r.Finalize(ctx, claim.Owner, claim.Generation, state, retryAt, connections, now)
 }
 
 type providerStub struct {

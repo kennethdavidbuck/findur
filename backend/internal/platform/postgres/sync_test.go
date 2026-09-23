@@ -211,6 +211,47 @@ func TestSyncRepositoryPausesReauthorizationAndFreshCallbackResumesPendingClaim(
 	}
 }
 
+func TestSyncRepositoryRepairsIncludedNullInitializationWithCompleteCycle(t *testing.T) {
+	fixture := newRepositoryFixture(t)
+	fixture.reset(t)
+	owner := inclusionOwnerWithInventory(t, fixture, 250, "null-initialization-owner")
+	publishInclusionInventory(t, fixture, owner, []portfolio.Account{{ID: "account-1", Category: portfolio.AccountCategoryInvestment, Type: "Margin", MaskedLabel: "First (•••• 1001)", Available: true, Eligible: true, Selectable: true, UsabilityReason: portfolio.UsabilityReady, SyncState: portfolio.AccountSyncStateComplete}})
+	inclusions := postgresadapter.NewInclusionRepository(fixture.pool)
+	prepared, err := inclusions.PrepareInclusion(fixture.ctx, owner, 0, "null-initialization", []string{"account-1"}, fixture.now)
+	if err != nil || !prepared.Claimed {
+		t.Fatalf("prepared=%+v err=%v", prepared, err)
+	}
+	data := completeRepositoryAccountData(fixture.now)
+	if _, accepted, err := inclusions.FinalizeInclusion(fixture.ctx, owner, prepared.ChangeID, prepared.Version, prepared.InventoryGeneration, prepared.LifecycleGeneration, map[string]portfolio.AccountData{"account-1": data}, "", nil, fixture.now); err != nil || !accepted {
+		t.Fatalf("initial publication accepted=%v err=%v", accepted, err)
+	}
+	if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_account_sync_state
+		SET initialized_at=NULL WHERE user_id=$1 AND account_id='account-1'`, owner); err != nil {
+		t.Fatal(err)
+	}
+
+	repository := postgresadapter.NewSyncRepository(fixture.pool)
+	cycleAt := fixture.now.Add(time.Minute)
+	for _, resource := range []portfolio.AccountResource{portfolio.AccountResourceBalances, portfolio.AccountResourcePositions, portfolio.AccountResourceActivities} {
+		claim, err := repository.ClaimDue(fixture.ctx, cycleAt, 24*time.Hour, time.Minute)
+		if err != nil || claim == nil || claim.Resource != resource {
+			t.Fatalf("resource=%s claim=%+v err=%v", resource, claim, err)
+		}
+		fresh := completeRepositoryAccountData(cycleAt)
+		if accepted, err := repository.FinishSync(fixture.ctx, *claim, &fresh, "", nil, cycleAt); err != nil || !accepted {
+			t.Fatalf("resource=%s accepted=%v err=%v", resource, accepted, err)
+		}
+	}
+	var initializedAt *time.Time
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT initialized_at FROM portfolio_account_sync_state
+		WHERE user_id=$1 AND account_id='account-1'`, owner).Scan(&initializedAt); err != nil {
+		t.Fatal(err)
+	}
+	if initializedAt == nil || !initializedAt.Equal(cycleAt) {
+		t.Fatalf("initializedAt=%v", initializedAt)
+	}
+}
+
 func activityRange(start time.Time, first, end int) []portfolio.Activity {
 	activities := make([]portfolio.Activity, 0, end-first)
 	for index := first; index < end; index++ {

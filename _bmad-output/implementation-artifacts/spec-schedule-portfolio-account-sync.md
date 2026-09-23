@@ -111,6 +111,11 @@ context:
   returning OAuth login rotates authorization/session material and increments
   the inclusion lifecycle to fence stale work, but preserves the inventory head
   and versions. Explicit retry/reconnect is the only inventory refresh path.
+- Superseded 2026-09-22 by
+  `spec-add-scheduled-connection-and-account-inventory-synchronization.md`:
+  returning login still makes no synchronous inventory call, while the leased
+  minute worker independently repairs incomplete inventory and refreshes a
+  successful inventory head every 24 hours.
 
 ## Spec Change Log
 
