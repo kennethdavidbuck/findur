@@ -24,6 +24,7 @@ type DatasetContext struct {
 	Source, Coverage, Currency           string
 	ObservedAt, RetrievedAt, PublishedAt *time.Time
 	Freshness                            Freshness
+	Diagnostic                           *ResourceDiagnostic
 }
 
 // ShowcaseBalance is one persisted cash balance row for an included account.

@@ -35,9 +35,20 @@ function isContext(value: unknown) {
     && typeof value.coverage === 'string'
     && typeof value.currency === 'string'
     && knownString(freshnessStates, value.freshness)
+    && (value.diagnostic === undefined || isDiagnostic(value.diagnostic))
     && optionalString(value.observedAt)
     && optionalString(value.retrievedAt)
     && optionalString(value.publishedAt)
+}
+
+function isDiagnostic(value: unknown) {
+  return isRecord(value)
+    && Object.keys(value).every((key) => diagnosticFields.has(key))
+    && knownString(diagnosticReasons, value.reason)
+    && knownString(diagnosticActions, value.recommendedAction)
+    && diagnosticActionsByReason[value.reason].has(value.recommendedAction)
+    && optionalDateTime(value.retryAt)
+    && optionalDateTime(value.lastSuccessfulAt)
 }
 
 function isBalance(value: unknown) {
@@ -73,9 +84,31 @@ function optionalString(value: unknown) {
   return value === undefined || typeof value === 'string'
 }
 
-function knownString(values: Set<string>, value: unknown) {
+function optionalDateTime(value: unknown) {
+  if (value === undefined) return true
+  if (typeof value !== 'string') return false
+  const match = rfc3339DateTime.exec(value)
+  if (!match || !Number.isFinite(Date.parse(value))) return false
+  const year = Number(match[1]); const month = Number(match[2]); const day = Number(match[3])
+  return day <= new Date(Date.UTC(year, month, 0)).getUTCDate()
+}
+
+function knownString(values: Set<string>, value: unknown): value is string {
   return typeof value === 'string' && values.has(value)
 }
 
 const syncModes = new Set(['realtime', 'delayed', 'unknown'])
 const freshnessStates = new Set(['current', 'stale_usable', 'expired', 'unavailable'])
+const diagnosticReasons = new Set(['no_accounts_returned', 'no_supported_accounts', 'connection_disabled', 'authorization_required', 'provider_unavailable', 'sync_pending', 'unknown'])
+const diagnosticActions = new Set(['none', 'wait', 'retry', 'reconnect'])
+const diagnosticActionsByReason: Record<string, Set<string>> = {
+  no_accounts_returned: new Set(['retry']),
+  no_supported_accounts: new Set(['none']),
+  connection_disabled: new Set(['reconnect']),
+  authorization_required: new Set(['reconnect']),
+  provider_unavailable: new Set(['retry', 'wait']),
+  sync_pending: new Set(['wait']),
+  unknown: new Set(['retry']),
+}
+const diagnosticFields = new Set(['reason', 'recommendedAction', 'retryAt', 'lastSuccessfulAt'])
+const rfc3339DateTime = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/

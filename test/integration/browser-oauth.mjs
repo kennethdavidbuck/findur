@@ -51,9 +51,9 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
     for (let attempt = 0; attempt < 40; attempt += 1) {
       inventoryEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: `const text=document.body.innerText;const check=[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Check again'&&!button.disabled);if(check)check.click();return {text,focused:document.activeElement===document.querySelector('h1'),chooserCount:document.querySelectorAll('.account-selection').length,inventoryCount:document.querySelectorAll('.inventory-connections').length,accountLabelCount:text.split('Individual (•••• X001)').length-1}`, args: [] }),
+        body: JSON.stringify({ script: `const text=document.body.innerText;const check=[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Check again'&&!button.disabled);if(check)check.click();return {text,focused:document.activeElement===document.querySelector('h1'),chooserCount:document.querySelectorAll('.account-selection').length,inventoryCount:document.querySelectorAll('.inventory-connections').length,accountLabelCount:text.split('Healthy Realtime — Full Data (•••• X001)').length-1}`, args: [] }),
       })
-      if (inventoryEvidence.text.includes('Individual (•••• X001)') && inventoryEvidence.chooserCount === 1) break
+      if (inventoryEvidence.text.includes('Healthy Realtime — Full Data (•••• X001)') && inventoryEvidence.chooserCount === 1) break
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
     assert.equal(inventoryEvidence.focused, true, 'the account-choice heading retains meaningful focus')
@@ -61,9 +61,9 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
     assert.equal(inventoryEvidence.inventoryCount, 0, 'the raw inventory is not duplicated beside the chooser')
     assert.equal(inventoryEvidence.accountLabelCount, 1, `the account is rendered once; observed: ${JSON.stringify(inventoryEvidence)}`)
     assert.match(inventoryEvidence.text, /Pick the accounts you’d like to include\. You can change this anytime\./)
-    assert.match(inventoryEvidence.text, /IRA \(•••• X002\)/)
-    assert.match(inventoryEvidence.text, /Cash Account \(•••• CASH\)/)
-    assert.match(inventoryEvidence.text, /Saved to your profile:\s*0\s*of\s*3\s*accounts shown/)
+    assert.match(inventoryEvidence.text, /Delayed Account — Empty Positions \(•••• X002\)/)
+    assert.match(inventoryEvidence.text, /Cash Only — No Positions \(•••• CASH\)/)
+    assert.match(inventoryEvidence.text, /Saved to your profile:\s*0\s*of\s*28\s*accounts shown/)
     for (const forbidden of ['SANDBOX-001', 'SANDBOX-002', 'SANDBOX-CASH', '25000', '12500', '5000']) assert.doesNotMatch(inventoryEvidence.text, new RegExp(forbidden), `${forbidden} is not rendered`)
     const browserCookies = await webdriver(`/session/${sessionId}/cookie`)
     assert.ok(browserCookies.some((cookie) => cookie.name === 'findur_session' && cookie.httpOnly && cookie.secure), 'opaque secure session cookie is issued')

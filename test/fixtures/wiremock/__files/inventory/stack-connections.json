@@ -2,13 +2,243 @@
   {
     "id": "0eadf3ab-8daa-4357-9e38-325dbe82f003",
     "disabled": false,
-    "brokerage": { "display_name": "Synthetic Self-Directed" },
-    "data_freshness_mode": { "institution": "realtime", "snaptrade": "delayed" }
+    "brokerage": {
+      "display_name": "Synthetic Self-Directed"
+    },
+    "data_freshness_mode": {
+      "institution": "realtime",
+      "snaptrade": "realtime"
+    }
   },
   {
     "id": "12fe591b-344d-4e8c-96e6-98a692f94054",
     "disabled": false,
-    "brokerage": { "display_name": "Synthetic Cash" },
-    "data_freshness_mode": { "institution": "realtime", "snaptrade": "delayed" }
+    "brokerage": {
+      "display_name": "Synthetic Cash"
+    },
+    "data_freshness_mode": {
+      "institution": "realtime",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000001",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 03"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000002",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 04"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000003",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 05"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000004",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 06"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000005",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 07"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000006",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 08"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000007",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 09"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000008",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 10"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000009",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 11"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000010",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 12"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000011",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 13"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000012",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 14"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000013",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 15"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000014",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 16"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000015",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 17"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000016",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Scrubbed Institution 18"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000017",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Synthetic Preparing"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000018",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Synthetic Unsupported"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000019",
+    "disabled": false,
+    "brokerage": {
+      "display_name": "Synthetic No Accounts"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
+  },
+  {
+    "id": "a0000000-0000-4000-8000-000000000020",
+    "disabled": true,
+    "brokerage": {
+      "display_name": "Synthetic Repair Required"
+    },
+    "data_freshness_mode": {
+      "institution": "delayed",
+      "snaptrade": "delayed"
+    }
   }
 ]

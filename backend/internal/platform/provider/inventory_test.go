@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -309,10 +311,20 @@ func TestInventorySelectsInvestmentAccountsWithProviderMaskedNumbers(t *testing.
 		return jsonResponse(http.StatusOK, fixtureBody(t, "success-connections.json")), nil
 	}), time.Now)
 	connections, err := client.Load(context.Background(), "access-token")
-	if err != nil || len(connections) != 1 || len(connections[0].Accounts) != 3 {
+	if err != nil || len(connections) != 1 || len(connections[0].Accounts) != 4 {
 		t.Fatalf("connections=%+v error=%v", connections, err)
 	}
-	for index, account := range connections[0].Accounts {
+	selectable := make([]portfolio.Account, 0, 3)
+	for _, account := range connections[0].Accounts {
+		if account.Selectable {
+			selectable = append(selectable, account)
+			continue
+		}
+		if account.UsabilityReason != portfolio.UsabilityUnsupportedCategory {
+			t.Fatalf("unexpected passive account=%+v", account)
+		}
+	}
+	for index, account := range selectable {
 		sourceIndex := []int{0, 2, 3}[index]
 		wantLabel := fmt.Sprintf("Synthetic account %d (•••• %04d)", sourceIndex+1, 1001+sourceIndex)
 		if account.ID != globalAccountID(sourceIndex+1) || account.MaskedLabel != wantLabel || !account.Selectable || !account.Eligible || account.UsabilityReason != portfolio.UsabilityReady ||
@@ -362,7 +374,7 @@ func TestInventoryGroupsGlobalAccountsInTwoRequests(t *testing.T) {
 	}
 }
 
-func TestInventoryPublishesOnlyUsableInvestmentAccounts(t *testing.T) {
+func TestInventoryPublishesAccountAvailabilityWithoutMakingUnavailableAccountsSelectable(t *testing.T) {
 	base := globalAccountRow(20, 1, "Synthetic candidate")
 	for _, test := range []struct {
 		name, row  string
@@ -398,25 +410,22 @@ func TestInventoryPublishesOnlyUsableInvestmentAccounts(t *testing.T) {
 			body := "[" + globalAccountRow(1, 1, "Healthy baseline") + "," + test.row + "]"
 			client, paths := globalInventoryClient(t, globalConnections(), body, http.StatusOK)
 			connections, err := client.Load(context.Background(), "access-token")
-			wantCount := 1
-			if test.accepted {
-				wantCount++
+			candidateConnection := 0
+			if test.name == "disabled connection" {
+				candidateConnection = 3
 			}
-			if err != nil || len(connections) != 4 || len(connections[0].Accounts) != wantCount || len(connections[3].Accounts) != 0 || strings.Join(*paths, ",") != "/authorizations,/accounts" {
+			if err != nil || len(connections) != 4 || len(connections[0].Accounts) != 2-(candidateConnection/3) || len(connections[3].Accounts) != candidateConnection/3 || strings.Join(*paths, ",") != "/authorizations,/accounts" {
 				t.Fatalf("connections=%+v paths=%v err=%v", connections, *paths, err)
 			}
-			for index, account := range connections[0].Accounts {
-				wantID := globalAccountID(1)
-				if index == 1 {
-					wantID = globalAccountID(20)
-				}
-				wantEligible, wantReason := true, portfolio.UsabilityReady
-				if index == 1 && test.wantReason != "" {
-					wantEligible, wantReason = false, test.wantReason
-				}
-				if account.ID != wantID || !account.Selectable || account.Eligible != wantEligible || account.UsabilityReason != wantReason {
-					t.Fatalf("accepted account=%+v", account)
-				}
+			candidate := connections[candidateConnection].Accounts[len(connections[candidateConnection].Accounts)-1]
+			if candidate.ID != globalAccountID(20) || candidate.Selectable != test.accepted {
+				t.Fatalf("candidate account=%+v accepted=%t", candidate, test.accepted)
+			}
+			if test.wantReason != "" && candidate.UsabilityReason != test.wantReason {
+				t.Fatalf("candidate reason=%q want=%q", candidate.UsabilityReason, test.wantReason)
+			}
+			if !test.accepted && candidate.UsabilityReason == portfolio.UsabilityReady {
+				t.Fatalf("unavailable candidate lacks passive reason: %+v", candidate)
 			}
 		})
 	}
@@ -777,3 +786,244 @@ func fixtureBody(t *testing.T, name string) string {
 }
 
 func timePointer(value time.Time) *time.Time { return &value }
+
+func TestConnectionDiagnosticUsesBoundedReasonAndActionMatrix(t *testing.T) {
+	tests := []struct {
+		name       string
+		connection portfolio.Connection
+		returned   int
+		reasons    map[portfolio.UsabilityReason]int
+		wantReason portfolio.ResourceDiagnosticReason
+		wantAction portfolio.ResourceDiagnosticAction
+		wantNil    bool
+	}{
+		{name: "active usable", connection: portfolio.Connection{Status: portfolio.ConnectionStatusActive, Accounts: []portfolio.Account{{ID: "usable", Selectable: true}}}, returned: 1, wantNil: true},
+		{name: "no accounts", connection: portfolio.Connection{Status: portfolio.ConnectionStatusActive}, wantReason: portfolio.DiagnosticNoAccountsReturned, wantAction: portfolio.DiagnosticActionRetry},
+		{name: "unsupported only", connection: portfolio.Connection{Status: portfolio.ConnectionStatusActive}, returned: 1, reasons: map[portfolio.UsabilityReason]int{portfolio.UsabilityUnsupportedCategory: 1}, wantReason: portfolio.DiagnosticNoSupportedAccounts, wantAction: portfolio.DiagnosticActionNone},
+		{name: "disabled", connection: portfolio.Connection{Status: portfolio.ConnectionStatusDisabled}, wantReason: portfolio.DiagnosticConnectionDisabled, wantAction: portfolio.DiagnosticActionReconnect},
+		{name: "holdings pending", connection: portfolio.Connection{Status: portfolio.ConnectionStatusActive}, returned: 1, reasons: map[portfolio.UsabilityReason]int{portfolio.UsabilitySyncPending: 1}, wantReason: portfolio.DiagnosticSyncPending, wantAction: portfolio.DiagnosticActionWait},
+		{name: "provider unavailable", connection: portfolio.Connection{Status: portfolio.ConnectionStatusActive}, returned: 1, reasons: map[portfolio.UsabilityReason]int{portfolio.UsabilitySyncUnavailable: 1}, wantReason: portfolio.DiagnosticProviderUnavailable, wantAction: portfolio.DiagnosticActionRetry},
+		{name: "mixed pending and unavailable", connection: portfolio.Connection{Status: portfolio.ConnectionStatusActive}, returned: 2, reasons: map[portfolio.UsabilityReason]int{portfolio.UsabilitySyncPending: 1, portfolio.UsabilitySyncUnavailable: 1}, wantReason: portfolio.DiagnosticUnknown, wantAction: portfolio.DiagnosticActionRetry},
+		{name: "mixed pending and unsupported", connection: portfolio.Connection{Status: portfolio.ConnectionStatusActive}, returned: 2, reasons: map[portfolio.UsabilityReason]int{portfolio.UsabilitySyncPending: 1, portfolio.UsabilityUnsupportedCategory: 1}, wantReason: portfolio.DiagnosticUnknown, wantAction: portfolio.DiagnosticActionRetry},
+		{name: "mixed unavailable and unsupported", connection: portfolio.Connection{Status: portfolio.ConnectionStatusActive}, returned: 2, reasons: map[portfolio.UsabilityReason]int{portfolio.UsabilityAccountUnavailable: 1, portfolio.UsabilityUnsupportedCategory: 1}, wantReason: portfolio.DiagnosticUnknown, wantAction: portfolio.DiagnosticActionRetry},
+		{name: "unknown combination", connection: portfolio.Connection{Status: portfolio.ConnectionStatusActive}, returned: 1, reasons: map[portfolio.UsabilityReason]int{portfolio.UsabilityAccountClosed: 1}, wantReason: portfolio.DiagnosticUnknown, wantAction: portfolio.DiagnosticActionRetry},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			diagnostic := connectionDiagnostic(test.connection, test.returned, test.reasons)
+			if test.wantNil {
+				if diagnostic != nil {
+					t.Fatalf("diagnostic=%+v want nil", diagnostic)
+				}
+				return
+			}
+			if diagnostic == nil || diagnostic.Reason != test.wantReason || diagnostic.RecommendedAction != test.wantAction {
+				t.Fatalf("diagnostic=%+v want reason=%q action=%q", diagnostic, test.wantReason, test.wantAction)
+			}
+		})
+	}
+}
+
+func TestDefaultStackFixtureContainsRichScenarioInventory(t *testing.T) {
+	var rawConnections []providergenerated.BrokerageAuthorization
+	if err := json.Unmarshal([]byte(fixtureBody(t, "stack-connections.json")), &rawConnections); err != nil {
+		t.Fatal(err)
+	}
+	var rawAccounts []rawInventoryAccount
+	if err := json.Unmarshal([]byte(fixtureBody(t, "stack-accounts.json")), &rawAccounts); err != nil {
+		t.Fatal(err)
+	}
+	connections, err := normalizeConnections(rawConnections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := groupAccounts(connections, rawAccounts); err != nil {
+		t.Fatal(err)
+	}
+	selectable := 0
+	labels := make(map[string]bool)
+	passiveLabels := make(map[string]portfolio.UsabilityReason)
+	for _, connection := range connections {
+		for _, account := range connection.Accounts {
+			if account.Selectable {
+				selectable++
+				labels[account.MaskedLabel] = true
+			} else {
+				passiveLabels[account.MaskedLabel] = account.UsabilityReason
+			}
+		}
+	}
+	if len(connections) != 22 || len(rawAccounts) != 29 || selectable != 26 {
+		t.Fatalf("connections=%d accounts=%d selectable=%d", len(connections), len(rawAccounts), selectable)
+	}
+	for _, label := range []string{
+		"Healthy Realtime — Full Data (•••• X001)",
+		"Cash Only — No Positions (•••• CASH)",
+		"Positions — Refresh Failed (•••• 0004)",
+	} {
+		if !labels[label] {
+			t.Errorf("missing selectable scenario label %q", label)
+		}
+	}
+	for label, reason := range map[string]portfolio.UsabilityReason{
+		"Unsupported Account Type (•••• 0021)":   portfolio.UsabilityUnsupportedCategory,
+		"Connection Repair Required (•••• 0023)": portfolio.UsabilityConnectionDisabled,
+	} {
+		if passiveLabels[label] != reason {
+			t.Errorf("passive scenario %q reason=%q want=%q", label, passiveLabels[label], reason)
+		}
+	}
+}
+
+type wireMockContractMapping struct {
+	Priority int `json:"priority"`
+	Request  struct {
+		URLPath        string `json:"urlPath"`
+		URLPathPattern string `json:"urlPathPattern"`
+	} `json:"request"`
+	Response struct {
+		Status       int             `json:"status"`
+		BodyFileName string          `json:"bodyFileName"`
+		JSONBody     json.RawMessage `json:"jsonBody"`
+	} `json:"response"`
+}
+
+func TestDefaultStackFixtureMapsEverySelectableAccountResource(t *testing.T) {
+	var contract struct {
+		Mappings []wireMockContractMapping `json:"mappings"`
+	}
+	contractPath := filepath.Join("..", "..", "..", "..", "test", "fixtures", "wiremock", "mappings", "portfolio-inventory.json")
+	body, err := os.ReadFile(contractPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(body, &contract); err != nil {
+		t.Fatal(err)
+	}
+	var rawConnections []providergenerated.BrokerageAuthorization
+	if err := json.Unmarshal([]byte(fixtureBody(t, "stack-connections.json")), &rawConnections); err != nil {
+		t.Fatal(err)
+	}
+	var rawAccounts []rawInventoryAccount
+	if err := json.Unmarshal([]byte(fixtureBody(t, "stack-accounts.json")), &rawAccounts); err != nil {
+		t.Fatal(err)
+	}
+	connections, err := normalizeConnections(rawConnections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := groupAccounts(connections, rawAccounts); err != nil {
+		t.Fatal(err)
+	}
+
+	resources := map[string]string{"balances": "balances", "positions": "positions/all", "activities": "activities"}
+	for _, connection := range connections {
+		for _, account := range connection.Accounts {
+			if !account.Selectable {
+				continue
+			}
+			for resource, suffix := range resources {
+				path := "/accounts/" + account.ID + "/" + suffix
+				matched, found := resolveWireMockMapping(t, contract.Mappings, path)
+				if !found {
+					t.Errorf("selectable account %q has no %s route", account.MaskedLabel, resource)
+					continue
+				}
+				got := wireMockResponseKind(t, matched.Response.Status, matched.Response.BodyFileName, matched.Response.JSONBody, resource)
+				want := defaultScenarioResourceKind(account.ID, resource)
+				if got != want {
+					t.Errorf("account %q %s resolved %q, want %q", account.MaskedLabel, resource, got, want)
+				}
+			}
+		}
+	}
+}
+
+func resolveWireMockMapping(t *testing.T, mappings []wireMockContractMapping, path string) (wireMockContractMapping, bool) {
+	t.Helper()
+	var selected wireMockContractMapping
+	selectedPriority := int(^uint(0) >> 1)
+	found := false
+	for _, mapping := range mappings {
+		matches := mapping.Request.URLPath == path
+		if !matches && mapping.Request.URLPathPattern != "" {
+			matches = regexp.MustCompile("^(?:" + mapping.Request.URLPathPattern + ")$").MatchString(path)
+		}
+		priority := mapping.Priority
+		if priority == 0 {
+			priority = 5
+		}
+		if matches && priority < selectedPriority {
+			selected, selectedPriority, found = mapping, priority, true
+		}
+	}
+	return selected, found
+}
+
+func wireMockResponseKind(t *testing.T, status int, bodyFileName string, raw json.RawMessage, resource string) string {
+	t.Helper()
+	if status >= http.StatusBadRequest {
+		return "named-failure"
+	}
+	if bodyFileName != "" {
+		path := filepath.Join("..", "..", "..", "..", "test", "fixtures", "wiremock", "__files", bodyFileName)
+		var err error
+		raw, err = os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if resource == "balances" {
+		var rows []json.RawMessage
+		if err := json.Unmarshal(raw, &rows); err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) > 0 {
+			return "populated"
+		}
+		return "empty"
+	}
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	key := "results"
+	if resource == "activities" {
+		key = "data"
+	}
+	var rows []json.RawMessage
+	if err := json.Unmarshal(envelope[key], &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) > 0 {
+		return "populated"
+	}
+	return "empty"
+}
+
+func defaultScenarioResourceKind(accountID, resource string) string {
+	if accountID == "b0000000-0000-4000-8000-000000000001" && resource == "positions" ||
+		accountID == "b0000000-0000-4000-8000-000000000003" && resource == "activities" ||
+		accountID == "b0000000-0000-4000-8000-000000000004" && resource == "balances" {
+		return "named-failure"
+	}
+	if accountID == "03867fbb-41b4-4a05-8815-c96f94f8ba6b" {
+		return "populated"
+	}
+	if accountID == "7e7dcb86-7d52-4f46-8fcf-91d5c9f81629" || accountID == "50bb0405-5efd-473f-a742-78a82bb1db53" {
+		if resource == "balances" {
+			return "populated"
+		}
+		return "empty"
+	}
+	number, err := strconv.Atoi(strings.TrimPrefix(accountID, "b0000000-0000-4000-8000-000000000"))
+	if err != nil {
+		return "empty"
+	}
+	if resource == "balances" && number >= 1 && number <= 9 ||
+		resource == "positions" && (number >= 1 && number <= 5 || number >= 11 && number <= 13) ||
+		resource == "activities" && number >= 6 && number <= 14 {
+		return "populated"
+	}
+	return "empty"
+}

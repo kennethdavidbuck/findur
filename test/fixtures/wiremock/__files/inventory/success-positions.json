@@ -1,5 +1,5 @@
 {
-  "data_freshness": { "as_of": "2026-09-20T12:00:00Z" },
+  "data_freshness": { "as_of": "{{now format='yyyy-MM-dd' timezone='UTC'}}T{{now format='HH:mm:ssXXX' timezone='UTC'}}" },
   "results": [
     {
       "instrument": { "id": "1ef3a5d3-4a9b-40b2-b8d1-cc35f74d6324", "symbol": "FDR", "kind": "stock" },

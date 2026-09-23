@@ -301,7 +301,7 @@ func (r *InclusionRepository) FinalizeInclusion(ctx context.Context, owner uuid.
 }
 
 func isRetryableInclusionFailure(failure string) bool {
-	return failure == "rate_limited" || failure == "provider_unavailable"
+	return failure == syncFailureRateLimited || failure == syncFailureProviderUnavailable
 }
 
 func publishPartialInitialData(ctx context.Context, tx pgx.Tx, owner uuid.UUID, inclusionVersion int64, accountIDs []string, data map[string]portfolio.AccountData, now time.Time) error {

@@ -59,7 +59,14 @@ export function PortfolioPage({ editing = false, initialInclusion, headingRef, o
     accounts: connection.accounts.filter((account) => account.usabilityReason !== 'account_closed' &&
       (!temporaryUsabilityReasons.has(account.usabilityReason) || committed.has(account.id) || draft.has(account.id))),
   })).filter((connection) => connection.accounts.length > 0) ?? [], [committed, draft, inventory])
-  const accounts = useMemo(() => visibleConnections.flatMap((connection) => connection.accounts.map((account) => ({ ...account, brokerageLabel: connection.brokerageLabel }))), [visibleConnections])
+  const accounts = useMemo(() => {
+    const collator = new Intl.Collator(locale === 'fr' ? 'fr-CA' : 'en-CA', { numeric: true, sensitivity: 'base' })
+    return visibleConnections
+      .flatMap((connection) => connection.accounts.map((account) => ({ ...account, brokerageLabel: connection.brokerageLabel })))
+      .sort((left, right) => Number(right.selectable) - Number(left.selectable)
+        || collator.compare(left.maskedLabel, right.maskedLabel)
+        || left.id.localeCompare(right.id))
+  }, [locale, visibleConnections])
   const selectable = useMemo(() => accounts.filter((account) => account.selectable), [accounts])
   const additions = accounts.filter((account) => draft.has(account.id) && !committed.has(account.id))
   const removals = accounts.filter((account) => !draft.has(account.id) && committed.has(account.id))
@@ -216,6 +223,7 @@ export function PortfolioPage({ editing = false, initialInclusion, headingRef, o
             <>
               <fieldset className="account-selection" disabled={saving}>
                 <legend>{copy.inclusion.groupName}</legend>
+                <p className="selection-policy">{copy.inclusion.selectionPolicy}</p>
                 <div className="selection-guidance">
                   <p>{copy.inclusion.selectionLimit}</p>
                   <p className="selection-count" aria-live="polite">{copy.inclusion.selectedCount(selectedVisibleCount)}</p>
@@ -315,4 +323,4 @@ function isSessionError(error: unknown) {
   return error instanceof InventorySessionExpiredError || error instanceof InventorySessionDefenseError
 }
 
-const temporaryUsabilityReasons = new Set(['sync_pending', 'connection_disabled', 'connection_unavailable', 'account_unavailable', 'sync_unavailable'])
+const temporaryUsabilityReasons = new Set(['sync_pending', 'connection_unavailable', 'account_unavailable', 'sync_unavailable'])

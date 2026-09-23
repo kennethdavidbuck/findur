@@ -8,14 +8,18 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
 	"github.com/google/uuid"
 	"github.com/kennethdavidbuck/findur/backend/internal/auth"
+	"github.com/kennethdavidbuck/findur/backend/internal/platform/migrations"
 	postgresadapter "github.com/kennethdavidbuck/findur/backend/internal/platform/postgres"
 	provideradapter "github.com/kennethdavidbuck/findur/backend/internal/platform/provider"
 	"github.com/kennethdavidbuck/findur/backend/internal/portfolio"
@@ -114,6 +118,215 @@ func TestScheduledInventoryRepairsTwentyTwoConnectionLegacyShapeWithoutBrowserRe
 	}
 	if totalAmount != "125000.25" || totalCurrency != "CAD" {
 		t.Fatalf("total=%s currency=%s", totalAmount, totalCurrency)
+	}
+}
+
+func TestInventoryRepositoryProjectsPassiveUnsupportedAndRepairAccounts(t *testing.T) {
+	fixture := newRepositoryFixture(t)
+	fixture.reset(t)
+	owner := inclusionOwnerWithInventory(t, fixture, 237, "passive-scenario-owner")
+	repository := postgresadapter.NewInventoryRepository(fixture.pool)
+	claim, err := repository.Prepare(fixture.ctx, owner, false, fixture.now)
+	if err != nil || !claim.Claimed {
+		t.Fatalf("claim=%+v err=%v", claim, err)
+	}
+	account := func(id, label string, selectable bool, reason portfolio.UsabilityReason) portfolio.Account {
+		return portfolio.Account{
+			ID: id, Category: portfolio.AccountCategoryInvestment, Type: "Synthetic", MaskedLabel: label,
+			Available: selectable, Eligible: selectable, Selectable: selectable, UsabilityReason: reason,
+			SyncState: portfolio.AccountSyncStateComplete,
+		}
+	}
+	connections := []portfolio.Connection{
+		{
+			ID: "active", BrokerageLabel: "Synthetic Active", Status: portfolio.ConnectionStatusActive,
+			SyncMode: portfolio.SyncModeRealtime, Available: true, Eligible: true,
+			Accounts: []portfolio.Account{
+				account("healthy", "Healthy Realtime", true, portfolio.UsabilityReady),
+				account("unsupported", "Unsupported Account Type", false, portfolio.UsabilityUnsupportedCategory),
+			},
+		},
+		{
+			ID: "disabled", BrokerageLabel: "Synthetic Repair", Status: portfolio.ConnectionStatusDisabled,
+			SyncMode: portfolio.SyncModeUnknown,
+			Diagnostic: &portfolio.ResourceDiagnostic{
+				Reason:            portfolio.DiagnosticConnectionDisabled,
+				RecommendedAction: portfolio.DiagnosticActionReconnect,
+			},
+			Accounts: []portfolio.Account{
+				account("repair", "Connection Repair Required", false, portfolio.UsabilityConnectionDisabled),
+			},
+		},
+	}
+	if _, accepted, err := repository.Finalize(fixture.ctx, owner, claim.Generation, portfolio.StateReady, nil, connections, fixture.now); err != nil || !accepted {
+		t.Fatalf("publish accepted=%v err=%v", accepted, err)
+	}
+	loaded, err := repository.Prepare(fixture.ctx, owner, false, fixture.now)
+	if err != nil || loaded.Claimed {
+		t.Fatalf("loaded=%+v err=%v", loaded, err)
+	}
+	var disabledDiagnostic *portfolio.ResourceDiagnostic
+	got := make(map[string]portfolio.Account)
+	for _, connection := range loaded.Connections {
+		if connection.ID == "disabled" {
+			disabledDiagnostic = connection.Diagnostic
+		}
+		for _, value := range connection.Accounts {
+			got[value.ID] = value
+		}
+	}
+	for id, reason := range map[string]portfolio.UsabilityReason{
+		"unsupported": portfolio.UsabilityUnsupportedCategory,
+		"repair":      portfolio.UsabilityConnectionDisabled,
+	} {
+		value, found := got[id]
+		if !found || value.Selectable || value.UsabilityReason != reason {
+			t.Errorf("passive account %q=%+v found=%v", id, value, found)
+		}
+		if _, err := postgresadapter.NewInclusionRepository(fixture.pool).PrepareInclusion(
+			fixture.ctx,
+			owner,
+			0,
+			"reject-passive-"+id,
+			[]string{id},
+			fixture.now,
+		); !errors.Is(err, portfolio.ErrInvalidAccountSelection) {
+			t.Errorf("displayed passive account %q admission error=%v", id, err)
+		}
+	}
+	if disabledDiagnostic == nil || disabledDiagnostic.Reason != portfolio.DiagnosticConnectionDisabled || disabledDiagnostic.RecommendedAction != portfolio.DiagnosticActionReconnect || disabledDiagnostic.LastSuccessfulAt == nil || !disabledDiagnostic.LastSuccessfulAt.Equal(fixture.now) {
+		t.Fatalf("persisted disabled connection diagnostic=%+v", disabledDiagnostic)
+	}
+}
+
+func TestResourceDiagnosticMigrationMarksOnlySuccessfulInventoryHeads(t *testing.T) {
+	fixture := newRepositoryFixture(t)
+	_, sourceFile, _, _ := runtime.Caller(0)
+	migrationPath, err := filepath.Abs(filepath.Join(filepath.Dir(sourceFile), "../../../db/migrations"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceURL := "file://" + filepath.ToSlash(migrationPath)
+	databaseURL := fixture.pool.Config().ConnString()
+	migrator, err := migrate.New(sourceURL, databaseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := migrator.Migrate(12); err != nil {
+		t.Fatal(err)
+	}
+	if sourceErr, databaseErr := migrator.Close(); sourceErr != nil || databaseErr != nil {
+		t.Fatalf("close migrator source=%v database=%v", sourceErr, databaseErr)
+	}
+
+	type seededInventory struct {
+		name       string
+		owner      uuid.UUID
+		status     string
+		head       bool
+		version    string
+		retryAt    *time.Time
+		published  time.Time
+		wantMarked bool
+	}
+	retryReady := fixture.now.Add(10 * time.Minute)
+	retryDisabled := fixture.now.Add(20 * time.Minute)
+	retryFailed := fixture.now.Add(30 * time.Minute)
+	rows := []seededInventory{
+		{name: "ready head", owner: uuid.New(), status: "ready", head: true, version: "ready", retryAt: &retryReady, published: fixture.now.Add(-5 * time.Hour), wantMarked: true},
+		{name: "empty head", owner: uuid.New(), status: "empty", head: true, version: "empty", published: fixture.now.Add(-4 * time.Hour), wantMarked: true},
+		{name: "disabled head", owner: uuid.New(), status: "disabled", head: true, version: "disabled", retryAt: &retryDisabled, published: fixture.now.Add(-3 * time.Hour)},
+		{name: "failed with retained head", owner: uuid.New(), status: "unavailable", head: true, version: "ready", retryAt: &retryFailed, published: fixture.now.Add(-2 * time.Hour)},
+		{name: "headless ready", owner: uuid.New(), status: "ready", published: fixture.now.Add(-time.Hour)},
+	}
+	for _, row := range rows {
+		if _, err := fixture.pool.Exec(fixture.ctx, `INSERT INTO users (id,origin) VALUES ($1,'oauth')`, row.owner); err != nil {
+			t.Fatal(err)
+		}
+		var head any
+		if row.head {
+			head = int64(1)
+			if _, err := fixture.pool.Exec(fixture.ctx, `INSERT INTO portfolio_inventory_versions (user_id,generation,status,published_at) VALUES ($1,1,$2,$3)`, row.owner, row.version, row.published); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := fixture.pool.Exec(fixture.ctx, `INSERT INTO portfolio_inventory_state
+			(user_id,current_generation,current_status,head_generation,retry_at,updated_at)
+			VALUES ($1,1,$2,$3,$4,$5)`, row.owner, row.status, head, row.retryAt, fixture.now); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := migrations.Up(fixture.ctx, sourceURL, databaseURL); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		t.Run(row.name, func(t *testing.T) {
+			var marked bool
+			var retryAt *time.Time
+			if err := fixture.pool.QueryRow(fixture.ctx, `SELECT diagnostic_refresh_needed,retry_at FROM portfolio_inventory_state WHERE user_id=$1`, row.owner).Scan(&marked, &retryAt); err != nil {
+				t.Fatal(err)
+			}
+			if marked != row.wantMarked || !equalTimePointers(retryAt, row.retryAt) {
+				t.Fatalf("marked=%v retry=%v want marked=%v retry=%v", marked, retryAt, row.wantMarked, row.retryAt)
+			}
+			if row.head {
+				var published time.Time
+				if err := fixture.pool.QueryRow(fixture.ctx, `SELECT published_at FROM portfolio_inventory_versions WHERE user_id=$1 AND generation=1`, row.owner).Scan(&published); err != nil {
+					t.Fatal(err)
+				}
+				if !published.Equal(row.published) {
+					t.Fatalf("published=%v want=%v", published, row.published)
+				}
+			}
+		})
+	}
+}
+
+func equalTimePointers(left, right *time.Time) bool {
+	return left == nil && right == nil || left != nil && right != nil && left.Equal(*right)
+}
+
+func TestInventoryDiagnosticMarkerUsesNormalGuardedRefresh(t *testing.T) {
+	fixture := newRepositoryFixture(t)
+	fixture.reset(t)
+	owner := inclusionOwnerWithInventory(t, fixture, 238, "diagnostic-backfill-owner")
+	repository := postgresadapter.NewInventoryRepository(fixture.pool)
+	claim, err := repository.Prepare(fixture.ctx, owner, false, fixture.now)
+	if err != nil || !claim.Claimed {
+		t.Fatalf("initial claim=%+v err=%v", claim, err)
+	}
+	connections := scheduledInventoryConnections(uuid.NewString())
+	if _, accepted, err := repository.Finalize(fixture.ctx, owner, claim.Generation, portfolio.StateReady, nil, connections, fixture.now); err != nil || !accepted {
+		t.Fatalf("initial publish accepted=%v err=%v", accepted, err)
+	}
+	retryAt := fixture.now.Add(10 * time.Minute)
+	if _, err := fixture.pool.Exec(fixture.ctx, `UPDATE portfolio_inventory_state
+		SET diagnostic_refresh_needed=true,retry_at=$2
+		WHERE user_id=$1`, owner, retryAt); err != nil {
+		t.Fatal(err)
+	}
+	if early, err := repository.ClaimDue(fixture.ctx, fixture.now, 24*time.Hour, time.Minute); err != nil || early != nil {
+		t.Fatalf("backfill bypassed retry guard: claim=%+v err=%v", early, err)
+	}
+	refresh, err := repository.ClaimDue(fixture.ctx, retryAt, 24*time.Hour, time.Minute)
+	if err != nil || refresh == nil || refresh.Generation != claim.Generation+1 {
+		t.Fatalf("guarded refresh=%+v err=%v", refresh, err)
+	}
+	if _, accepted, err := repository.FinalizeScheduled(fixture.ctx, *refresh, portfolio.StateReady, nil, connections, retryAt); err != nil || !accepted {
+		t.Fatalf("refresh publish accepted=%v err=%v", accepted, err)
+	}
+	var marker bool
+	var oldPublished time.Time
+	if err := fixture.pool.QueryRow(fixture.ctx, `SELECT
+		inventory.diagnostic_refresh_needed,
+		(SELECT published_at FROM portfolio_inventory_versions WHERE user_id=$1 AND generation=$2)
+		FROM portfolio_inventory_state inventory
+		WHERE inventory.user_id=$1`, owner, claim.Generation).Scan(&marker, &oldPublished); err != nil {
+		t.Fatal(err)
+	}
+	if marker || !oldPublished.Equal(fixture.now) {
+		t.Fatalf("marker=%v immutable old publication=%v", marker, oldPublished)
 	}
 }
 

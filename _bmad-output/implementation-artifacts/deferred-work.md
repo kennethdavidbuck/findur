@@ -108,3 +108,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-add-scheduled-connection-and-account-inventory-synchronization.md`
   summary: Measure and, if necessary, optimize the scheduled inventory due query at production-scale user and generation counts.
   evidence: Review noted that the broad due predicate and published-head ordering may not use the new state index; representative row counts plus `EXPLAIN (ANALYZE, BUFFERS)` are needed to establish whether the minute pass incurs a material scan or sort.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-implement-resource-diagnostic-feedback.md`
+  summary: Stop the global informational initial-sync banner from persisting when an account's remaining pending resources are blocked behind a known failed resource.
+  evidence: A failed first resource remains on scheduled retry while later resources have no attempt or success and still project `sync_pending`; the global banner therefore occupies the top of Portfolio indefinitely even though the truthful primary state is the account's recorded failure.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-implement-resource-diagnostic-feedback.md`
+  summary: Add safe structured logs for provider circuit-breaker transitions and rejected calls.
+  evidence: The shared request gate currently enforces opening, rejection, and recovery, while worker logs expose only broad `provider_unavailable` or `rate_limited` outcomes; operators cannot distinguish an upstream response from a locally short-circuited request. Log categorical open, reject-while-open, and recovery events without provider bodies, credentials, account identifiers, or financial data.

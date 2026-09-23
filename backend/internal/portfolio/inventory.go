@@ -53,6 +53,39 @@ const (
 	SyncModeUnknown  SyncMode = "unknown"
 )
 
+// ResourceDiagnosticReason is a bounded, browser-safe explanation for a
+// degraded successful resource response.
+type ResourceDiagnosticReason string
+
+// Resource diagnostic reasons shared by inventory connections and datasets.
+const (
+	DiagnosticNoAccountsReturned    ResourceDiagnosticReason = "no_accounts_returned"
+	DiagnosticNoSupportedAccounts   ResourceDiagnosticReason = "no_supported_accounts"
+	DiagnosticConnectionDisabled    ResourceDiagnosticReason = "connection_disabled"
+	DiagnosticAuthorizationRequired ResourceDiagnosticReason = "authorization_required"
+	DiagnosticProviderUnavailable   ResourceDiagnosticReason = "provider_unavailable"
+	DiagnosticSyncPending           ResourceDiagnosticReason = "sync_pending"
+	DiagnosticUnknown               ResourceDiagnosticReason = "unknown"
+)
+
+// ResourceDiagnosticAction is the only recovery action a browser may offer.
+type ResourceDiagnosticAction string
+
+// Resource diagnostic actions.
+const (
+	DiagnosticActionNone      ResourceDiagnosticAction = "none"
+	DiagnosticActionWait      ResourceDiagnosticAction = "wait"
+	DiagnosticActionRetry     ResourceDiagnosticAction = "retry"
+	DiagnosticActionReconnect ResourceDiagnosticAction = "reconnect"
+)
+
+// ResourceDiagnostic contains only safe categorical recovery facts.
+type ResourceDiagnostic struct {
+	Reason                    ResourceDiagnosticReason
+	RecommendedAction         ResourceDiagnosticAction
+	RetryAt, LastSuccessfulAt *time.Time
+}
+
 // AccountCategory is the provider's normalized account category.
 type AccountCategory string
 
@@ -108,6 +141,8 @@ type Connection struct {
 	Status              ConnectionStatus
 	SyncMode            SyncMode
 	Available, Eligible bool
+	Diagnostic          *ResourceDiagnostic
+	LastSuccessfulAt    *time.Time
 	Accounts            []Account
 }
 
@@ -128,6 +163,7 @@ type Snapshot struct {
 	Generation  int64
 	RetryAt     *time.Time
 	UpdatedAt   time.Time
+	Diagnostic  *ResourceDiagnostic
 	Connections []Connection
 }
 

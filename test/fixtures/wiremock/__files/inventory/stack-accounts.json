@@ -2,22 +2,22 @@
   {
     "id": "03867fbb-41b4-4a05-8815-c96f94f8ba6b",
     "brokerage_authorization": "0eadf3ab-8daa-4357-9e38-325dbe82f003",
-    "portfolio_group": "e7ebacd2-5446-4209-9bb2-7acb7bf997e8",
-    "name": "Individual",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000001",
+    "name": "Healthy Realtime — Full Data",
     "number": "SANDBOX-001",
-    "institution_account_id": "SANDBOX-001",
-    "institution_name": "sandbox",
+    "institution_account_id": "SCRUBBED-001",
+    "institution_name": "scrubbed",
     "meta": {
       "currency": "USD",
-      "institution_name": "sandbox"
+      "institution_name": "scrubbed"
     },
     "cash_restrictions": [],
-    "created_date": "2026-09-21T17:42:08.507145Z",
+    "created_date": "2026-09-21T17:42:08Z",
     "funding_date": null,
     "opening_date": null,
     "sync_status": {
       "holdings": {
-        "last_successful_sync": "2026-09-21T17:42:09.712561+00:00",
+        "last_successful_sync": "2026-09-21T17:42:09Z",
         "initial_sync_completed": true
       },
       "transactions": {
@@ -41,27 +41,27 @@
   {
     "id": "7e7dcb86-7d52-4f46-8fcf-91d5c9f81629",
     "brokerage_authorization": "0eadf3ab-8daa-4357-9e38-325dbe82f003",
-    "portfolio_group": "ce3fc7b3-928a-49fe-8cd6-025738a45b9d",
-    "name": "IRA",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000002",
+    "name": "Delayed Account — Empty Positions",
     "number": "SANDBOX-002",
-    "institution_account_id": "SANDBOX-002",
-    "institution_name": "sandbox",
+    "institution_account_id": "SCRUBBED-002",
+    "institution_name": "scrubbed",
     "meta": {
       "currency": "USD",
-      "institution_name": "sandbox"
+      "institution_name": "scrubbed"
     },
     "cash_restrictions": [],
-    "created_date": "2026-09-21T17:42:08.513493Z",
+    "created_date": "2026-09-21T17:42:08Z",
     "funding_date": null,
     "opening_date": null,
     "sync_status": {
       "holdings": {
-        "last_successful_sync": "2026-09-21T17:42:09.060679+00:00",
+        "last_successful_sync": "2026-09-21T17:42:09Z",
         "initial_sync_completed": true
       },
       "transactions": {
         "last_successful_sync": "2026-09-20",
-        "first_transaction_date": "2026-08-22",
+        "first_transaction_date": "2026-08-23",
         "initial_sync_completed": true
       }
     },
@@ -80,27 +80,27 @@
   {
     "id": "50bb0405-5efd-473f-a742-78a82bb1db53",
     "brokerage_authorization": "12fe591b-344d-4e8c-96e6-98a692f94054",
-    "portfolio_group": "e18ff2d3-b3b7-4a26-9795-c89f0bfbb342",
-    "name": "Cash Account",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000003",
+    "name": "Cash Only — No Positions",
     "number": "SANDBOX-CASH",
-    "institution_account_id": "SANDBOX-CASH",
-    "institution_name": "sandbox",
+    "institution_account_id": "SCRUBBED-003",
+    "institution_name": "scrubbed",
     "meta": {
       "currency": "USD",
-      "institution_name": "sandbox"
+      "institution_name": "scrubbed"
     },
     "cash_restrictions": [],
-    "created_date": "2026-09-21T17:43:14.957948Z",
+    "created_date": "2026-09-21T17:42:08Z",
     "funding_date": null,
     "opening_date": null,
     "sync_status": {
       "holdings": {
-        "last_successful_sync": "2026-09-21T17:43:15.209868+00:00",
+        "last_successful_sync": "2026-09-21T17:42:09Z",
         "initial_sync_completed": true
       },
       "transactions": {
         "last_successful_sync": "2026-09-20",
-        "first_transaction_date": "2026-09-14",
+        "first_transaction_date": "2026-08-23",
         "initial_sync_completed": true
       }
     },
@@ -112,6 +112,1020 @@
     },
     "raw_data": null,
     "raw_type": "Individual",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000001",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000001",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000004",
+    "name": "Positions — Refresh Failed",
+    "number": "MASKED-0004",
+    "institution_account_id": "SCRUBBED-004",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 10000,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000002",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000002",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000005",
+    "name": "Balances — Initial Sync Pending",
+    "number": "MASKED-0005",
+    "institution_account_id": "SCRUBBED-005",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 10250,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000003",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000003",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000006",
+    "name": "Activities — Provider Temporarily Unavailable",
+    "number": "MASKED-0006",
+    "institution_account_id": "SCRUBBED-006",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 10500,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000004",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000004",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000007",
+    "name": "Balances — Refresh Failed",
+    "number": "MASKED-0007",
+    "institution_account_id": "SCRUBBED-007",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 10750,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000005",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000005",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000008",
+    "name": "Balances and Positions — No Activity 04",
+    "number": "MASKED-0008",
+    "institution_account_id": "SCRUBBED-008",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 11000,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000006",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000006",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000009",
+    "name": "Balances and Activity — No Positions 01",
+    "number": "MASKED-0009",
+    "institution_account_id": "SCRUBBED-009",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 11250,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000007",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000007",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000010",
+    "name": "Balances and Activity — No Positions 02",
+    "number": "MASKED-0010",
+    "institution_account_id": "SCRUBBED-010",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 11500,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000008",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000008",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000011",
+    "name": "Balances and Activity — No Positions 03",
+    "number": "MASKED-0011",
+    "institution_account_id": "SCRUBBED-011",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 11750,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000009",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000009",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000012",
+    "name": "Balances and Activity — No Positions 04",
+    "number": "MASKED-0012",
+    "institution_account_id": "SCRUBBED-012",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 12000,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000010",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000010",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000013",
+    "name": "Recent Activity Only — Empty Balance 01",
+    "number": "MASKED-0013",
+    "institution_account_id": "SCRUBBED-013",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 12250,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000011",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000011",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000014",
+    "name": "Positions and Activity — Empty Balance 01",
+    "number": "MASKED-0014",
+    "institution_account_id": "SCRUBBED-014",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 12500,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000012",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000012",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000015",
+    "name": "Positions and Activity — Empty Balance 02",
+    "number": "MASKED-0015",
+    "institution_account_id": "SCRUBBED-015",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 12750,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000013",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000013",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000016",
+    "name": "Positions and Activity — Empty Balance 03",
+    "number": "MASKED-0016",
+    "institution_account_id": "SCRUBBED-016",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 13000,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000014",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000014",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000017",
+    "name": "Recent Activity Only — Empty Balance 02",
+    "number": "MASKED-0017",
+    "institution_account_id": "SCRUBBED-017",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 13250,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000015",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000015",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000018",
+    "name": "Successful Empty Portfolio 01",
+    "number": "MASKED-0018",
+    "institution_account_id": "SCRUBBED-018",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 13500,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000016",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000016",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000019",
+    "name": "Successful Empty Portfolio 02",
+    "number": "MASKED-0019",
+    "institution_account_id": "SCRUBBED-019",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 13750,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000017",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000017",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000020",
+    "name": "Provider Sync Pending",
+    "number": "MASKED-0020",
+    "institution_account_id": "SCRUBBED-020",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": false
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 14000,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000018",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000018",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000021",
+    "name": "Unsupported Account Type",
+    "number": "MASKED-0021",
+    "institution_account_id": "SCRUBBED-021",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 14250,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "DEPOSIT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000019",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000001",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000022",
+    "name": "Successful Empty Portfolio 03",
+    "number": "MASKED-0022",
+    "institution_account_id": "SCRUBBED-022",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 14500,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000020",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000020",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000023",
+    "name": "Connection Repair Required",
+    "number": "MASKED-0023",
+    "institution_account_id": "SCRUBBED-023",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 14750,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000021",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000001",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000024",
+    "name": "Successful Empty Portfolio 04",
+    "number": "MASKED-0024",
+    "institution_account_id": "SCRUBBED-024",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 15000,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000022",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000002",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000025",
+    "name": "Successful Empty Portfolio 05",
+    "number": "MASKED-0025",
+    "institution_account_id": "SCRUBBED-025",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 15250,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000023",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000003",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000026",
+    "name": "Successful Empty Portfolio 06",
+    "number": "MASKED-0026",
+    "institution_account_id": "SCRUBBED-026",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 15500,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000024",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000004",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000027",
+    "name": "Successful Empty Portfolio 07",
+    "number": "MASKED-0027",
+    "institution_account_id": "SCRUBBED-027",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 15750,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000025",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000005",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000028",
+    "name": "Successful Empty Portfolio 08",
+    "number": "MASKED-0028",
+    "institution_account_id": "SCRUBBED-028",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 16000,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
+    "status": "open",
+    "is_paper": true,
+    "account_category": "INVESTMENT"
+  },
+  {
+    "id": "b0000000-0000-4000-8000-000000000026",
+    "brokerage_authorization": "a0000000-0000-4000-8000-000000000006",
+    "portfolio_group": "c0000000-0000-4000-8000-000000000029",
+    "name": "Successful Empty Portfolio 09",
+    "number": "MASKED-0029",
+    "institution_account_id": "SCRUBBED-029",
+    "institution_name": "scrubbed",
+    "meta": {
+      "currency": "USD",
+      "institution_name": "scrubbed"
+    },
+    "cash_restrictions": [],
+    "created_date": "2026-09-21T17:42:08Z",
+    "funding_date": null,
+    "opening_date": null,
+    "sync_status": {
+      "holdings": {
+        "last_successful_sync": "2026-09-21T17:42:09Z",
+        "initial_sync_completed": true
+      },
+      "transactions": {
+        "last_successful_sync": "2026-09-20",
+        "first_transaction_date": "2026-08-23",
+        "initial_sync_completed": true
+      }
+    },
+    "balance": {
+      "total": {
+        "amount": 16250,
+        "currency": "USD"
+      }
+    },
+    "raw_data": null,
+    "raw_type": "Investment",
     "status": "open",
     "is_paper": true,
     "account_category": "INVESTMENT"

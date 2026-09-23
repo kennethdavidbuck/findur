@@ -586,6 +586,7 @@ func inventoryResponse(snapshot portfolio.Snapshot) generated.PortfolioInventory
 			SyncMode:       generated.InventoryConnectionSyncMode(connection.SyncMode),
 			Available:      connection.Available,
 			Eligible:       connection.Eligible,
+			Diagnostic:     resourceDiagnosticResponse(connection.Diagnostic),
 			Accounts:       accounts,
 		})
 	}
@@ -650,6 +651,7 @@ func showcaseDataset(value portfolio.ShowcaseDataset) generated.ShowcaseDataset 
 			ObservedAt:  value.Context.ObservedAt,
 			RetrievedAt: value.Context.RetrievedAt,
 			PublishedAt: value.Context.PublishedAt,
+			Diagnostic:  resourceDiagnosticResponse(value.Context.Diagnostic),
 		},
 		Balances:   []generated.ShowcaseBalance{},
 		Positions:  []generated.ShowcasePosition{},
@@ -680,6 +682,18 @@ func showcaseDataset(value portfolio.ShowcaseDataset) generated.ShowcaseDataset 
 		})
 	}
 	return result
+}
+
+func resourceDiagnosticResponse(value *portfolio.ResourceDiagnostic) *generated.ResourceDiagnostic {
+	if value == nil {
+		return nil
+	}
+	return &generated.ResourceDiagnostic{
+		Reason:            generated.ResourceDiagnosticReason(value.Reason),
+		RecommendedAction: generated.ResourceDiagnosticRecommendedAction(value.RecommendedAction),
+		RetryAt:           value.RetryAt,
+		LastSuccessfulAt:  value.LastSuccessfulAt,
+	}
 }
 
 func contentTypeMiddleware(next http.Handler) http.Handler {

@@ -109,6 +109,8 @@ func inventoryStillDue(ctx context.Context, tx pgx.Tx, owner uuid.UUID, now time
 			)
 			AND (
 				inventory.user_id IS NULL
+				OR (inventory.diagnostic_refresh_needed
+					AND (inventory.retry_at IS NULL OR inventory.retry_at<=$3))
 				OR (inventory.current_status='pending' AND inventory.claim_expires_at<=$3)
 				OR ((inventory.head_generation IS NULL OR head.generation IS NULL)
 					AND inventory.current_status<>'pending'
@@ -158,6 +160,8 @@ func selectDueInventoryOwner(ctx context.Context, tx pgx.Tx, now time.Time, refr
             )
 			AND (
 				inventory.user_id IS NULL
+				OR (inventory.diagnostic_refresh_needed
+					AND (inventory.retry_at IS NULL OR inventory.retry_at <= $2))
 				OR (inventory.current_status = 'pending' AND inventory.claim_expires_at <= $2)
 				OR ((inventory.head_generation IS NULL OR head.generation IS NULL)
 					AND inventory.current_status <> 'pending'
@@ -355,11 +359,13 @@ func (r *InventoryRepository) FinalizeScheduled(ctx context.Context, claim portf
 		if providerRetryAt != nil && providerRetryAt.After(retryAt) {
 			retryAt = *providerRetryAt
 		}
+		reason, action := inventoryFailureDiagnostic(state, &retryAt)
 		_, err = tx.Exec(ctx, `UPDATE portfolio_inventory_state
 			SET current_status=COALESCE((SELECT status FROM portfolio_inventory_versions
 				WHERE user_id=$1 AND generation=head_generation AND status IN ('ready','empty','disabled')),$3),
-				retry_at=$4,claim_expires_at=NULL,failure_count=failure_count+1,updated_at=$5
-            WHERE user_id=$1 AND current_generation=$2 AND current_status='pending'`, claim.Owner, claim.Generation, state, retryAt, now)
+				retry_at=$4,claim_expires_at=NULL,failure_count=failure_count+1,
+				failure_reason=$6,failure_action=$7,updated_at=$5
+			WHERE user_id=$1 AND current_generation=$2 AND current_status='pending'`, claim.Owner, claim.Generation, state, retryAt, now, reason, action)
 	}
 	if err != nil {
 		return portfolio.Snapshot{}, false, err
@@ -394,7 +400,9 @@ func publishInventoryVersion(ctx context.Context, tx pgx.Tx, owner uuid.UUID, ge
 	if err := removeIneligibleIncludedAccounts(ctx, tx, owner, generation, now); err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, `UPDATE portfolio_inventory_state SET current_status=$3,head_generation=$2,retry_at=$4,claim_expires_at=NULL,failure_count=0,updated_at=$5
+	_, err := tx.Exec(ctx, `UPDATE portfolio_inventory_state SET current_status=$3,head_generation=$2,retry_at=$4,
+		claim_expires_at=NULL,failure_count=0,failure_reason=NULL,failure_action=NULL,
+		diagnostic_refresh_needed=false,updated_at=$5
 		WHERE user_id=$1 AND current_generation=$2 AND current_status='pending'`, owner, generation, state, retryAt, now)
 	return err
 }
@@ -492,9 +500,14 @@ func lockScheduledInventoryOwner(ctx context.Context, tx pgx.Tx, owner uuid.UUID
 
 func insertInventoryRows(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64, connections []portfolio.Connection, now time.Time) error {
 	for _, connection := range connections {
+		var diagnosticReason, diagnosticAction any
+		if connection.Diagnostic != nil {
+			diagnosticReason = connection.Diagnostic.Reason
+			diagnosticAction = connection.Diagnostic.RecommendedAction
+		}
 		if _, err := tx.Exec(ctx, `INSERT INTO portfolio_inventory_connections
-			(user_id,generation,connection_id,brokerage_label,status,sync_mode,available,eligible)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, owner, generation, connection.ID, connection.BrokerageLabel, connection.Status, connection.SyncMode, connection.Available, connection.Eligible); err != nil {
+			(user_id,generation,connection_id,brokerage_label,status,sync_mode,available,eligible,diagnostic_reason,diagnostic_action)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, owner, generation, connection.ID, connection.BrokerageLabel, connection.Status, connection.SyncMode, connection.Available, connection.Eligible, diagnosticReason, diagnosticAction); err != nil {
 			return err
 		}
 		if err := insertAccountRows(ctx, tx, owner, generation, connection, now); err != nil {
@@ -527,9 +540,27 @@ func insertAccountRows(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generati
 }
 
 func recordInventoryFailure(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64, state portfolio.State, retryAt *time.Time, now time.Time) error {
-	_, err := tx.Exec(ctx, `UPDATE portfolio_inventory_state SET current_status=$3,retry_at=$4,claim_expires_at=NULL,updated_at=$5
-		WHERE user_id=$1 AND current_generation=$2 AND current_status='pending'`, owner, generation, state, retryAt, now)
+	reason, action := inventoryFailureDiagnostic(state, retryAt)
+	_, err := tx.Exec(ctx, `UPDATE portfolio_inventory_state SET current_status=$3,retry_at=$4,
+		claim_expires_at=NULL,failure_reason=$6,failure_action=$7,updated_at=$5
+		WHERE user_id=$1 AND current_generation=$2 AND current_status='pending'`, owner, generation, state, retryAt, now, reason, action)
 	return err
+}
+
+func inventoryFailureDiagnostic(state portfolio.State, retryAt *time.Time) (portfolio.ResourceDiagnosticReason, portfolio.ResourceDiagnosticAction) {
+	switch state {
+	case portfolio.StateUnauthorized:
+		return portfolio.DiagnosticAuthorizationRequired, portfolio.DiagnosticActionReconnect
+	case portfolio.StateRateLimited, portfolio.StateUnavailable:
+		if retryAt != nil {
+			return portfolio.DiagnosticProviderUnavailable, portfolio.DiagnosticActionWait
+		}
+		return portfolio.DiagnosticProviderUnavailable, portfolio.DiagnosticActionRetry
+	case portfolio.StatePending:
+		return portfolio.DiagnosticSyncPending, portfolio.DiagnosticActionWait
+	default:
+		return portfolio.DiagnosticUnknown, portfolio.DiagnosticActionRetry
+	}
 }
 
 func loadPreparation(ctx context.Context, tx pgx.Tx, owner uuid.UUID) (portfolio.Preparation, bool, error) {
@@ -564,6 +595,7 @@ func loadPreparation(ctx context.Context, tx pgx.Tx, owner uuid.UUID) (portfolio
 		}
 		accountCount += len(result.Connections[index].Accounts)
 	}
+	applyInventoryFailureDiagnostics(&result)
 	if result.State == portfolio.StateReady && accountCount == 0 {
 		result.State = portfolio.StateEmpty
 	}
@@ -573,17 +605,37 @@ func loadPreparation(ctx context.Context, tx pgx.Tx, owner uuid.UUID) (portfolio
 func loadInventoryState(ctx context.Context, tx pgx.Tx, owner uuid.UUID) (portfolio.Preparation, *int64, bool, error) {
 	var result portfolio.Preparation
 	var head *int64
-	err := tx.QueryRow(ctx, `SELECT current_generation,current_status,head_generation,retry_at,claim_expires_at,updated_at
-		FROM portfolio_inventory_state WHERE user_id=$1 FOR UPDATE`, owner).Scan(&result.Generation, &result.State, &head, &result.RetryAt, &result.ClaimExpiresAt, &result.UpdatedAt)
+	var reason *portfolio.ResourceDiagnosticReason
+	var action *portfolio.ResourceDiagnosticAction
+	err := tx.QueryRow(ctx, `SELECT current_generation,current_status,head_generation,retry_at,claim_expires_at,updated_at,failure_reason,failure_action
+		FROM portfolio_inventory_state WHERE user_id=$1 FOR UPDATE`, owner).Scan(&result.Generation, &result.State, &head, &result.RetryAt, &result.ClaimExpiresAt, &result.UpdatedAt, &reason, &action)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return portfolio.Preparation{}, nil, false, nil
+	}
+	if err == nil && reason != nil && action != nil {
+		result.Diagnostic = &portfolio.ResourceDiagnostic{Reason: *reason, RecommendedAction: *action, RetryAt: result.RetryAt}
 	}
 	return result, head, err == nil, err
 }
 
 func loadInventoryConnections(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64) ([]portfolio.Connection, error) {
-	rows, err := tx.Query(ctx, `SELECT connection_id,brokerage_label,status,sync_mode,available,eligible
-		FROM portfolio_inventory_connections WHERE user_id=$1 AND generation=$2 ORDER BY connection_id`, owner, generation)
+	rows, err := tx.Query(ctx, `SELECT
+			connection.connection_id,
+			connection.brokerage_label,
+			connection.status,
+			connection.sync_mode,
+			connection.available,
+			connection.eligible,
+			connection.diagnostic_reason,
+			connection.diagnostic_action,
+			version.published_at
+		FROM portfolio_inventory_connections connection
+		JOIN portfolio_inventory_versions version
+			ON version.user_id = connection.user_id
+			AND version.generation = connection.generation
+		WHERE connection.user_id = $1
+			AND connection.generation = $2
+		ORDER BY connection.connection_id`, owner, generation)
 	if err != nil {
 		return nil, err
 	}
@@ -591,12 +643,55 @@ func loadInventoryConnections(ctx context.Context, tx pgx.Tx, owner uuid.UUID, g
 	var connections []portfolio.Connection
 	for rows.Next() {
 		var connection portfolio.Connection
-		if err := rows.Scan(&connection.ID, &connection.BrokerageLabel, &connection.Status, &connection.SyncMode, &connection.Available, &connection.Eligible); err != nil {
+		var reason *portfolio.ResourceDiagnosticReason
+		var action *portfolio.ResourceDiagnosticAction
+		var publishedAt time.Time
+		if err := rows.Scan(&connection.ID, &connection.BrokerageLabel, &connection.Status, &connection.SyncMode, &connection.Available, &connection.Eligible, &reason, &action, &publishedAt); err != nil {
 			return nil, err
 		}
+		if reason != nil && action != nil {
+			connection.Diagnostic = &portfolio.ResourceDiagnostic{Reason: *reason, RecommendedAction: *action, LastSuccessfulAt: &publishedAt}
+		}
+		connection.LastSuccessfulAt = &publishedAt
 		connections = append(connections, connection)
 	}
 	return connections, rows.Err()
+}
+
+func applyInventoryFailureDiagnostics(result *portfolio.Preparation) {
+	if result.Diagnostic != nil {
+		for index := range result.Connections {
+			diagnostic := *result.Diagnostic
+			diagnostic.LastSuccessfulAt = result.Connections[index].LastSuccessfulAt
+			result.Connections[index].Diagnostic = &diagnostic
+		}
+		return
+	}
+	var reason portfolio.ResourceDiagnosticReason
+	var action portfolio.ResourceDiagnosticAction
+	switch result.State {
+	case portfolio.StatePending:
+		reason, action = portfolio.DiagnosticSyncPending, portfolio.DiagnosticActionWait
+	case portfolio.StateUnauthorized:
+		reason, action = portfolio.DiagnosticAuthorizationRequired, portfolio.DiagnosticActionReconnect
+	case portfolio.StateRateLimited, portfolio.StateUnavailable:
+		reason, action = portfolio.DiagnosticProviderUnavailable, portfolio.DiagnosticActionRetry
+		if result.RetryAt != nil {
+			action = portfolio.DiagnosticActionWait
+		}
+	case portfolio.StateMalformed:
+		reason, action = portfolio.DiagnosticUnknown, portfolio.DiagnosticActionRetry
+	default:
+		return
+	}
+	for index := range result.Connections {
+		result.Connections[index].Diagnostic = &portfolio.ResourceDiagnostic{
+			Reason:            reason,
+			RecommendedAction: action,
+			RetryAt:           result.RetryAt,
+			LastSuccessfulAt:  result.Connections[index].LastSuccessfulAt,
+		}
+	}
 }
 
 func loadInventoryAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, generation int64, connectionID string) ([]portfolio.Account, error) {
@@ -615,7 +710,14 @@ func loadInventoryAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, gene
 		FROM portfolio_inventory_accounts account
 		JOIN portfolio_inventory_connections connection USING (user_id,generation,connection_id)
 		WHERE account.user_id=$1 AND account.generation=$2 AND account.connection_id=$3
-		AND `+selectableInventoryAccountSQL+` ORDER BY account.account_id`, owner, generation, connectionID)
+		AND (
+			`+selectableInventoryAccountSQL+`
+			OR (
+				NOT account.selectable
+				AND account.usability_reason IN ('unsupported_category','connection_disabled')
+			)
+		)
+		ORDER BY account.account_id`, owner, generation, connectionID)
 	if err != nil {
 		return nil, err
 	}
@@ -626,16 +728,17 @@ func loadInventoryAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, gene
 		if err := rows.Scan(&account.ID, &account.Category, &account.Type, &account.MaskedLabel, &account.Available, &account.Eligible, &account.SyncState, &account.Selectable, &account.UsabilityReason, &account.TotalBalanceAmount, &account.TotalBalanceCurrency); err != nil {
 			return nil, err
 		}
-		// Matching today's predicate is sufficient, including legacy null
-		// provider status/category values. Project current semantics without
-		// rewriting immutable inventory history.
-		account.Selectable = true
-		if account.Category == portfolio.AccountCategoryInvestment {
-			account.Eligible, account.UsabilityReason = true, portfolio.UsabilityReady
-		} else {
-			account.Eligible = false
-			if account.UsabilityReason != portfolio.UsabilityProvisionalStatus {
-				account.UsabilityReason = portfolio.UsabilityProvisionalCategory
+		if account.Selectable {
+			// Matching today's predicate is sufficient, including legacy null
+			// provider status/category values. Project current semantics without
+			// rewriting immutable inventory history.
+			if account.Category == portfolio.AccountCategoryInvestment {
+				account.Eligible, account.UsabilityReason = true, portfolio.UsabilityReady
+			} else {
+				account.Eligible = false
+				if account.UsabilityReason != portfolio.UsabilityProvisionalStatus {
+					account.UsabilityReason = portfolio.UsabilityProvisionalCategory
+				}
 			}
 		}
 		accounts = append(accounts, account)

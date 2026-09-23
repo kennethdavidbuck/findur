@@ -406,6 +406,18 @@ components:
     InventoryState:
       type: string
       enum: [pending, ready, empty, disabled, unauthorized, rate_limited, unavailable, malformed]
+    ResourceDiagnosticReason:
+      type: string
+      enum: [no_accounts_returned, no_supported_accounts, connection_disabled, authorization_required, provider_unavailable, sync_pending, unknown]
+    ResourceDiagnostic:
+      type: object
+      additionalProperties: false
+      required: [reason, recommendedAction]
+      properties:
+        reason: { $ref: '#/components/schemas/ResourceDiagnosticReason' }
+        recommendedAction: { type: string, enum: [none, wait, retry, reconnect] }
+        retryAt: { type: string, format: date-time }
+        lastSuccessfulAt: { type: string, format: date-time }
     InventoryAccount:
       type: object
       additionalProperties: false
@@ -433,6 +445,7 @@ components:
         syncMode: { type: string, enum: [realtime, delayed, unknown] }
         available: { type: boolean }
         eligible: { type: boolean }
+        diagnostic: { $ref: '#/components/schemas/ResourceDiagnostic' }
         accounts:
           type: array
           items: { $ref: '#/components/schemas/InventoryAccount' }
@@ -460,6 +473,7 @@ components:
         retrievedAt: { type: string, format: date-time }
         publishedAt: { type: string, format: date-time }
         freshness: { type: string, enum: [current, stale_usable, expired, unavailable] }
+        diagnostic: { $ref: '#/components/schemas/ResourceDiagnostic' }
     ShowcaseBalance:
       type: object
       additionalProperties: false
