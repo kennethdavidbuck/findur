@@ -39,7 +39,7 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script: `const alert=document.querySelector('[role="alert"]');return {path:location.pathname,search:location.search,text:alert?.innerText||'',focused:document.activeElement===alert,retry:[...document.querySelectorAll('button')].some(button=>button.textContent.trim()==='Try SnapTrade again'&&!button.disabled)}`, args: [] }),
       })
-      if (denialEvidence.retry) break
+      if (denialEvidence.retry && denialEvidence.focused) break
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
     assert.equal(denialEvidence.path, '/connect')
