@@ -56,7 +56,7 @@ type ShowcaseDataset struct {
 
 // ShowcaseAccount groups the independently persisted datasets for one account.
 type ShowcaseAccount struct {
-	Label, Brokerage                string
+	ConnectionID, Label, Brokerage  string
 	SyncMode                        SyncMode
 	Balances, Positions, Activities ShowcaseDataset
 }

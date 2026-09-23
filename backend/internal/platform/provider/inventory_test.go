@@ -853,7 +853,7 @@ func TestDefaultStackFixtureContainsRichScenarioInventory(t *testing.T) {
 			}
 		}
 	}
-	if len(connections) != 22 || len(rawAccounts) != 29 || selectable != 26 {
+	if len(connections) != 22 || len(rawAccounts) != 29 || selectable != 27 {
 		t.Fatalf("connections=%d accounts=%d selectable=%d", len(connections), len(rawAccounts), selectable)
 	}
 	for _, label := range []string{
@@ -866,8 +866,7 @@ func TestDefaultStackFixtureContainsRichScenarioInventory(t *testing.T) {
 		}
 	}
 	for label, reason := range map[string]portfolio.UsabilityReason{
-		"Unsupported Account Type (•••• 0021)":   portfolio.UsabilityUnsupportedCategory,
-		"Connection Repair Required (•••• 0023)": portfolio.UsabilityConnectionDisabled,
+		"Unsupported Account Type (•••• 0021)": portfolio.UsabilityUnsupportedCategory,
 	} {
 		if passiveLabels[label] != reason {
 			t.Errorf("passive scenario %q reason=%q want=%q", label, passiveLabels[label], reason)

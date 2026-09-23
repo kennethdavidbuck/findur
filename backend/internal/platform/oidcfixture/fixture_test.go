@@ -54,6 +54,36 @@ func TestHandlerRedirectsValidBrowserAuthorization(t *testing.T) {
 	}
 }
 
+func TestHandlerCanDeclineOneBrowserAuthorization(t *testing.T) {
+	handler := fixtureHandler(t)
+	arm := httptest.NewRecorder()
+	handler.ServeHTTP(arm, httptest.NewRequest(http.MethodPost, fixtureIssuer+denyNextPath, nil))
+	if arm.Code != http.StatusNoContent {
+		t.Fatalf("arm status=%d", arm.Code)
+	}
+
+	request := httptest.NewRequest(http.MethodGet, fixtureIssuer+"/authorize?"+validAuthorizationQuery().Encode(), nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	location, err := url.Parse(response.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusSeeOther || location.Query().Get("error") != "access_denied" || location.Query().Get(stateField) != "expected-state" || location.Query().Get(codeField) != "" {
+		t.Fatalf("status=%d location=%q", response.Code, location.String())
+	}
+
+	second := httptest.NewRecorder()
+	handler.ServeHTTP(second, httptest.NewRequest(http.MethodGet, fixtureIssuer+"/authorize?"+validAuthorizationQuery().Encode(), nil))
+	secondLocation, err := url.Parse(second.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secondLocation.Query().Get(codeField) != "expected-nonce" || secondLocation.Query().Get("error") != "" {
+		t.Fatalf("one-shot decline leaked into second authorization: %q", secondLocation.String())
+	}
+}
+
 func TestHandlerRejectsMalformedOrUnsafeAuthorizationRequests(t *testing.T) {
 	handler := fixtureHandler(t)
 	tests := map[string]func(url.Values){

@@ -237,6 +237,17 @@ func (f *repositoryFixture) testFinalization(t *testing.T) {
 	if active, err := f.repository.SessionActive(f.ctx, final.SessionHash, f.now); err != nil || !active {
 		t.Fatalf("active=%v err=%v", active, err)
 	}
+	if required, err := f.repository.SessionReauthorizationRequired(f.ctx, final.SessionHash, f.now); err != nil || required {
+		t.Fatalf("unexpected renewal state=%v err=%v", required, err)
+	}
+	if _, err := f.pool.Exec(f.ctx, `UPDATE provider_authorizations
+        SET lifecycle_status = 'reauthorization-required'
+        WHERE user_id = $1`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if required, err := f.repository.SessionReauthorizationRequired(f.ctx, final.SessionHash, f.now); err != nil || !required {
+		t.Fatalf("renewal state=%v err=%v", required, err)
+	}
 	replay, err := f.repository.ClaimCallback(f.ctx, completed.StateHash, completed.BrowserBindingHash, f.now)
 	if err != nil || replay.TerminalOutcome != "succeeded" || replay.TerminalRoute != auth.AuthorizationResultRoute || replay.UserID != userID {
 		t.Fatalf("replay=%+v err=%v", replay, err)

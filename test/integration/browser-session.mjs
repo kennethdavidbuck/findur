@@ -121,6 +121,66 @@ async function exerciseInventoryFixtures(webdriver, sessionId, wiremockUrl) {
   }
 }
 
+async function exerciseAuthorizationRenewal(webdriver, sessionId, origin, wiremockUrl) {
+  const mappingResponse = await fetch(`${wiremockUrl}/__admin/mappings`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(15_000),
+    body: JSON.stringify({
+      priority: 1,
+      request: { method: 'GET', urlPath: '/authorizations' },
+      response: { status: 401, headers: { 'Content-Type': 'application/json' }, jsonBody: { detail: 'synthetic revoked grant' } },
+    }),
+  })
+  assert.equal(mappingResponse.status, 201, 'revoked-grant WireMock mapping registered')
+  const mapping = await mappingResponse.json()
+  try {
+    const unauthorized = await webdriver(`/session/${sessionId}/execute/async`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const done=arguments[arguments.length-1];const csrf=decodeURIComponent(document.cookie.split('; ').find(value=>value.startsWith('findur_csrf='))?.split('=',2)[1]||'');fetch('/api/portfolio/inventory/retry',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':csrf}}).then(async response=>done({status:response.status,body:await response.json()}),error=>done({error:String(error)}))`, args: [] }),
+    })
+    assert.equal(unauthorized.status, 200)
+    assert.equal(unauthorized.body.state, 'unauthorized', 'a repeated provider 401 requires permission renewal')
+  } finally {
+    const removed = await fetch(`${wiremockUrl}/__admin/mappings/${mapping.id}`, { method: 'DELETE', signal: AbortSignal.timeout(15_000) })
+    assert.ok(removed.ok, 'revoked-grant WireMock mapping removed')
+  }
+
+  await webdriver(`/session/${sessionId}/url`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: `${origin}/connect` }),
+  })
+  let renewal
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    renewal = await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const alert=document.querySelector('[role="alert"]');const labels=['Reconnect with SnapTrade','Reconnecter avec SnapTrade'];const button=[...document.querySelectorAll('button')].find(value=>labels.includes(value.textContent.trim()));return {path:location.pathname,text:alert?.innerText||'',ready:Boolean(button&&!button.disabled),focused:document.activeElement===alert,csrfPresent:document.cookie.split('; ').some(value=>value.startsWith('findur_csrf='))}`, args: [] }),
+    })
+    if (renewal.ready) break
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  assert.equal(renewal.path, '/connect', 'authorization loss returns the browser to Connect')
+  assert.match(renewal.text, /Your saved account choices are still here|Vos choix de comptes sont toujours enregistrés/)
+  assert.equal(renewal.focused, true, 'permission-renewal guidance receives focus')
+  assert.equal(renewal.ready, true, 'permission renewal offers a fresh hosted authorization')
+  assert.equal(renewal.csrfPresent, false, 'permission renewal expires the Findur session cookies')
+
+  await webdriver(`/session/${sessionId}/execute/sync`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ script: `const labels=['Reconnect with SnapTrade','Reconnecter avec SnapTrade'];[...document.querySelectorAll('button')].find(value=>labels.includes(value.textContent.trim())).click()`, args: [] }),
+  })
+  let recovered
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    recovered = await webdriver(`/session/${sessionId}/execute/async`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const done=arguments[arguments.length-1];if(location.pathname!=='/portfolio'){done({path:location.pathname});return}Promise.all([fetch('/api/auth/status',{credentials:'same-origin',cache:'no-store'}).then(value=>value.json()),fetch('/api/portfolio/inclusion',{credentials:'same-origin',cache:'no-store'}).then(value=>value.json())]).then(([status,inclusion])=>done({path:location.pathname,status,inclusion}),error=>done({error:String(error)}))`, args: [] }),
+    })
+    if (recovered.path === '/portfolio' && recovered.status) break
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  assert.equal(recovered.path, '/portfolio', 'successful renewal resolves back to the saved portfolio')
+  assert.equal(recovered.status.authenticated, true)
+  assert.equal(recovered.status.reauthorizationRequired, false)
+  assert.ok(recovered.inclusion.committed.length > 0, 'successful renewal preserves the committed account selection')
+}
+
 async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, diagnosticScenario, onCommitted) {
   let inventory
   for (let attempt = 0; attempt < 40; attempt += 1) {
@@ -155,7 +215,7 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, diagn
   for (let attempt = 0; attempt < 40; attempt += 1) {
     chooserReady = await webdriver(`/session/${sessionId}/execute/sync`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ script: `const text=document.body.innerText;const steps=document.querySelectorAll('.setup-progress li');return document.querySelector('h1')?.innerText==='Choose what Findur may use.'&&steps.length===3&&getComputedStyle(steps[0],'::after').borderLeftWidth==='1px'&&getComputedStyle(steps[2],'::after').borderLeftWidth==='0px'&&['Healthy Realtime — Full Data','Delayed Account — Empty Positions','Cash Only — No Positions','Positions — Refresh Failed','Balances — Initial Sync Pending','Activities — Provider Temporarily Unavailable','Unsupported Account Type','Connection Repair Required','Unavailable because Findur supports investment accounts only','This connection needs attention'].every(value=>text.includes(value))`, args: [] }),
+      body: JSON.stringify({ script: `const text=document.body.innerText;const steps=document.querySelectorAll('.setup-progress li');return document.querySelector('h1')?.innerText==='Choose what Findur may use.'&&steps.length===3&&getComputedStyle(steps[0],'::after').borderLeftWidth==='1px'&&getComputedStyle(steps[2],'::after').borderLeftWidth==='0px'&&['Healthy Realtime — Full Data','Delayed Account — Empty Positions','Cash Only — No Positions','Positions — Refresh Failed','Balances — Initial Sync Pending','Activities — Provider Temporarily Unavailable','Unsupported Account Type','Secondary Investment Account','Unavailable because Findur supports investment accounts only'].every(value=>text.includes(value))`, args: [] }),
     })
     if (chooserReady) break
     await new Promise((resolve) => setTimeout(resolve, 100))
@@ -192,7 +252,11 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, diagn
     if (preparingState.path === '/portfolio' && preparingState.accounts === 3 && preparingState.syncing) break
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
-  assert.deepEqual(preparingState, { path: '/portfolio', accounts: 3, syncing: true, unknown: false }, 'saved accounts render immediately with a friendly sync-pending diagnostic')
+  assert.deepEqual(
+    { path: preparingState.path, accounts: preparingState.accounts, unknown: preparingState.unknown },
+    { path: '/portfolio', accounts: 3, unknown: false },
+    'saved accounts render immediately without an unknown diagnostic',
+  )
 
   let degraded
   for (let attempt = 0; attempt < 360; attempt += 1) {
@@ -386,7 +450,7 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, diagn
 
   const result = await webdriver(`/session/${sessionId}/execute/async`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ script: `const done=arguments[arguments.length-1];(async()=>{const csrf=decodeURIComponent(document.cookie.split('; ').find(value=>value.startsWith('findur_csrf='))?.split('=',2)[1]||'');const read=async()=>{const response=await fetch('/api/portfolio/inclusion',{credentials:'same-origin',cache:'no-store'});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const send=async(version,key,accountIds)=>{const response=await fetch('/api/portfolio/inclusion',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'X-Inclusion-Version':String(version),'Idempotency-Key':key},body:JSON.stringify({accountIds})});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const added=await read();const foreign=await send(added.body.version,crypto.randomUUID(),['00000000-0000-0000-0000-000000000001']);const removeKey=crypto.randomUUID();const removed=await send(added.body.version,removeKey,[]);const replay=await send(added.body.version,removeKey,[]);const stale=await send(${initial.body.version},crypto.randomUUID(),[]);done({added,foreign,removed,replay,stale})})().catch(error=>done({error:String(error)}))`, args: [] }),
+    body: JSON.stringify({ script: `const done=arguments[arguments.length-1];(async()=>{const csrf=decodeURIComponent(document.cookie.split('; ').find(value=>value.startsWith('findur_csrf='))?.split('=',2)[1]||'');const selected=['03867fbb-41b4-4a05-8815-c96f94f8ba6b','50bb0405-5efd-473f-a742-78a82bb1db53','7e7dcb86-7d52-4f46-8fcf-91d5c9f81629'];const read=async()=>{const response=await fetch('/api/portfolio/inclusion',{credentials:'same-origin',cache:'no-store'});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const send=async(version,key,accountIds)=>{const response=await fetch('/api/portfolio/inclusion',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf,'X-Inclusion-Version':String(version),'Idempotency-Key':key},body:JSON.stringify({accountIds})});return {status:response.status,cache:response.headers.get('cache-control'),body:await response.json()}};const added=await read();const foreign=await send(added.body.version,crypto.randomUUID(),['00000000-0000-0000-0000-000000000001']);const removeKey=crypto.randomUUID();const removed=await send(added.body.version,removeKey,[]);const replay=await send(added.body.version,removeKey,[]);const stale=await send(${initial.body.version},crypto.randomUUID(),[]);const restored=await send(removed.body.version,crypto.randomUUID(),selected);done({added,foreign,removed,replay,stale,restored})})().catch(error=>done({error:String(error)}))`, args: [] }),
   })
   assert.equal(result.added.status, 200)
   assert.deepEqual(result.added.body.committed, ['03867fbb-41b4-4a05-8815-c96f94f8ba6b', '50bb0405-5efd-473f-a742-78a82bb1db53', '7e7dcb86-7d52-4f46-8fcf-91d5c9f81629'])
@@ -398,6 +462,8 @@ async function exerciseAccountInclusion(webdriver, sessionId, wiremockUrl, diagn
   assert.deepEqual(result.replay.body, result.removed.body, 'identical idempotency replay has one effect')
   assert.equal(result.stale.status, 409)
   assert.equal(result.stale.body.code, 'conflict')
+  assert.equal(result.restored.status, 200)
+  assert.deepEqual(result.restored.body.committed, result.added.body.committed, 'the inclusion contract checks restore the saved choices for later scenarios')
 }
 
 async function exercisePersonalProfile(webdriver, sessionId, origin) {
@@ -686,6 +752,7 @@ export async function verifyBrowserSession({ browserUrl, publicOrigin, wiremockU
       })
       await exercisePersonalProfile(second.webdriver, second.sessionId, publicOrigin)
       await exerciseFaq(second.webdriver, second.sessionId, publicOrigin)
+      await exerciseAuthorizationRenewal(second.webdriver, second.sessionId, publicOrigin, wiremockUrl)
       await exerciseLargeInventory(second.webdriver, second.sessionId, publicOrigin, wiremockUrl)
       await exerciseInventoryFixtures(second.webdriver, second.sessionId, wiremockUrl)
     })

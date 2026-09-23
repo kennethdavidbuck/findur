@@ -35,6 +35,7 @@ const (
 	responseTypeField     = "response_type"
 	scopeField            = "scope"
 	stateField            = "state"
+	denyNextPath          = "/deny-next"
 	authorizationScope    = "openid read"
 	authorizationResponse = "code"
 	pkceS256              = "S256"
@@ -50,6 +51,7 @@ type Handler struct {
 	jwks                                        jose.JSONWebKeySet
 	mu                                          sync.Mutex
 	refreshCalls                                int
+	denyNext                                    bool
 	tokenExpirySeconds                          int
 }
 
@@ -76,6 +78,11 @@ func NewWithTokenExpiry(issuer, clientID, clientSecret, callbackURL string, expi
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", noStore)
 	switch {
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, denyNextPath):
+		h.mu.Lock()
+		h.denyNext = true
+		h.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/authorize"):
 		h.serveAuthorization(w, r)
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/jwks"):
@@ -101,6 +108,17 @@ func (h *Handler) serveAuthorization(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectQuery := callback.Query()
+	h.mu.Lock()
+	denied := h.denyNext
+	h.denyNext = false
+	h.mu.Unlock()
+	if denied {
+		redirectQuery.Set("error", "access_denied")
+		redirectQuery.Set(stateField, query.Get(stateField))
+		callback.RawQuery = redirectQuery.Encode()
+		http.Redirect(w, r, callback.String(), http.StatusSeeOther)
+		return
+	}
 	redirectQuery.Set(codeField, query.Get(nonceField))
 	redirectQuery.Set(stateField, query.Get(stateField))
 	callback.RawQuery = redirectQuery.Encode()

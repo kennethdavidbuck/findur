@@ -130,6 +130,9 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 				writeProfileValidation(w, profileFieldsFromError(err))
 				return
 			}
+			if redirectBrowserAuthorizationError(w, r, generated.ErrorCodeInvalidRequest) {
+				return
+			}
 			writeGeneratedError(w, http.StatusBadRequest, generated.ErrorCodeInvalidRequest)
 		},
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
@@ -152,6 +155,9 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 				writeProfileValidation(w, profileFieldsFromError(err))
 				return
 			}
+			if redirectBrowserAuthorizationError(w, r, generated.ErrorCodeInvalidRequest) {
+				return
+			}
 			writeGeneratedError(w, http.StatusBadRequest, generated.ErrorCodeInvalidRequest)
 		},
 	})
@@ -160,6 +166,9 @@ func registerAuthorizationAPI(mux *http.ServeMux, logger *slog.Logger, initiator
 		ErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, _ error) {
 			if missingRequiredCSRF(r) {
 				writePrivateForbidden(w)
+				return
+			}
+			if redirectBrowserAuthorizationError(w, r, generated.ErrorCodeInvalidRequest) {
 				return
 			}
 			writeGeneratedError(w, http.StatusBadRequest, generated.ErrorCodeInvalidRequest)
@@ -630,12 +639,13 @@ func showcaseResponse(value portfolio.Showcase) generated.PortfolioShowcase {
 	result := generated.PortfolioShowcase{Accounts: make([]generated.ShowcaseAccount, 0, len(value.Accounts))}
 	for _, account := range value.Accounts {
 		result.Accounts = append(result.Accounts, generated.ShowcaseAccount{
-			Label:      account.Label,
-			Brokerage:  account.Brokerage,
-			SyncMode:   generated.ShowcaseAccountSyncMode(account.SyncMode),
-			Balances:   showcaseDataset(account.Balances),
-			Positions:  showcaseDataset(account.Positions),
-			Activities: showcaseDataset(account.Activities),
+			ConnectionId: account.ConnectionID,
+			Label:        account.Label,
+			Brokerage:    account.Brokerage,
+			SyncMode:     generated.ShowcaseAccountSyncMode(account.SyncMode),
+			Balances:     showcaseDataset(account.Balances),
+			Positions:    showcaseDataset(account.Positions),
+			Activities:   showcaseDataset(account.Activities),
 		})
 	}
 	return result
@@ -700,6 +710,9 @@ func contentTypeMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		contentType := strings.TrimSpace(strings.Split(r.Header.Get(contentTypeHeader), ";")[0])
 		if contentType != "" && contentType != jsonMediaType && contentType != formMediaType {
+			if redirectBrowserAuthorizationError(w, r, generated.ErrorCodeInvalidRequest) {
+				return
+			}
 			writeGeneratedError(w, http.StatusUnsupportedMediaType, generated.ErrorCodeInvalidRequest)
 			return
 		}
@@ -707,9 +720,22 @@ func contentTypeMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+type authorizationStatusResponse struct {
+	response generated.GetAuthorizationStatus200JSONResponse
+	cookies  []*http.Cookie
+}
+
+func (r authorizationStatusResponse) VisitGetAuthorizationStatusResponse(w http.ResponseWriter) error {
+	for _, cookie := range r.cookies {
+		http.SetCookie(w, cookie)
+	}
+	return r.response.VisitGetAuthorizationStatusResponse(w)
+}
+
 func (a *authorizationAPI) GetAuthorizationStatus(ctx context.Context, _ generated.GetAuthorizationStatusRequestObject) (generated.GetAuthorizationStatusResponseObject, error) {
 	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
 	status := auth.AuthorizationStatus{AuthorizationAvailable: a.authorizationAvailable}
+	var expiredCookies []*http.Cookie
 	if a.sessions != nil {
 		actor, err := a.sessions.Authenticate(ctx, cookies.session)
 		status.Authenticated = err == nil
@@ -719,6 +745,23 @@ func (a *authorizationAPI) GetAuthorizationStatus(ctx context.Context, _ generat
 		if err != nil && !errors.Is(err, auth.ErrUnauthenticated) {
 			a.logger.WarnContext(ctx, "authorization status unavailable", "category", sessionCheckCategory)
 		}
+		if status.Authenticated && a.status != nil {
+			providerStatus, statusErr := a.status.Status(ctx, cookies.session)
+			if statusErr != nil {
+				a.logger.WarnContext(ctx, "authorization status unavailable", "category", sessionCheckCategory)
+				return nil, statusErr
+			}
+			status.ReauthorizationRequired = providerStatus.ReauthorizationRequired
+			if !providerStatus.Authenticated || status.ReauthorizationRequired {
+				if status.ReauthorizationRequired {
+					if revokeErr := a.sessions.RevokeCurrent(ctx, cookies.session); revokeErr != nil && !errors.Is(revokeErr, auth.ErrUnauthenticated) {
+						return nil, revokeErr
+					}
+				}
+				status.Authenticated = false
+				expiredCookies = expiredSessionCookies()
+			}
+		}
 	} else if a.status != nil {
 		var err error
 		status, err = a.status.Status(ctx, cookies.session)
@@ -726,7 +769,11 @@ func (a *authorizationAPI) GetAuthorizationStatus(ctx context.Context, _ generat
 			a.logger.WarnContext(ctx, "authorization status unavailable", "category", sessionCheckCategory)
 		}
 	}
-	return generated.GetAuthorizationStatus200JSONResponse{Body: generated.AuthorizationStatus{AuthorizationAvailable: status.AuthorizationAvailable, Authenticated: status.Authenticated}, Headers: generated.GetAuthorizationStatus200ResponseHeaders{CacheControl: noStoreDirective}}, nil
+	response := generated.GetAuthorizationStatus200JSONResponse{Body: generated.AuthorizationStatus{AuthorizationAvailable: status.AuthorizationAvailable, Authenticated: status.Authenticated, ReauthorizationRequired: status.ReauthorizationRequired}, Headers: generated.GetAuthorizationStatus200ResponseHeaders{CacheControl: noStoreDirective}}
+	if len(expiredCookies) > 0 {
+		return authorizationStatusResponse{response: response, cookies: expiredCookies}, nil
+	}
+	return response, nil
 }
 
 type logoutResponse struct{ cookies []*http.Cookie }
@@ -810,6 +857,15 @@ type callbackRedirect struct {
 	cookies  []*http.Cookie
 }
 
+type beginFailureRedirect struct{ location string }
+
+func (r beginFailureRedirect) VisitBeginSnapTradeAuthorizationResponse(w http.ResponseWriter) error {
+	w.Header().Set(cacheControlHeader, noStoreDirective)
+	w.Header().Set("Location", r.location)
+	w.WriteHeader(http.StatusSeeOther)
+	return nil
+}
+
 func (r callbackRedirect) VisitCompleteSnapTradeAuthorizationResponse(w http.ResponseWriter) error {
 	for _, cookie := range r.cookies {
 		http.SetCookie(w, cookie)
@@ -822,7 +878,7 @@ func (r callbackRedirect) VisitCompleteSnapTradeAuthorizationResponse(w http.Res
 
 func (a *authorizationAPI) CompleteSnapTradeAuthorization(ctx context.Context, request generated.CompleteSnapTradeAuthorizationRequestObject) (generated.CompleteSnapTradeAuthorizationResponseObject, error) {
 	cookies, _ := ctx.Value(callbackCookieKey{}).(callbackCookies)
-	result := auth.CallbackResult{Route: auth.AuthorizationResultRoute}
+	result := auth.CallbackResult{Route: auth.AuthorizationRetryRoute}
 	var err error
 	if a.completer != nil {
 		result, err = a.completer.Complete(ctx, callbackInput(request.Params, cookies))
@@ -841,6 +897,9 @@ func (a *authorizationAPI) CompleteSnapTradeAuthorization(ctx context.Context, r
 
 func (a *authorizationAPI) BeginSnapTradeAuthorization(ctx context.Context, request generated.BeginSnapTradeAuthorizationRequestObject) (generated.BeginSnapTradeAuthorizationResponseObject, error) {
 	if a.initiator == nil {
+		if browserRequest(requestFromContext(ctx)) {
+			return beginFailureRedirect{location: authorizationErrorRoute(generated.ErrorCodeAuthorizationUnavailable)}, nil
+		}
 		return unavailableResponse(generated.ErrorCodeAuthorizationUnavailable), nil
 	}
 	result, err := a.initiator.Begin(ctx, requestedReturn(request))
@@ -860,10 +919,16 @@ func (a *authorizationAPI) BeginSnapTradeAuthorization(ctx context.Context, requ
 			"category", category,
 			"stage", auth.InitializationStageOf(err),
 		)
+		if browserRequest(requestFromContext(ctx)) {
+			return beginFailureRedirect{location: authorizationErrorRoute(code)}, nil
+		}
 		return unavailableResponse(code), nil
 	}
 	maxAge := int(time.Until(result.ExpiresAt) / time.Second)
 	if maxAge < 1 || maxAge > int(auth.AttemptLifetime/time.Second) {
+		if browserRequest(requestFromContext(ctx)) {
+			return beginFailureRedirect{location: authorizationErrorRoute(generated.ErrorCodeInitializationFailed)}, nil
+		}
 		return unavailableResponse(generated.ErrorCodeInitializationFailed), nil
 	}
 	cookie := (&http.Cookie{Name: attemptCookieName, Value: result.BrowserBinding, Path: auth.SnapTradeCallbackPath, MaxAge: maxAge, Secure: true, HttpOnly: true, SameSite: http.SameSiteLaxMode}).String()
@@ -933,6 +998,36 @@ func expiredSessionCookies() []*http.Cookie {
 
 func unavailableResponse(code generated.ErrorCode) generated.BeginSnapTradeAuthorization503JSONResponse {
 	return generated.BeginSnapTradeAuthorization503JSONResponse{Body: generated.Error{Code: code}, Headers: generated.BeginSnapTradeAuthorization503ResponseHeaders{CacheControl: noStoreDirective}}
+}
+
+func browserRequest(request *http.Request) bool {
+	return request != nil && strings.Contains(request.Header.Get("Accept"), "text/html")
+}
+
+func authorizationErrorRoute(code generated.ErrorCode) string {
+	return auth.DefaultReturnRoute + "?authorization=" + string(code)
+}
+
+func redirectBrowserAuthorizationError(w http.ResponseWriter, r *http.Request, code generated.ErrorCode) bool {
+	if !browserRequest(r) {
+		return false
+	}
+	var location string
+	switch r.URL.Path {
+	case authorizationPath:
+		location = authorizationErrorRoute(code)
+	case auth.SnapTradeCallbackPath:
+		location = auth.AuthorizationRetryRoute
+	default:
+		return false
+	}
+	if r.URL.Path == auth.SnapTradeCallbackPath {
+		http.SetCookie(w, expiredAttemptCookie())
+	}
+	w.Header().Set(cacheControlHeader, noStoreDirective)
+	w.Header().Set("Location", location)
+	w.WriteHeader(http.StatusSeeOther)
+	return true
 }
 
 func writeGeneratedError(w http.ResponseWriter, status int, code generated.ErrorCode) {

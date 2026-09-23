@@ -80,6 +80,17 @@ That is the complete startup command. It builds and starts PostgreSQL, WireMock,
 
 The local stack uses a complete synthetic OAuth and masked-account flow by default. Choosing **Continue to SnapTrade** completes authorization against WireMock without contacting SnapTrade or requiring real credentials or financial data.
 
+To inspect authorization recovery in the running synthetic stack, first complete one normal login, then choose a scenario:
+
+```sh
+./scripts/auth-scenario.sh declined  # the next login attempt is declined once
+./scripts/auth-scenario.sh findur-access-revoked   # revoke Findur's overall SnapTrade access
+./scripts/auth-scenario.sh connection-disconnected # disconnect one named synthetic brokerage
+./scripts/auth-scenario.sh reset     # restore the latest saved inventory state
+```
+
+For `declined`, return to `/connect` and continue with SnapTrade. For `findur-access-revoked`, reload the app; Findur ends the current session and shows the existing reconnect message on `/connect`. To see `connection-disconnected` on the Portfolio page, first include **Healthy Realtime — Full Data (•••• X001)**, run the scenario, and reload `/portfolio`; the error names **Synthetic Self-Directed**, identifies the affected masked account, and links to SnapTrade. The shorter `revoked` and `disabled` names remain available as compatibility aliases. These controls exist only in the synthetic local environment and never use real account data.
+
 Press `Ctrl+C` to stop the attached stack, then remove its containers and network with:
 
 ```sh

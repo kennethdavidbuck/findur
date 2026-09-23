@@ -23,15 +23,16 @@ const (
 )
 
 type callbackRepoStub struct {
-	claim          CallbackClaim
-	claimErr       error
-	claims         int
-	user           uuid.UUID
-	found, active  bool
-	final          Finalization
-	finalErr       error
-	failed         int
-	sessionChecked []byte
+	claim                   CallbackClaim
+	claimErr                error
+	claims                  int
+	user                    uuid.UUID
+	found, active           bool
+	reauthorizationRequired bool
+	final                   Finalization
+	finalErr                error
+	failed                  int
+	sessionChecked          []byte
 }
 
 func (r *callbackRepoStub) ClaimCallback(context.Context, []byte, []byte, time.Time) (CallbackClaim, error) {
@@ -52,6 +53,10 @@ func (r *callbackRepoStub) FailCallback(context.Context, []byte, time.Time) erro
 func (r *callbackRepoStub) SessionActive(_ context.Context, sessionHash []byte, _ time.Time) (bool, error) {
 	r.sessionChecked = append([]byte(nil), sessionHash...)
 	return r.active, nil
+}
+func (r *callbackRepoStub) SessionReauthorizationRequired(_ context.Context, sessionHash []byte, _ time.Time) (bool, error) {
+	r.sessionChecked = append([]byte(nil), sessionHash...)
+	return r.reauthorizationRequired, nil
 }
 
 type oidcStub struct {
@@ -136,19 +141,20 @@ func TestCallbackInputFailuresNeverExchange(t *testing.T) {
 		input                  CallbackInput
 		claimErr               error
 		wantClaims, wantFailed int
+		wantRoute              string
 	}{
-		"missing state":      {input: CallbackInput{Binding: testBinding, Code: testCode}},
-		"missing code":       {input: CallbackInput{State: testState, Binding: testBinding}, wantClaims: 1, wantFailed: 1},
-		"mismatched binding": {input: CallbackInput{State: testState, Binding: "wrong", Code: testCode}, claimErr: ErrNotClaimable, wantClaims: 1},
-		"expired attempt":    {input: CallbackInput{State: testState, Binding: testBinding, Code: testCode}, claimErr: ErrNotClaimable, wantClaims: 1},
-		"provider denial":    {input: CallbackInput{State: testState, Binding: testBinding, ProviderError: "access_denied"}, wantClaims: 1, wantFailed: 1},
+		"missing state":      {input: CallbackInput{Binding: testBinding, Code: testCode}, wantRoute: AuthorizationRetryRoute},
+		"missing code":       {input: CallbackInput{State: testState, Binding: testBinding}, wantClaims: 1, wantFailed: 1, wantRoute: AuthorizationRetryRoute},
+		"mismatched binding": {input: CallbackInput{State: testState, Binding: "wrong", Code: testCode}, claimErr: ErrNotClaimable, wantClaims: 1, wantRoute: AuthorizationRetryRoute},
+		"expired attempt":    {input: CallbackInput{State: testState, Binding: testBinding, Code: testCode}, claimErr: ErrNotClaimable, wantClaims: 1, wantRoute: AuthorizationRetryRoute},
+		"provider denial":    {input: CallbackInput{State: testState, Binding: testBinding, ProviderError: "access_denied"}, wantClaims: 1, wantFailed: 1, wantRoute: AuthorizationDeniedRoute},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			service, repo, client := callbackFixture(t)
 			repo.claimErr = test.claimErr
 			result, err := service.Complete(context.Background(), test.input)
-			if !errors.Is(err, ErrRestartRequired) || result.Success || client.exchanges != 0 || repo.claims != test.wantClaims || repo.failed != test.wantFailed || repo.final.UserID != uuid.Nil {
+			if !errors.Is(err, ErrRestartRequired) || result.Success || result.Route != test.wantRoute || client.exchanges != 0 || repo.claims != test.wantClaims || repo.failed != test.wantFailed || repo.final.UserID != uuid.Nil {
 				t.Fatalf("result=%+v err=%v exchanges=%d claims=%d failed=%d final=%+v", result, err, client.exchanges, repo.claims, repo.failed, repo.final)
 			}
 		})
@@ -223,7 +229,7 @@ func TestCallbackReplayWithoutActiveSessionRequiresRestart(t *testing.T) {
 	service, repo, client := callbackFixture(t)
 	repo.claim.TerminalOutcome, repo.claim.TerminalRoute = "succeeded", "/onboarding/accounts"
 	result, err := service.Complete(context.Background(), CallbackInput{State: testState, Binding: testBinding, Code: testCode})
-	if !errors.Is(err, ErrRestartRequired) || result.Route != "/onboarding/accounts" || client.exchanges != 0 || repo.final.UserID != uuid.Nil {
+	if !errors.Is(err, ErrRestartRequired) || result.Route != AuthorizationRetryRoute || client.exchanges != 0 || repo.final.UserID != uuid.Nil {
 		t.Fatalf("result=%+v err=%v exchanges=%d", result, err, client.exchanges)
 	}
 }
@@ -231,8 +237,9 @@ func TestCallbackReplayWithoutActiveSessionRequiresRestart(t *testing.T) {
 func TestAuthorizationStatusUsesOnlyHashedOpaqueSession(t *testing.T) {
 	service, repo, _ := callbackFixture(t)
 	repo.active = true
+	repo.reauthorizationRequired = true
 	status, err := service.Status(context.Background(), "opaque-session")
-	if err != nil || !status.AuthorizationAvailable || !status.Authenticated || bytes.Equal(repo.sessionChecked, []byte("opaque-session")) || len(repo.sessionChecked) != 32 {
+	if err != nil || !status.AuthorizationAvailable || !status.Authenticated || !status.ReauthorizationRequired || bytes.Equal(repo.sessionChecked, []byte("opaque-session")) || len(repo.sessionChecked) != 32 {
 		t.Fatalf("status=%+v err=%v hash=%x", status, err, repo.sessionChecked)
 	}
 	status, err = service.Status(context.Background(), "")

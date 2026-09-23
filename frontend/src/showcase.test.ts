@@ -11,7 +11,7 @@ describe('getPortfolioShowcase', () => {
 			balances: [], positions: [], activities: [],
 		}
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
-			accounts: [{ label: 'Masked account', brokerage: 'Broker', syncMode: 'realtime', balances: dataset, positions: dataset, activities: dataset }],
+			accounts: [{ connectionId: 'connection-1', label: 'Masked account', brokerage: 'Broker', syncMode: 'realtime', balances: dataset, positions: dataset, activities: dataset }],
 		}), { status: 200 })))
 
 		await expect(getPortfolioShowcase()).resolves.toBeDefined()
@@ -19,7 +19,7 @@ describe('getPortfolioShowcase', () => {
 
 	it('accepts provider-directed waiting without exposing an incompatible action', async () => {
 		const dataset = { context: { source: 'SnapTrade', coverage: 'included account', currency: '', freshness: 'unavailable', diagnostic: { reason: 'provider_unavailable', recommendedAction: 'wait' } }, balances: [], positions: [], activities: [] }
-		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ accounts: [{ label: 'Masked account', brokerage: 'Broker', syncMode: 'realtime', balances: dataset, positions: dataset, activities: dataset }] }), { status: 200 })))
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ accounts: [{ connectionId: 'connection-1', label: 'Masked account', brokerage: 'Broker', syncMode: 'realtime', balances: dataset, positions: dataset, activities: dataset }] }), { status: 200 })))
 
 		await expect(getPortfolioShowcase()).resolves.toBeDefined()
 	})
@@ -30,7 +30,7 @@ describe('getPortfolioShowcase', () => {
 			balances: [], positions: [], activities: [],
 		}
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
-			accounts: [{ label: 'Masked account', brokerage: 'Broker', syncMode: 'realtime', balances: dataset, positions: dataset, activities: dataset }],
+			accounts: [{ connectionId: 'connection-1', label: 'Masked account', brokerage: 'Broker', syncMode: 'realtime', balances: dataset, positions: dataset, activities: dataset }],
 		}), { status: 200 })))
 
 		await expect(getPortfolioShowcase()).rejects.toThrow('malformed')
@@ -43,7 +43,7 @@ describe('getPortfolioShowcase', () => {
 	])('rejects $description diagnostics', async ({ diagnostic }) => {
 		const dataset = { context: { source: 'SnapTrade', coverage: 'included account', currency: '', freshness: 'unavailable', diagnostic }, balances: [], positions: [], activities: [] }
 		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
-			accounts: [{ label: 'Masked account', brokerage: 'Broker', syncMode: 'realtime', balances: dataset, positions: dataset, activities: dataset }],
+			accounts: [{ connectionId: 'connection-1', label: 'Masked account', brokerage: 'Broker', syncMode: 'realtime', balances: dataset, positions: dataset, activities: dataset }],
 		}), { status: 200 })))
 
 		await expect(getPortfolioShowcase()).rejects.toThrow('malformed')
