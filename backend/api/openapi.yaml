@@ -517,8 +517,9 @@ components:
     ShowcaseAccount:
       type: object
       additionalProperties: false
-      required: [label, brokerage, syncMode, balances, positions, activities]
+      required: [connectionId, label, brokerage, syncMode, balances, positions, activities]
       properties:
+        connectionId: { type: string }
         label: { type: string }
         brokerage: { type: string }
         syncMode: { type: string, enum: [realtime, delayed, unknown] }
@@ -570,10 +571,11 @@ components:
     AuthorizationStatus:
       type: object
       additionalProperties: false
-      required: [authorizationAvailable, authenticated]
+      required: [authorizationAvailable, authenticated, reauthorizationRequired]
       properties:
         authorizationAvailable: { type: boolean }
         authenticated: { type: boolean }
+        reauthorizationRequired: { type: boolean }
     BeginAuthorizationRequest:
       type: object
       additionalProperties: false

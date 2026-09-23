@@ -76,7 +76,7 @@ func (r *ShowcaseRepository) GetShowcase(ctx context.Context, owner uuid.UUID) (
 
 func unusableAccountDiagnostic(connectionStatus, accountSyncState string) (portfolio.ResourceDiagnosticReason, portfolio.ResourceDiagnosticAction) {
 	if connectionStatus == string(portfolio.ConnectionStatusDisabled) {
-		return portfolio.DiagnosticAuthorizationRequired, portfolio.DiagnosticActionReconnect
+		return portfolio.DiagnosticConnectionDisabled, portfolio.DiagnosticActionReconnect
 	}
 	switch accountSyncState {
 	case string(portfolio.AccountSyncStatePending):
@@ -91,6 +91,7 @@ func unusableAccountDiagnostic(connectionStatus, accountSyncState string) (portf
 func loadShowcaseAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID) ([]showcaseAccountHead, error) {
 	rows, err := tx.Query(ctx, `SELECT
 			a.account_id,
+			c.connection_id,
 			a.masked_label,
 			c.brokerage_label,
 			c.sync_mode,
@@ -129,6 +130,7 @@ func loadShowcaseAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID) ([]sh
 		var balanceSuccess, positionSuccess, activitySuccess *time.Time
 		if err := rows.Scan(
 			&head.id,
+			&head.account.ConnectionID,
 			&head.account.Label,
 			&head.account.Brokerage,
 			&head.account.SyncMode,

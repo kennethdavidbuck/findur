@@ -15,7 +15,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 it('loads a blank localized profile and saves the complete draft without changing focus', async () => {
   let resolveSave!: (response: Response) => void
   const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true }))
+    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
     if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
     if (path === '/api/profile' && init?.method === 'GET') return Promise.resolve(json({ locations }))
     if (path === '/api/profile' && init?.method === 'PUT') return new Promise<Response>((resolve) => { resolveSave = resolve })
@@ -49,7 +49,7 @@ it('counts and validates Unicode code points instead of UTF-16 code units', asyn
   const sixtyEmoji = '😀'.repeat(60)
   const fiveHundredEmoji = '😀'.repeat(500)
   const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true }))
+    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
     if (path === '/api/profile' && init?.method === 'GET') return Promise.resolve(json({ locations }))
     if (path === '/api/profile' && init?.method === 'PUT') return Promise.resolve(json({ displayName: sixtyEmoji, adultAttestedAt: '2026-09-21T12:00:00Z', locationKey: 'halifax-ns', relationshipIntent: 'long-term', biography: fiveHundredEmoji, avatarKey: 'aurora', locale: 'en', theme: 'system', version: 1 }))
     return Promise.resolve(new Response(null, { status: 404 }))
@@ -72,7 +72,7 @@ it('counts and validates Unicode code points instead of UTF-16 code units', asyn
 
 it('focuses linked client errors before sending an incomplete first profile', async () => {
   const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true }))
+    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
     if (path === '/api/profile' && init?.method === 'GET') return Promise.resolve(json({ locations }))
     return Promise.resolve(new Response(null, { status: 404 }))
   })
@@ -92,7 +92,7 @@ it('focuses linked client errors before sending an incomplete first profile', as
 
 it('synchronizes a saved French and dark profile with the shared providers', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true }))
+    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
     if (path === '/api/preferences/display') return Promise.resolve(json({ locale: 'fr', theme: 'dark', version: 2 }))
     if (path === '/api/profile' && init?.method === 'GET') return Promise.resolve(json({ locations, profile: { displayName: 'Alex', adultAttestedAt: '2026-09-21T12:00:00Z', locationKey: 'halifax-ns', relationshipIntent: 'open-to-long-term', biography: 'Bonjour', avatarKey: 'cedar', locale: 'fr', theme: 'dark', version: 2 } }))
     return Promise.resolve(new Response(null, { status: 404 }))
@@ -113,7 +113,7 @@ it('keeps the draft and offers recovery when a version conflict occurs', async (
   let profileLoads = 0
   let conflicted = false
   const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true }))
+    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
     if (path === '/api/profile' && init?.method === 'GET') {
       profileLoads += 1
       return Promise.resolve(json(profileLoads === 1 ? { locations } : { locations, profile: { displayName: 'Saved elsewhere', adultAttestedAt: '2026-09-21T12:00:00Z', locationKey: 'halifax-ns', relationshipIntent: 'long-term', biography: 'Server copy', avatarKey: 'aurora', locale: 'en', theme: 'system', version: 3 } }))
@@ -151,7 +151,7 @@ it('keeps the draft and offers recovery when a version conflict occurs', async (
 
 it('links server validation errors, focuses the summary, and preserves the draft', async () => {
   vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true }))
+    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
     if (path === '/api/profile' && init?.method === 'GET') return Promise.resolve(json({ locations }))
     if (path === '/api/profile' && init?.method === 'PUT') return Promise.resolve(new Response(JSON.stringify({ code: 'invalid_profile', fields: ['displayName', 'biography'] }), { status: 400, headers: { 'Content-Type': 'application/json' } }))
     return Promise.resolve(new Response(null, { status: 404 }))
@@ -176,7 +176,7 @@ it('links server validation errors, focuses the summary, and preserves the draft
 it('keeps the draft after an unavailable save and returns to connection on session expiry', async () => {
   let saveStatus = 503
   vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true }))
+    if (path === '/api/auth/status') return Promise.resolve(json({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
     if (path === '/api/profile' && init?.method === 'GET') return Promise.resolve(json({ locations }))
     if (path === '/api/profile' && init?.method === 'PUT') return Promise.resolve(new Response(null, { status: saveStatus }))
     return Promise.resolve(new Response(null, { status: 404 }))

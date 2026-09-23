@@ -340,6 +340,7 @@ export interface components {
             activities: components["schemas"]["ShowcaseActivity"][];
         };
         ShowcaseAccount: {
+            connectionId: string;
             label: string;
             brokerage: string;
             /** @enum {string} */
@@ -373,6 +374,7 @@ export interface components {
         AuthorizationStatus: {
             authorizationAvailable: boolean;
             authenticated: boolean;
+            reauthorizationRequired: boolean;
         };
         BeginAuthorizationRequest: {
             returnTo?: string;

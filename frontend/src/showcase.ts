@@ -13,6 +13,7 @@ export async function getPortfolioShowcase(): Promise<PortfolioShowcase> {
 }
 function isShowcase(value: unknown): value is PortfolioShowcase {
   return isRecord(value) && Array.isArray(value.accounts) && value.accounts.every((account) => isRecord(account)
+    && typeof account.connectionId === 'string'
     && typeof account.label === 'string'
     && typeof account.brokerage === 'string'
     && knownString(syncModes, account.syncMode)

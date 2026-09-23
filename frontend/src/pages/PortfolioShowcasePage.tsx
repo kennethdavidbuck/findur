@@ -3,8 +3,10 @@ import type { components } from '../generated/api'
 import { useI18n } from '../i18n'
 import { getPortfolioInclusion, InventorySessionExpiredError } from '../inventory'
 import { getPortfolioShowcase, type PortfolioShowcase } from '../showcase'
+import { snapTradeDashboardURL } from '../snaptrade'
 
 type Dataset = components['schemas']['ShowcaseDataset']
+type ShowcaseAccount = components['schemas']['ShowcaseAccount']
 type Locale = 'en' | 'fr'
 const preparationRefreshIntervalMs = 5_000
 const ordinarySyncIntervalMs = 24 * 60 * 60 * 1_000
@@ -19,6 +21,11 @@ const copy = {
     failed: 'We can’t show your saved portfolio evidence right now.',
     retry: 'Try again',
     reconnect: 'Reconnect',
+    manageSnapTrade: 'Open SnapTrade to reconnect',
+    authorizationRepair: 'Findur no longer has permission to update this portfolio.',
+    connectionRepair: (brokerage: string) => `The ${brokerage} connection is disconnected.`,
+    connectionRepairAccounts: 'Affected accounts:',
+    connectionRepairBody: 'SnapTrade cannot send fresh updates for these accounts.',
     empty: 'No included accounts are saved.',
     preparing: 'Your accounts are saved. Some portfolio data is still syncing. Check back in a few minutes.',
     checkAgain: 'Check again',
@@ -45,8 +52,8 @@ const copy = {
     diagnosticReasons: {
       no_accounts_returned: 'No accounts were returned.',
       no_supported_accounts: 'The returned accounts are not supported.',
-      connection_disabled: 'The connection needs repair.',
-      authorization_required: 'Authorization must be renewed for this data.',
+      connection_disabled: 'SnapTrade cannot update this account until its brokerage connection is reconnected.',
+      authorization_required: 'Findur needs your permission again before this data can be updated.',
       provider_unavailable: 'This data could not be refreshed. Saved values remain visible when safe.',
       sync_pending: 'This data is still syncing.',
       unknown: 'Findur could not determine why this data is unavailable.',
@@ -65,6 +72,11 @@ const copy = {
     failed: 'Nous ne pouvons pas afficher vos données enregistrées pour le moment.',
     retry: 'Réessayer',
     reconnect: 'Reconnecter',
+    manageSnapTrade: 'Ouvrir SnapTrade pour reconnecter',
+    authorizationRepair: 'Findur n’a plus la permission de mettre ce portefeuille à jour.',
+    connectionRepair: (brokerage: string) => `La connexion à ${brokerage} est déconnectée.`,
+    connectionRepairAccounts: 'Comptes touchés :',
+    connectionRepairBody: 'SnapTrade ne peut pas transmettre de nouvelles données pour ces comptes.',
     empty: 'Aucun compte inclus enregistré.',
     preparing: 'Vos comptes sont enregistrés. Certaines données du portefeuille sont encore en cours de synchronisation. Revenez dans quelques minutes.',
     checkAgain: 'Vérifier à nouveau',
@@ -91,8 +103,8 @@ const copy = {
     diagnosticReasons: {
       no_accounts_returned: 'Aucun compte n’a été retourné.',
       no_supported_accounts: 'Les comptes retournés ne sont pas pris en charge.',
-      connection_disabled: 'La connexion doit être réparée.',
-      authorization_required: 'L’autorisation doit être renouvelée pour ces données.',
+      connection_disabled: 'SnapTrade ne peut pas mettre ce compte à jour tant que sa connexion de courtage n’est pas reconnectée.',
+      authorization_required: 'Findur a de nouveau besoin de votre permission avant de pouvoir mettre à jour ces données.',
       provider_unavailable: 'Ces données n’ont pas pu être actualisées. Les valeurs enregistrées restent visibles lorsqu’elles sont utilisables.',
       sync_pending: 'Ces données sont encore en cours de synchronisation.',
       unknown: 'Findur n’a pas pu déterminer pourquoi ces données sont indisponibles.',
@@ -110,7 +122,7 @@ const columns = {
   activities: ['type', 'tradeDate', 'currency', 'amount', 'fee'],
 } as const
 
-export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessionExpired }: { headingRef: RefObject<HTMLHeadingElement | null>; onEdit: () => void; onReconnect: () => void; onSessionExpired: () => void }) {
+export function PortfolioShowcasePage({ headingRef, onEdit, onSessionExpired }: { headingRef: RefObject<HTMLHeadingElement | null>; onEdit: () => void; onSessionExpired: () => void }) {
   const { locale } = useI18n()
   const text = copy[locale]
   const [data, setData] = useState<PortfolioShowcase | null>(null)
@@ -186,7 +198,8 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
     setReload((value) => value + 1)
   }
   const diagnostics = data.accounts.flatMap((account) => [account.balances.context.diagnostic, account.positions.context.diagnostic, account.activities.context.diagnostic]).filter((diagnostic) => diagnostic !== undefined)
-  const reconnectRequired = diagnostics.some((diagnostic) => diagnostic.recommendedAction === 'reconnect')
+  const reconnectRequired = diagnostics.some((diagnostic) => diagnostic.reason === 'authorization_required')
+  const connectionRepairs = disabledConnectionRepairs(data.accounts)
   const initialSyncPending = diagnostics.some((diagnostic) => diagnostic.reason === 'sync_pending')
 
   return <div className="showcase-layout">
@@ -204,14 +217,27 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
           <p>{preparing ? text.preparing : text.empty}</p>
           {!preparing && <button className="text-link" onClick={onEdit}>{text.edit} →</button>}
         </div>
-        : <>
+        : reconnectRequired
+          ? <div className="showcase-recovery" role="alert">
+            <p>{text.authorizationRepair}</p>
+            <form action="/api/auth/snaptrade/authorize" method="post">
+              <input type="hidden" name="returnTo" value="/portfolio" />
+              <button className="action action--secondary" type="submit">{text.reconnect}</button>
+            </form>
+          </div>
+          : <>
           {initialSyncPending && <div className="showcase-preparing" role="status">
             <p>{text.preparing}</p>
             <button className={`text-link${refreshing ? ' text-link--refreshing' : ''}`} disabled={refreshing} onClick={refreshShowcase}>{text.checkAgain} →</button>
           </div>}
-          {reconnectRequired && <div className="showcase-recovery" aria-label={locale === 'fr' ? 'Actions de récupération des données' : 'Data recovery actions'}>
-            <button className="action action--secondary" onClick={onReconnect}>{text.reconnect}</button>
-          </div>}
+          {connectionRepairs.map((repair) => <div className="showcase-recovery" role="alert" key={repair.connectionId}>
+            <h2>{text.connectionRepair(repair.brokerage)}</h2>
+            <p>{text.connectionRepairAccounts}</p>
+            <ul className="connection-repair__accounts">
+              {repair.accounts.map((account) => <li key={account}>{account}</li>)}
+            </ul>
+            <p>{text.connectionRepairBody} <a href={snapTradeDashboardURL} target="_blank" rel="noreferrer">{text.manageSnapTrade}</a>.</p>
+          </div>)}
           <section className="coverage" aria-label={text.coverage}>
             <div>
               <strong>{text.coverageHeading(data.accounts.length)}</strong>
@@ -220,7 +246,7 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
             <button className="text-link" onClick={onEdit}>{text.edit} →</button>
           </section>
           <section className="account-grid" aria-label={locale === 'fr' ? 'Comptes inclus' : 'Included accounts'}>
-            {data.accounts.map((account, index) => <article className="account" key={`${account.brokerage}-${account.label}`}>
+            {data.accounts.map((account, index) => <article className="account" key={`${account.connectionId}-${index}`}>
               <header>
                 <div>
                   <h2>{account.label}</h2>
@@ -235,7 +261,7 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
           <section className="showcase-ledgers" aria-label={locale === 'fr' ? 'Données des comptes inclus' : 'Included account evidence'}>
             {data.accounts.map((account, index) => {
               const ledgerID = `showcase-account-${index + 1}`
-              return <section className="account-ledger" aria-labelledby={ledgerID} key={`ledger-${account.brokerage}-${account.label}`}>
+              return <section className="account-ledger" aria-labelledby={ledgerID} key={`ledger-${account.connectionId}-${index}`}>
                 <header className="ledger-header">
                   <div>
                     <p className="ledger-kicker">{text.includedAccount} {String(index + 1).padStart(2, '0')}</p>
@@ -254,6 +280,19 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
         </>}
     </section>
   </div>
+}
+
+function disabledConnectionRepairs(accounts: ShowcaseAccount[]) {
+  const repairs = new Map<string, { connectionId: string; brokerage: string; accounts: string[] }>()
+  for (const account of accounts) {
+    const disabled = [account.balances, account.positions, account.activities]
+      .some((dataset) => dataset.context.diagnostic?.reason === 'connection_disabled')
+    if (!disabled) continue
+    const repair = repairs.get(account.connectionId)
+    if (repair) repair.accounts.push(account.label)
+    else repairs.set(account.connectionId, { connectionId: account.connectionId, brokerage: account.brokerage, accounts: [account.label] })
+  }
+  return [...repairs.values()]
 }
 
 function BalanceSummary({ dataset, locale }: { dataset: Dataset; locale: Locale }) {

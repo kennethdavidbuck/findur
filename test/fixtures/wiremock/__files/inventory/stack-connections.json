@@ -232,9 +232,9 @@
   },
   {
     "id": "a0000000-0000-4000-8000-000000000020",
-    "disabled": true,
+    "disabled": false,
     "brokerage": {
-      "display_name": "Synthetic Repair Required"
+      "display_name": "Synthetic Secondary Brokerage"
     },
     "data_freshness_mode": {
       "institution": "delayed",

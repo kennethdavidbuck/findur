@@ -26,6 +26,8 @@ const (
 	SnapTradeProvider        = "snaptrade"
 	SnapTradeCallbackPath    = "/api/auth/snaptrade/callback"
 	AuthorizationResultRoute = "/onboarding/accounts"
+	AuthorizationDeniedRoute = "/connect?authorization=denied"
+	AuthorizationRetryRoute  = "/connect?authorization=restart_required"
 	DefaultReturnRoute       = "/connect"
 	PortfolioReturnRoute     = "/portfolio"
 	ScopeOpenID              = "openid"

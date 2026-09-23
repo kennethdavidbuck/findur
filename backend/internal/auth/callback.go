@@ -45,6 +45,7 @@ type CallbackRepository interface {
 	FinalizeCallback(context.Context, Finalization) error
 	FailCallback(context.Context, []byte, time.Time) error
 	SessionActive(context.Context, []byte, time.Time) (bool, error)
+	SessionReauthorizationRequired(context.Context, []byte, time.Time) (bool, error)
 }
 
 // TokenSet is the sensitive token material returned by a successful code exchange.
@@ -90,8 +91,9 @@ type CallbackResult struct {
 
 // AuthorizationStatus is the categorical browser-visible authorization state.
 type AuthorizationStatus struct {
-	AuthorizationAvailable bool
-	Authenticated          bool
+	AuthorizationAvailable  bool
+	Authenticated           bool
+	ReauthorizationRequired bool
 }
 
 // CallbackConfig contains validated callback policy and cryptographic keys.
@@ -173,7 +175,11 @@ func (s *CallbackService) Complete(ctx context.Context, in CallbackInput) (Callb
 		return s.replay(ctx, claim, in.ExistingSession, now)
 	}
 	if in.ProviderError != "" || in.Code == "" {
-		return s.fail(ctx, claim.StateHash, now, "")
+		result, failErr := s.fail(ctx, claim.StateHash, now, "")
+		if in.ProviderError == "access_denied" {
+			result.Route = AuthorizationDeniedRoute
+		}
+		return result, failErr
 	}
 	tokens, identity, err := s.exchangeAndVerify(ctx, claim, in.Code)
 	defer clearStrings(&tokens)
@@ -266,6 +272,13 @@ func (s *CallbackService) Status(ctx context.Context, session string) (Authoriza
 		return result, err
 	}
 	result.Authenticated = active
+	if !active {
+		return result, nil
+	}
+	result.ReauthorizationRequired, err = s.repo.SessionReauthorizationRequired(ctx, s.sessionHash(session), s.config.Clock().UTC())
+	if err != nil {
+		return result, err
+	}
 	return result, nil
 }
 
@@ -282,7 +295,7 @@ func (s *CallbackService) fail(ctx context.Context, stateHash []byte, now time.T
 	return restartResult(), ErrRestartRequired
 }
 
-func restartResult() CallbackResult { return CallbackResult{Route: AuthorizationResultRoute} }
+func restartResult() CallbackResult { return CallbackResult{Route: AuthorizationRetryRoute} }
 
 func (s *CallbackService) attemptHash(value string) []byte {
 	return keyedHash(s.config.AttemptHashKey, value)

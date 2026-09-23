@@ -65,6 +65,9 @@ func TestShowcaseRepositoryReadsOnlyOwnerCommittedHeadsAndFailsClosed(t *testing
 		t.Fatalf("owner-scoped accounts=%+v", showcase.Accounts)
 	}
 	account := showcase.Accounts[0]
+	if account.ConnectionID != "connection" {
+		t.Fatalf("connection ID=%q", account.ConnectionID)
+	}
 	if account.Balances.Context.Currency != "CAD, USD" || len(account.Balances.Balances) != 2 || account.Balances.Balances[0].Cash == nil || *account.Balances.Balances[0].Cash != cash || account.Balances.Balances[0].BuyingPower != nil || account.Balances.Balances[1].Cash != nil {
 		t.Fatalf("current balance head=%+v", account.Balances)
 	}

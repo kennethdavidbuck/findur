@@ -120,3 +120,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-add-authenticated-portfolio-faq.md`
   summary: Gate all authenticated route content until display-preference session validation settles.
   evidence: `AuthenticatedPreferences` currently renders children while its independent preference request is loading, so an auth-true/preferences-401 race can briefly mount any protected route; this app-shell behavior predates FAQ and needs an app-wide loading/recovery contract.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-handle-snaptrade-authorization-recovery.md`
+  summary: Explain brokerage connection-status refresh timing in the user FAQ.
+  evidence: The user chose the guarded 24-hour inventory synchronization schedule over a live SnapTrade inventory request on every login, so a newly disconnected brokerage connection may take up to roughly 24 hours to appear in Findur.

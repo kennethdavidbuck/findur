@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { Button, Dialog, DialogTrigger, Heading, Modal, ModalOverlay } from 'react-aria-components'
 import { checkPortfolioInventory, confirmPortfolioInclusion, getPortfolioInclusion, getPortfolioInventory, InventorySessionDefenseError, InventorySessionExpiredError, retryPortfolioInventory, type PortfolioInclusion, type PortfolioInventory } from '../inventory'
 import { useI18n } from '../i18n'
+import { snapTradeDashboardURL } from '../snaptrade'
 
 const maxIncludedAccounts = 5
 
@@ -77,6 +78,7 @@ export function PortfolioPage({ editing = false, initialInclusion, headingRef, o
   const someSelected = selectable.some((account) => draft.has(account.id)) && !allSelected
   const selectionLimitReached = draft.size >= maxIncludedAccounts
   const currentChangeDraft = inclusion ? sameIDs([...draft], [...recoveryDraft(inclusion)]) : false
+  const disabledConnections = inventory?.connections.filter((connection) => connection.status === 'disabled') ?? []
 
   useEffect(() => {
     if (selectAllRef.current) selectAllRef.current.indeterminate = someSelected
@@ -175,8 +177,10 @@ export function PortfolioPage({ editing = false, initialInclusion, headingRef, o
   }
 
   const state = failed ? 'unavailable' : inventory?.state ?? 'pending'
-  const recovery = state === 'empty' || state === 'disabled' || state === 'unauthorized' ? 'reconnect' : state === 'rate_limited' || state === 'unavailable' || state === 'malformed' ? 'retry' : null
+  const recovery = state === 'unauthorized' ? 'reconnect' : state === 'empty' || state === 'disabled' && disabledConnections.length === 0 ? 'manage' : state === 'rate_limited' || state === 'unavailable' || state === 'malformed' ? 'retry' : null
   const connectionComplete = state === 'ready'
+  const accountSelectionAvailable = state !== 'unauthorized' && (connectionComplete || accounts.length > 0)
+  const blockingInventoryFailure = state === 'unauthorized' || state === 'unavailable' || state === 'malformed'
 
   return (
     <div className={`connection-setup-grid${editing ? ' connection-setup-grid--edit' : ''}`}>
@@ -195,12 +199,27 @@ export function PortfolioPage({ editing = false, initialInclusion, headingRef, o
         {connectionComplete ? <span>{copy.inclusion.oauthLayer}</span> : <strong>{copy.inclusion.oauthLayer}</strong>}<i aria-hidden="true" />
         {connectionComplete ? <strong>{copy.inclusion.accountLayer}</strong> : <span>{copy.inclusion.accountLayer}</span>}<i aria-hidden="true" /><span>{copy.inclusion.disclosureLayer}</span>
       </div>
-      {state !== 'ready' && <div className="inventory-status" role="status">
-          <h2>{copy.connectionHeading}</h2>
-          <p>{copy.states[state]}</p>
-          {state === 'rate_limited' && inventory?.retryAt && <p>{copy.retryAfter} <time dateTime={inventory.retryAt}>{new Date(inventory.retryAt).toLocaleString(locale === 'fr' ? 'fr-CA' : 'en-CA')}</time></p>}
-        </div>}
-      {state !== 'ready' && inventory && inventory.connections.length > 0 && (
+      {disabledConnections.map((connection) => <section className="connection-repair" role="alert" key={connection.id}>
+        <h2>{copy.connectionRepairHeading(connection.brokerageLabel)}</h2>
+        {connection.accounts.length > 0 && <>
+          <p>{copy.connectionRepairAccounts}</p>
+          <ul className="connection-repair__accounts">
+            {connection.accounts.map((account) => <li key={account.id}>{account.maskedLabel}</li>)}
+          </ul>
+        </>}
+        <p>{copy.connectionRepairBody(connection.brokerageLabel)} <a href={snapTradeDashboardURL} target="_blank" rel="noreferrer">{copy.connectionRepairAction(connection.brokerageLabel)}</a>.</p>
+      </section>)}
+      {state !== 'ready' && !(state === 'disabled' && disabledConnections.length > 0) && <div className={`inventory-status${blockingInventoryFailure ? ' inventory-status--error' : ''}`} role={blockingInventoryFailure ? 'alert' : 'status'}>
+        <h2>{state === 'unauthorized' ? copy.authorizationRepairHeading : blockingInventoryFailure ? copy.refreshErrorHeading : copy.connectionHeading}</h2>
+        <p>{copy.states[state]}</p>
+        {state === 'rate_limited' && inventory?.retryAt && <p>{copy.retryAfter} <time dateTime={inventory.retryAt}>{new Date(inventory.retryAt).toLocaleString(locale === 'fr' ? 'fr-CA' : 'en-CA')}</time></p>}
+        {recovery === 'reconnect' && <form action="/api/auth/snaptrade/authorize" method="post">
+          <input type="hidden" name="returnTo" value="/portfolio" />
+          <button className="text-link" type="submit">{copy.reconnect}</button>
+        </form>}
+        {recovery === 'retry' && <button className="text-link" type="button" disabled={retrying} onClick={() => { void retry() }}>{retrying ? copy.retrying : copy.retry}</button>}
+      </div>}
+      {state !== 'ready' && state !== 'unauthorized' && inventory && inventory.connections.length > 0 && (
         <div className="inventory-connections">
           {inventory.connections.map((connection) => (
             <section className="inventory-connection" key={connection.id}>
@@ -210,9 +229,9 @@ export function PortfolioPage({ editing = false, initialInclusion, headingRef, o
           ))}
         </div>
       )}
-      {state === 'ready' && (
+      {accountSelectionAvailable && (
         <section className={`account-inclusion${saving ? ' account-inclusion--saving' : ''}`} aria-busy={saving}>
-          <p className="connection-success"><strong>✓ {copy.inclusion.connected}</strong> {copy.inclusion.connectedNext}</p>
+          {connectionComplete && <p className="connection-success"><strong>✓ {copy.inclusion.connected}</strong> {copy.inclusion.connectedNext}</p>}
           {!inclusion && !inclusionFailed && <p role="status">{copy.inclusion.loading}</p>}
           {inclusionFailed && <div className="inclusion-recovery" role="alert"><p>{copy.inclusion.loadFailed}</p><button className="action action--secondary" type="button" onClick={() => setInclusionReload((value) => value + 1)}>{copy.inclusion.reload}</button></div>}
           {inclusion && accounts.length === 0 && <div className="inclusion-zero-state">
@@ -286,8 +305,7 @@ export function PortfolioPage({ editing = false, initialInclusion, headingRef, o
         </section>
       )}
       {state === 'pending' && <button className="action action--secondary" type="button" disabled={retrying} onClick={() => { void checkStatus() }}>{retrying ? copy.checking : copy.checkStatus}</button>}
-      {recovery === 'reconnect' && <button className="action action--primary" type="button" onClick={onReconnect}>{copy.reconnect}</button>}
-      {recovery === 'retry' && <button className="action action--primary" type="button" disabled={retrying} onClick={() => { void retry() }}>{retrying ? copy.retrying : copy.retry}</button>}
+      {recovery === 'manage' && <a className="action action--primary" href={snapTradeDashboardURL} target="_blank" rel="noreferrer">{copy.manageInSnapTrade}</a>}
       </section>
     </div>
   )

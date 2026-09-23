@@ -23,6 +23,49 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
       await new Promise((resolve) => setTimeout(resolve, 100))
     }
     assert.equal(actionReady, true, 'authorization action opens only after the server capability check')
+
+    const declineStatus = await webdriver(`/session/${sessionId}/execute/async`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const done=arguments[arguments.length-1];fetch('/api/__fixture/oidc/deny-next',{method:'POST'}).then(response=>done(response.status),error=>done(String(error)))`, args: [] }),
+    })
+    assert.equal(declineStatus, 204, 'integration provider is armed for one declined authorization')
+    await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `document.querySelector('form[action="/api/auth/snaptrade/authorize"] button').click()`, args: [] }),
+    })
+    let denialEvidence
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      denialEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: `const alert=document.querySelector('[role="alert"]');return {path:location.pathname,search:location.search,text:alert?.innerText||'',focused:document.activeElement===alert,retry:[...document.querySelectorAll('button')].some(button=>button.textContent.trim()==='Try SnapTrade again'&&!button.disabled)}`, args: [] }),
+      })
+      if (denialEvidence.retry) break
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.equal(denialEvidence.path, '/connect')
+    assert.equal(denialEvidence.search, '', 'declined authorization detail is removed from browser history')
+    assert.match(denialEvidence.text, /You didn’t give Findur access\. Nothing was changed/)
+    assert.equal(denialEvidence.focused, true, 'declined authorization guidance receives focus')
+    assert.equal(denialEvidence.retry, true, 'declined authorization offers a useful retry')
+
+    await webdriver(`/session/${sessionId}/execute/sync`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ script: `const form=document.createElement('form');form.method='post';form.action='/api/auth/snaptrade/authorize';form.enctype='text/plain';const input=document.createElement('input');input.name='returnTo';input.value='/portfolio';form.append(input);document.body.append(form);form.submit()`, args: [] }),
+    })
+    let invalidStartEvidence
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      invalidStartEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: `const alert=document.querySelector('[role="alert"]');return {path:location.pathname,search:location.search,text:alert?.innerText||'',raw:document.body.innerText.includes('invalid_request')}`, args: [] }),
+      })
+      if (invalidStartEvidence.text) break
+      await new Promise((resolve) => setTimeout(resolve, 100))
+    }
+    assert.equal(invalidStartEvidence.path, '/connect')
+    assert.equal(invalidStartEvidence.search, '')
+    assert.match(invalidStartEvidence.text, /We couldn’t begin that sign-in safely\. Nothing was changed/)
+    assert.equal(invalidStartEvidence.raw, false, 'browser initiation failures never render a raw error code')
+
     await webdriver(`/session/${sessionId}/execute/sync`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ script: `document.querySelector('form[action="/api/auth/snaptrade/authorize"] button').click()`, args: [] }),
@@ -33,8 +76,22 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ script: `return { path: location.pathname, search: location.search, heading: document.querySelector('h1')?.innerText }`, args: [] }),
       })
-      if (oauthEvidence.path === '/onboarding/accounts' && oauthEvidence.heading === 'Choose what Findur may use.') break
+      if (oauthEvidence.path === '/onboarding/accounts' && ['Choose what Findur may use.', 'Choisissez ce que Findur peut utiliser.'].includes(oauthEvidence.heading)) break
       await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+    if (oauthEvidence.heading === 'Choisissez ce que Findur peut utiliser.') {
+      await webdriver(`/session/${sessionId}/execute/sync`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ script: `document.querySelector('.authenticated-header .choice-group input[value="en"]')?.click()`, args: [] }),
+      })
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        oauthEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ script: `return { path: location.pathname, search: location.search, heading: document.querySelector('h1')?.innerText }`, args: [] }),
+        })
+        if (oauthEvidence.heading === 'Choose what Findur may use.') break
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
     }
     assert.deepEqual(oauthEvidence, { path: '/onboarding/accounts', search: '', heading: 'Choose what Findur may use.' })
     await webdriver(`/session/${sessionId}/window/rect`, {
@@ -48,13 +105,16 @@ export async function verifyBrowserOAuth({ browserUrl, oauthOrigin }) {
     assert.ok(setupLayout.headerBottom <= setupLayout.eyebrowTop, `1032px setup controls clear the OAuth return text; observed: ${JSON.stringify(setupLayout)}`)
     assert.ok(setupLayout.progressWidth <= 1 && setupLayout.progressHeight <= 1, `the accessible setup label is not visually rendered; observed: ${JSON.stringify(setupLayout)}`)
     let inventoryEvidence
-    for (let attempt = 0; attempt < 40; attempt += 1) {
+    let nextInventoryCheckAt = 0
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const mayCheckAgain = Date.now() >= nextInventoryCheckAt
       inventoryEvidence = await webdriver(`/session/${sessionId}/execute/sync`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ script: `const text=document.body.innerText;const check=[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Check again'&&!button.disabled);if(check)check.click();return {text,focused:document.activeElement===document.querySelector('h1'),chooserCount:document.querySelectorAll('.account-selection').length,inventoryCount:document.querySelectorAll('.inventory-connections').length,accountLabelCount:text.split('Healthy Realtime — Full Data (•••• X001)').length-1}`, args: [] }),
+        body: JSON.stringify({ script: `const mayCheckAgain=arguments[0];const text=document.body.innerText;const check=[...document.querySelectorAll('button')].find(button=>button.textContent.trim()==='Check again'&&!button.disabled);const clicked=Boolean(mayCheckAgain&&check);if(clicked)check.click();return {text,clicked,focused:document.activeElement===document.querySelector('h1'),chooserCount:document.querySelectorAll('.account-selection').length,inventoryCount:document.querySelectorAll('.inventory-connections').length,accountLabelCount:text.split('Healthy Realtime — Full Data (•••• X001)').length-1}`, args: [mayCheckAgain] }),
       })
+      if (inventoryEvidence.clicked) nextInventoryCheckAt = Date.now() + 3000
       if (inventoryEvidence.text.includes('Healthy Realtime — Full Data (•••• X001)') && inventoryEvidence.chooserCount === 1) break
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 250))
     }
     assert.equal(inventoryEvidence.focused, true, 'the account-choice heading retains meaningful focus')
     assert.equal(inventoryEvidence.chooserCount, 1, `one account chooser is rendered; observed: ${JSON.stringify(inventoryEvidence)}`)

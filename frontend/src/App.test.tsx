@@ -13,6 +13,7 @@ const emptyShowcase = () => ({ accounts: [] })
 const syncPendingDiagnostic = { reason: 'sync_pending', recommendedAction: 'wait' }
 const preparingShowcase = (label = 'Retirement (•••• 8443)') => ({
 	accounts: [{
+		connectionId: 'connection-1',
 		label,
 		brokerage: 'Synthetic Broker',
 		syncMode: 'realtime',
@@ -36,7 +37,7 @@ function inclusionInventory(accounts: ReturnType<typeof inclusionAccount>[]) {
 
 function installInclusionFetch(inventory: ReturnType<typeof inclusionInventory>, inclusion: unknown) {
 	const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-		if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+		if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 		if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 		if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody(inclusion))
 		if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
@@ -87,11 +88,11 @@ describe('portfolio showcase', () => {
   function installShowcase(body: unknown, status = 200) {
     window.history.replaceState(null, '', '/portfolio')
     vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
-      ? jsonResponseBody({ authorizationAvailable: true, authenticated: true })
+      ? jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false })
       : path === '/api/portfolio/showcase' ? new Response(JSON.stringify(body), { status }) : new Response(null, { status: 404 }))))
   }
 	it('renders saved facts and separately routes account editing', async () => {
-    installShowcase({ accounts: [{ label: 'Retirement (•••• 8443)', brokerage: 'Synthetic Broker', syncMode: 'realtime', balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '1234.50' }], positions: [], activities: [] }, positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'stale_usable' }, balances: [], positions: [], activities: [] }, activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] } }] })
+    installShowcase({ accounts: [{ connectionId: 'connection-1', label: 'Retirement (•••• 8443)', brokerage: 'Synthetic Broker', syncMode: 'realtime', balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '1234.50' }], positions: [], activities: [] }, positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'stale_usable' }, balances: [], positions: [], activities: [] }, activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] } }] })
     render(<App />)
     expect((await screen.findAllByText('Retirement (•••• 8443)'))[0].textContent).toBe('Retirement (•••• 8443)')
     expect(screen.getAllByText('CAD $1,234.50').length).toBeGreaterThan(0)
@@ -108,6 +109,30 @@ describe('portfolio showcase', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit included accounts →' }))
 		await waitFor(() => expect(window.location.pathname).toBe('/portfolio/accounts'))
 	})
+	it('rechecks revoked authorization before rendering a protected route transition', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		let statusCalls = 0
+		const fetchMock = vi.fn().mockImplementation((path: string) => {
+			if (path === '/api/auth/status') {
+				statusCalls += 1
+				return Promise.resolve(jsonResponseBody(statusCalls === 1
+					? { authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }
+					: { authorizationAvailable: true, authenticated: false, reauthorizationRequired: true }))
+			}
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
+			return Promise.resolve(new Response(null, { status: 404 }))
+		})
+		vi.stubGlobal('fetch', fetchMock)
+
+		render(<App />)
+		fireEvent.click(await screen.findByRole('button', { name: 'Edit included accounts →' }))
+
+		expect(await screen.findByText(/SnapTrade no longer gives Findur access/)).toBeVisible()
+		expect(window.location.pathname).toBe('/connect')
+		expect(statusCalls).toBe(2)
+		expect(fetchMock).not.toHaveBeenCalledWith('/api/portfolio/inventory', expect.anything())
+		expect(screen.queryByText('Choose what Findur may use.')).not.toBeInTheDocument()
+	})
 	it('keeps each account dataset and its evidence context together', async () => {
 		const dataset = (kind: 'balances' | 'positions' | 'activities', observedAt: string) => ({
 			context: {
@@ -119,8 +144,8 @@ describe('portfolio showcase', () => {
 			activities: kind === 'activities' ? [{ type: 'DIVIDEND', tradeDate: observedAt, currency: 'CAD', amount: '4.00' }] : [],
 		})
 		installShowcase({ accounts: [
-			{ label: 'Retirement (•••• 8443)', brokerage: 'Synthetic Broker', syncMode: 'realtime', balances: dataset('balances', '2026-09-20T12:00:00Z'), positions: dataset('positions', '2026-09-20T12:01:00Z'), activities: dataset('activities', '2026-09-20T12:02:00Z') },
-			{ label: 'Savings (•••• 1221)', brokerage: 'Synthetic Broker', syncMode: 'delayed', balances: dataset('balances', '2026-09-19T12:00:00Z'), positions: dataset('positions', '2026-09-19T12:01:00Z'), activities: dataset('activities', '2026-09-19T12:02:00Z') },
+			{ connectionId: 'connection-1', label: 'Retirement (•••• 8443)', brokerage: 'Synthetic Broker', syncMode: 'realtime', balances: dataset('balances', '2026-09-20T12:00:00Z'), positions: dataset('positions', '2026-09-20T12:01:00Z'), activities: dataset('activities', '2026-09-20T12:02:00Z') },
+			{ connectionId: 'connection-1', label: 'Savings (•••• 1221)', brokerage: 'Synthetic Broker', syncMode: 'delayed', balances: dataset('balances', '2026-09-19T12:00:00Z'), positions: dataset('positions', '2026-09-19T12:01:00Z'), activities: dataset('activities', '2026-09-19T12:02:00Z') },
 		] })
 
 		render(<App />)
@@ -132,7 +157,7 @@ describe('portfolio showcase', () => {
 	})
 	it('renders an empty positions ledger with cash-account balances and activities', async () => {
 		installShowcase({ accounts: [{
-			label: 'Cash Account (•••• 3001)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
+			connectionId: 'connection-1', label: 'Cash Account (•••• 3001)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
 			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '250.00' }], positions: [], activities: [] },
 			positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [], positions: [], activities: [] },
 			activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'current', observedAt: '2026-09-20T12:00:00Z' }, balances: [], positions: [], activities: [] },
@@ -152,7 +177,7 @@ describe('portfolio showcase', () => {
 		let showcaseCalls = 0
 		let resolveReload: (response: Response) => void = () => undefined
 		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/showcase') {
 				showcaseCalls += 1
 				return showcaseCalls === 1
@@ -189,9 +214,34 @@ describe('portfolio showcase', () => {
 		for (const dataset of [data.accounts[0].balances, data.accounts[0].positions, data.accounts[0].activities]) dataset.context.diagnostic = authorization
 		installShowcase(data)
 		render(<App />)
-		await screen.findByRole('button', { name: 'Reconnect' })
-		expect(screen.getAllByRole('button', { name: 'Reconnect' })).toHaveLength(1)
+		const authorizationAlert = await screen.findByRole('alert')
+		const reconnect = within(authorizationAlert).getByRole('button', { name: 'Reconnect' })
+		expect(reconnect.closest('form')).toHaveAttribute('action', '/api/auth/snaptrade/authorize')
+		expect(screen.queryByRole('heading', { name: 'Retirement (•••• 8443)' })).not.toBeInTheDocument()
 		expect(screen.queryByRole('button', { name: /Check again/ })).not.toBeInTheDocument()
+
+		cleanup()
+		const disabled = { reason: 'connection_disabled', recommendedAction: 'reconnect' }
+		const disabledData = preparingShowcase()
+		const secondDisabledAccount = preparingShowcase('Savings (•••• 1221)').accounts[0]
+		const otherDisabledAccount = preparingShowcase('Margin (•••• 3001)').accounts[0]
+		otherDisabledAccount.connectionId = 'connection-2'
+		otherDisabledAccount.brokerage = 'Other Broker'
+		disabledData.accounts.push(secondDisabledAccount, otherDisabledAccount)
+		for (const account of disabledData.accounts) {
+			for (const dataset of [account.balances, account.positions, account.activities]) dataset.context.diagnostic = disabled
+		}
+		installShowcase(disabledData)
+		render(<App />)
+		const repairAlerts = await screen.findAllByRole('alert')
+		expect(repairAlerts).toHaveLength(2)
+		expect(repairAlerts[0]).toHaveTextContent('The Synthetic Broker connection is disconnected')
+		expect(within(repairAlerts[0]).getAllByRole('listitem')).toHaveLength(2)
+		expect(within(repairAlerts[0]).getByRole('list')).toHaveTextContent('Retirement (•••• 8443)Savings (•••• 1221)')
+		expect(within(repairAlerts[1]).getAllByRole('listitem')).toHaveLength(1)
+		const manage = within(repairAlerts[0]).getByRole('link', { name: 'Open SnapTrade to reconnect' })
+		expect(manage).toHaveAttribute('href', 'https://dashboard.snaptrade.com')
+		expect(screen.queryByRole('button', { name: 'Reconnect' })).not.toBeInTheDocument()
 
 		cleanup()
 		const transient = { reason: 'provider_unavailable', recommendedAction: 'retry' }
@@ -209,7 +259,7 @@ describe('portfolio showcase', () => {
 		let showcaseCalls = 0
 		const data = preparingShowcase()
 		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/showcase') {
 				showcaseCalls += 1
 				return Promise.resolve(jsonResponseBody(data))
@@ -233,7 +283,7 @@ describe('portfolio showcase', () => {
 		window.history.replaceState(null, '', '/portfolio')
 		let showcaseCalls = 0
 		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/showcase') {
 				showcaseCalls += 1
 				return Promise.resolve(showcaseCalls === 2 ? new Response(null, { status: 503 }) : jsonResponseBody(preparingShowcase()))
@@ -262,7 +312,7 @@ describe('portfolio showcase', () => {
 		const lastSuccessfulAt = '2026-09-22T09:00:00Z'
 		const retryAt = '2026-09-23T12:15:00Z'
 		installShowcase({ accounts: [{
-			label: 'Retained account (•••• 5001)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
+			connectionId: 'connection-1', label: 'Retained account (•••• 5001)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
 			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', publishedAt: '2026-09-22T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '100.00' }], positions: [], activities: [] },
 			positions: {
 				context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'stale_usable', publishedAt, diagnostic: { reason: 'provider_unavailable', recommendedAction: 'retry', lastSuccessfulAt, retryAt } },
@@ -291,7 +341,7 @@ describe('portfolio showcase', () => {
 	})
 	it('hides expired facts and offers a safe reconnect action', async () => {
 		installShowcase({ accounts: [{
-			label: 'Expired account (•••• 9000)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
+			connectionId: 'connection-1', label: 'Expired account (•••• 9000)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
 			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'expired', observedAt: '2026-09-01T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '999999.00' }], positions: [], activities: [] },
 			positions: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'unavailable', diagnostic: { reason: 'authorization_required', recommendedAction: 'reconnect' } }, balances: [], positions: [], activities: [] },
 			activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'unavailable', diagnostic: { reason: 'authorization_required', recommendedAction: 'reconnect' } }, balances: [], positions: [], activities: [] },
@@ -299,16 +349,11 @@ describe('portfolio showcase', () => {
 
 		render(<App />)
 
-		expect(await screen.findAllByText('This data has expired, so its saved values are hidden until fresh data is available.')).not.toHaveLength(0)
-		expect(document.querySelector('.freshness')).not.toBeInTheDocument()
-		expect(document.querySelector('.balance-state--error')).not.toBeInTheDocument()
-		expect(document.querySelector('.showcase-note--unavailable')).not.toBeInTheDocument()
+		const alert = await screen.findByRole('alert')
+		expect(alert).toHaveTextContent('Findur no longer has permission to update this portfolio.')
 		expect(screen.queryByText('CAD $999,999.00')).not.toBeInTheDocument()
-		const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
-		expect(positions).not.toBeNull()
-		expect(within(positions as HTMLElement).getByText('Authorization must be renewed for this data.')).toBeVisible()
-		fireEvent.click(screen.getAllByRole('button', { name: 'Reconnect' })[0])
-		await waitFor(() => expect(window.location.pathname).toBe('/connect'))
+		expect(screen.queryByRole('heading', { name: 'Positions' })).not.toBeInTheDocument()
+		expect(within(alert).getByRole('button', { name: 'Reconnect' }).closest('form')).toHaveAttribute('action', '/api/auth/snaptrade/authorize')
 	})
 	it('names empty, unavailable, and French states', async () => {
     installShowcase({ accounts: [] }); render(<App />)
@@ -316,7 +361,7 @@ describe('portfolio showcase', () => {
     cleanup(); installShowcase({ accounts: [] }, 503); render(<App />)
     expect(await screen.findByRole('alert')).toHaveTextContent('saved portfolio evidence')
     cleanup(); window.localStorage.setItem('findur-locale', 'fr'); installShowcase({ accounts: [{
-      label: 'Compte au comptant (•••• 3001)', brokerage: 'Courtier synthétique', syncMode: 'realtime',
+      connectionId: 'connection-1', label: 'Compte au comptant (•••• 3001)', brokerage: 'Courtier synthétique', syncMode: 'realtime',
       balances: { context: { source: 'SnapTrade', coverage: 'compte inclus', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] },
       positions: { context: { source: 'SnapTrade', coverage: 'compte inclus', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] },
       activities: { context: { source: 'SnapTrade', coverage: 'compte inclus', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] },
@@ -493,7 +538,7 @@ describe('public site', () => {
   })
 
   it('enables staged consent only after the server reports authorization available', async () => {
-    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: false })))
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: false })))
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
 
@@ -515,6 +560,35 @@ describe('public site', () => {
 	expect(fetchMock).toHaveBeenCalledWith('/api/auth/status', expect.objectContaining({ cache: 'no-store', credentials: 'same-origin' }))
   })
 
+  it('explains declined access on the Connect page without exposing protocol details', async () => {
+    window.history.replaceState(null, '', '/connect?authorization=denied')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponseBody({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: false })))
+
+    render(<App />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('You didn’t give Findur access. Nothing was changed')
+    await waitFor(() => expect(alert).toHaveFocus())
+    expect(screen.getByRole('button', { name: 'Try SnapTrade again' })).toBeEnabled()
+    expect(window.location.pathname).toBe('/connect')
+    expect(window.location.search).toBe('')
+    expect(document.body).not.toHaveTextContent(/access_denied|OAuth|token/i)
+  })
+
+  it('shows the reconnect message on Connect after SnapTrade permission ends the Findur session', async () => {
+    window.history.replaceState(null, '', '/connect')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponseBody({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: true })))
+
+    render(<App />)
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Your saved account choices are still here')
+    expect(alert).toHaveClass('consent-recovery--error')
+    expect(screen.getByRole('button', { name: 'Reconnect with SnapTrade' })).toBeEnabled()
+    expect(document.querySelector('form[action="/api/auth/snaptrade/authorize"]')).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/connect')
+  })
+
   it('sends an active session from staged consent through inclusion resolution to the portfolio', async () => {
     window.history.replaceState(null, '', '/connect')
     const statusResolvers: Array<(response: Response) => void> = []
@@ -522,7 +596,7 @@ describe('public site', () => {
     const fetchMock = vi.fn().mockImplementation((path: string) => {
       if (path === '/api/auth/status') {
         statusCalls += 1
-        return statusCalls === 1 ? new Promise<Response>((resolve) => { statusResolvers.push(resolve) }) : Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+        return statusCalls === 1 ? new Promise<Response>((resolve) => { statusResolvers.push(resolve) }) : Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
       }
       if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 1, committed: ['account-1'] }))
       if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
@@ -535,7 +609,7 @@ describe('public site', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Checking login availability…')
     expect(screen.queryByRole('heading', { level: 1, name: 'Log in to Findur.' })).not.toBeInTheDocument()
     await waitFor(() => expect(statusResolvers.length).toBeGreaterThan(0))
-    statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true })))
+    statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false })))
     await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
     expect((await screen.findAllByText('Retirement (•••• 8443)'))[0]).toBeVisible()
     const requestPaths = fetchMock.mock.calls.map(([path]) => path)
@@ -549,7 +623,7 @@ describe('public site', () => {
     const fetchMock = vi.fn().mockImplementation((path: string) => {
       if (path === '/api/auth/status') {
         statusCalls += 1
-        return statusCalls === 1 ? new Promise<Response>((resolve) => { statusResolvers.push(resolve) }) : Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+        return statusCalls === 1 ? new Promise<Response>((resolve) => { statusResolvers.push(resolve) }) : Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
       }
       if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 1, committed: ['account-1'] }))
       if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
@@ -563,14 +637,14 @@ describe('public site', () => {
     expect(window.location.pathname).toBe('/')
     expect(screen.getByRole('heading', { level: 1, name: 'A dating app where portfolios start the conversation.' })).toBeVisible()
     await waitFor(() => expect(statusResolvers.length).toBeGreaterThan(0))
-    statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true })))
+    statusResolvers.forEach((resolve) => resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false })))
     await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
   })
 
   it('sends an active session without included accounts to account selection', async () => {
     const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
     const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-      if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+      if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
       if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 1, committed: [] }))
       if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
       return Promise.resolve(new Response(null, { status: 404 }))
@@ -589,7 +663,7 @@ describe('public site', () => {
     window.history.replaceState(null, '', '/connect')
     const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
     const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-      if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+      if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
       if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 1, committed: [] }))
       if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
       return Promise.resolve(new Response(null, { status: 404 }))
@@ -615,7 +689,7 @@ describe('public site', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: 'A dating app where portfolios start the conversation.' })).toBeVisible()
     await waitFor(() => expect(statusResolvers).toHaveLength(1))
-    statusResolvers[0](jsonResponseBody({ authorizationAvailable: true, authenticated: false }))
+    statusResolvers[0](jsonResponseBody({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: false }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Log in to Findur.' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Continue with SnapTrade' })).toBeEnabled()
@@ -623,8 +697,8 @@ describe('public site', () => {
   })
 
 	it('rejects a forged success URL and trusts only server session status', async () => {
-		const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200 }))
-			.mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })))
+		const fetchMock = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: false }), { status: 200 }))
+			.mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }), { status: 200 })))
 		vi.stubGlobal('fetch', fetchMock)
 		window.history.replaceState(null, '', '/connect/result?status=success')
 		const { unmount } = render(<App />)
@@ -643,8 +717,14 @@ describe('public site', () => {
 
 	it('gates private content before mounting and exposes only the MVP private destinations', async () => {
 		let resolveStatus!: (response: Response) => void
+		let statusCalls = 0
 		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => {
-			if (path === '/api/auth/status') return new Promise<Response>((resolve) => { resolveStatus = resolve })
+			if (path === '/api/auth/status') {
+				statusCalls += 1
+				return statusCalls === 1
+					? new Promise<Response>((resolve) => { resolveStatus = resolve })
+					: Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
+			}
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
 			if (path === '/api/profile') return Promise.resolve(jsonResponseBody({ locations: [] }))
 			return Promise.resolve(new Response(null, { status: 404 }))
@@ -653,7 +733,7 @@ describe('public site', () => {
 		render(<App />)
 		expect(screen.getByRole('status')).toHaveTextContent('Checking your secure session…')
 		expect(screen.queryByText('Choose accounts before anything else.')).not.toBeInTheDocument()
-		resolveStatus(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+		resolveStatus(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }), { status: 200 }))
 		await screen.findByRole('heading', { level: 1, name: 'Your portfolio' })
 		await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Your portfolio' })).toHaveFocus())
 		for (const name of ['Portfolio', 'Profile']) expect(screen.getAllByRole('link', { name })).toHaveLength(1)
@@ -679,7 +759,7 @@ describe('public site', () => {
 			}],
 		}
 		const fetchMock = vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
-			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })
+			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }), { status: 200 })
 			: path === '/api/portfolio/inclusion'
 				? new Response(JSON.stringify({ version: 0, committed: [] }), { status: 200 })
 				: new Response(JSON.stringify(inventory), { status: 200 })))
@@ -731,7 +811,7 @@ describe('public site', () => {
 	it('skips onboarding account selection when saved accounts already exist', async () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 1, committed: ['account-1'] }))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
 			throw new Error(`unexpected request ${path}`)
@@ -762,7 +842,7 @@ describe('public site', () => {
 		let resolveSave!: (response: Response) => void
 		const saveResponse = new Promise<Response>((resolve) => { resolveSave = resolve })
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			if (path === '/api/auth/status') return Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }), { status: 200 }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(new Response(JSON.stringify(inventory), { status: 200 }))
 		if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(new Response(JSON.stringify({ version: 0, committed: [] }), { status: 200 }))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
@@ -903,7 +983,7 @@ describe('public site', () => {
 			change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] },
 		}
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody(pending))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') return Promise.resolve(jsonResponseBody({ version: 2, committed: ['account-1'], change: { ...pending.change, status: 'committed' } }))
@@ -939,7 +1019,7 @@ describe('public site', () => {
 		const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
 		const change = { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'failed', additions: ['account-1'], removals: [], failureReason: 'provider_unavailable' }
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') return Promise.resolve(jsonResponseBody({ version: 1, committed: [], change }))
@@ -963,7 +1043,7 @@ describe('public site', () => {
 		let saved = false
 		const pending = { version: 1, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] } }
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(preparingShowcase()))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody(saved ? pending : { version: 0, committed: [] }))
@@ -995,7 +1075,7 @@ describe('public site', () => {
 		const inventory = inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')])
 		let getCalls = 0
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') {
 				getCalls += 1
@@ -1021,7 +1101,7 @@ describe('public site', () => {
 		let getCalls = 0
 		const pending = { version: 1, committed: ['account-1'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'pending', additions: ['account-1'], removals: [] } }
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') {
 				getCalls += 1
@@ -1048,7 +1128,7 @@ describe('public site', () => {
 		let getCalls = 0
 		let postCalls = 0
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') {
 				getCalls += 1
@@ -1095,7 +1175,7 @@ describe('public site', () => {
 			inclusionAccount('account-ready-two', 'Second ready account (•••• 5005)', true, 'ready'),
 		])
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'POST') return Promise.resolve(jsonResponseBody({ version: 1, committed: ['account-unavailable'], change: { id: '87b24961-b51e-4db8-9226-f198f6518a89', status: 'failed', additions: ['account-ready'], removals: [], failureReason: 'provider_unavailable' } }))
@@ -1197,7 +1277,7 @@ describe('public site', () => {
 			'Beta unavailable',
 		])
 		expect(screen.getByRole('checkbox', { name: /Alpha unavailable/ })).toBeDisabled()
-		expect(screen.getByText('This connection needs attention.')).toBeVisible()
+		expect(screen.getByText('SnapTrade cannot update this account until its brokerage connection is reconnected.')).toBeVisible()
 	})
 
 	it('uses French collation and account IDs to stabilize equivalent labels', async () => {
@@ -1242,7 +1322,7 @@ describe('public site', () => {
 			inclusionAccount('account-ready', 'Ready account (•••• 2222)', true, 'ready'),
 		])
 		const fetchMock = vi.fn().mockImplementation((path: string, init?: RequestInit) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(inventory))
 			if (path === '/api/portfolio/inclusion' && init?.method === 'GET') return Promise.resolve(jsonResponseBody({
 				version: 1,
@@ -1274,7 +1354,7 @@ describe('public site', () => {
 		let resolveInventory!: (response: Response) => void
 		const inventoryResponse = new Promise<Response>((resolve) => { resolveInventory = resolve })
 		const fetchMock = vi.fn().mockImplementation((path: string) => path === '/api/auth/status'
-			? Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			? Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }), { status: 200 }))
 			: path === '/api/portfolio/inclusion'
 				? Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 				: inventoryResponse)
@@ -1294,7 +1374,7 @@ describe('public site', () => {
 		const oldInventoryRequest = new Promise<Response>(() => undefined)
 		let inventoryCalls = 0
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
-			if (path === '/api/auth/status') return Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 }))
+			if (path === '/api/auth/status') return Promise.resolve(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }), { status: 200 }))
 			if (path === '/api/auth/logout') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/inventory') {
 				inventoryCalls += 1
@@ -1320,7 +1400,7 @@ describe('public site', () => {
 		const ready = { state: 'empty', generation: 1, updatedAt: '2026-09-20T12:00:01Z', connections: [] }
 		let inventoryCalls = 0
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 			if (path === '/api/portfolio/inventory') {
@@ -1338,45 +1418,106 @@ describe('public site', () => {
 		await waitFor(() => expect(inventoryCalls).toBe(2))
 	})
 
-	it('offers reconnection when no connected accounts are found', async () => {
+	it('offers SnapTrade account management when no connected accounts are found', async () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
-			? jsonResponseBody({ authorizationAvailable: true, authenticated: true })
+			? jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false })
 			: emptyInventory())))
 		render(<App />)
 
 		expect(await screen.findByText('No investment accounts are ready to include.')).toBeVisible()
-		expect(screen.getByRole('button', { name: 'Reconnect accounts' })).toBeVisible()
+		expect(screen.getByRole('link', { name: 'Manage in SnapTrade' })).toHaveAttribute('href', 'https://dashboard.snaptrade.com')
 		expect(screen.getAllByText('Account setup')[0]).toBeVisible()
 		expect(screen.queryByText('Connection complete')).not.toBeInTheDocument()
 		expect(screen.getByText('1 · Connect', { selector: 'li' })).toHaveAttribute('aria-current', 'step')
 	})
 
 	it.each([
-		['disabled', 'Your connection needs attention before we can load your accounts.', 'Reconnect accounts'],
-		['unauthorized', 'Your connection needs to be renewed before we can load your accounts.', 'Reconnect accounts'],
-		['rate_limited', 'Your accounts are not ready yet. Check again in a moment.', 'Try again'],
-		['malformed', 'We couldn’t load your accounts.', 'Try again'],
-	] as const)('renders the %s categorical recovery branch', async (state, message, action) => {
+		['disabled', 'The Synthetic Broker connection is disconnected.', 'Open SnapTrade to reconnect Synthetic Broker', 'link'],
+		['unauthorized', 'SnapTrade is no longer sharing updates with Findur. Your saved choices are still here. Reconnect to view and manage your accounts again.', 'Reconnect accounts', 'button'],
+		['rate_limited', 'Your accounts are not ready yet. Check again in a moment.', 'Try again', 'button'],
+		['malformed', 'We couldn’t load your accounts.', 'Try again', 'button'],
+	] as const)('renders the %s categorical recovery branch', async (state, message, action, role) => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		const inventory = {
 			state, generation: 1, updatedAt: '2026-09-20T12:00:00Z', retryAt: state === 'rate_limited' ? '2026-09-20T12:01:00Z' : undefined,
 			connections: state === 'disabled' ? [{ id: 'disabled', brokerageLabel: 'Synthetic Broker', status: 'disabled', syncMode: 'unknown', available: false, eligible: false, accounts: [] }] : [],
 		}
 		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
-			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })
+			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }), { status: 200 })
 			: new Response(JSON.stringify(inventory), { status: 200 }))))
 		render(<App />)
 		expect(await screen.findByText(message)).toBeVisible()
-		expect(screen.getByRole('button', { name: action })).toBeVisible()
+		expect(screen.getByRole(role, { name: action })).toBeVisible()
 		expect(screen.getAllByText('Account setup')[0]).toBeVisible()
 		expect(screen.queryByText('Connection complete')).not.toBeInTheDocument()
 		expect(screen.getByText('1 · Connect', { selector: 'li' })).toHaveAttribute('aria-current', 'step')
 		expect(screen.getByText('2 · Choose accounts', { selector: 'li' })).not.toHaveAttribute('aria-current')
 		if (state === 'disabled') {
+			expect(screen.getByRole('alert')).toHaveClass('connection-repair')
 			expect(screen.getByText('Synthetic Broker')).toBeVisible()
-			expect(screen.getByText('Needs repair')).toBeVisible()
+			expect(screen.getByText('Disconnected')).toBeVisible()
+			expect(screen.getByText(/cannot send Findur fresh updates from Synthetic Broker/)).toBeVisible()
 		}
+	})
+
+	it('groups disabled accounts into one semantic recovery card per connection', async () => {
+		window.history.replaceState(null, '', '/onboarding/accounts')
+		const account = (id: string, label: string) => ({
+			id, category: 'investment', type: 'Margin', maskedLabel: label, available: false, eligible: false,
+			selectable: false, usabilityReason: 'connection_disabled', syncState: 'unavailable',
+		})
+		const inventory = {
+			state: 'disabled', generation: 1, updatedAt: '2026-09-20T12:00:00Z',
+			connections: [
+				{ id: 'connection-1', brokerageLabel: 'First Broker', status: 'disabled', syncMode: 'unknown', available: false, eligible: false, accounts: [account('a', 'Retirement (•••• 1111)'), account('b', 'Savings (•••• 2222)')] },
+				{ id: 'connection-2', brokerageLabel: 'Second Broker', status: 'disabled', syncMode: 'unknown', available: false, eligible: false, accounts: [account('c', 'Margin (•••• 3333)')] },
+			],
+		}
+		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
+			? jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false })
+			: jsonResponseBody(inventory))))
+
+		render(<App />)
+
+		const alerts = await screen.findAllByRole('alert')
+		expect(alerts).toHaveLength(2)
+		expect(within(alerts[0]).getByRole('list')).toHaveTextContent('Retirement (•••• 1111)Savings (•••• 2222)')
+		expect(within(alerts[0]).getAllByRole('listitem')).toHaveLength(2)
+		expect(within(alerts[1]).getByRole('list')).toHaveTextContent('Margin (•••• 3333)')
+	})
+
+	it('returns a revoked authorization to Connect without rendering protected account data', async () => {
+		window.history.replaceState(null, '', '/onboarding/accounts')
+		const fetchMock = vi.fn().mockResolvedValue(jsonResponseBody({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: true }))
+		vi.stubGlobal('fetch', fetchMock)
+
+		render(<App />)
+
+		expect(await screen.findByText(/SnapTrade no longer gives Findur access/)).toBeVisible()
+		expect(screen.getByRole('button', { name: 'Reconnect with SnapTrade' })).toBeEnabled()
+		expect(window.location.pathname).toBe('/connect')
+		expect(screen.queryByText('Choose what Findur may use.')).not.toBeInTheDocument()
+		expect(fetchMock).not.toHaveBeenCalledWith('/api/portfolio/inventory', expect.anything())
+	})
+
+	it('hides cached accounts while overall SnapTrade authorization recovery is required', async () => {
+		window.history.replaceState(null, '', '/onboarding/accounts')
+		const inventory = {
+			...inclusionInventory([inclusionAccount('account-1', 'Retirement (•••• 8443)', true, 'ready')]),
+			state: 'unauthorized',
+		}
+		installInclusionFetch(inventory, { version: 3, committed: [] })
+
+		render(<App />)
+
+		const recovery = await screen.findByRole('alert')
+		expect(recovery).toHaveClass('inventory-status--error')
+		expect(recovery).toHaveTextContent('SnapTrade is no longer sharing updates with Findur')
+		expect(within(recovery).getByRole('button', { name: 'Reconnect accounts' })).toBeVisible()
+		expect(screen.queryByText('Retirement (•••• 8443)')).not.toBeInTheDocument()
+		expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+		expect(screen.queryByRole('button', { name: 'Review my choices' })).not.toBeInTheDocument()
 	})
 
 	it('uses the explicit defended retry action for a recoverable inventory state', async () => {
@@ -1385,7 +1526,7 @@ describe('public site', () => {
 		const unavailable = { state: 'unavailable', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [] }
 		const ready = { state: 'empty', generation: 2, updatedAt: '2026-09-20T12:01:00Z', connections: [] }
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(unavailable))
@@ -1408,7 +1549,7 @@ describe('public site', () => {
 		const unavailable = { state: 'unavailable', generation: 1, updatedAt: '2026-09-20T12:00:00Z', connections: [] }
 		let authenticated = true
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated, reauthorizationRequired: false }))
 			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
 			if (path === '/api/portfolio/inventory') return Promise.resolve(jsonResponseBody(unavailable))
 			if (path === '/api/portfolio/inventory/retry') {
@@ -1430,7 +1571,7 @@ describe('public site', () => {
 		const retryAt = '2026-09-20T12:01:00Z'
 		const inventory = { state: 'rate_limited', generation: 1, updatedAt: '2026-09-20T12:00:00Z', retryAt, connections: [] }
 		vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
-			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })
+			? new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }), { status: 200 })
 			: new Response(JSON.stringify(inventory), { status: 200 }))))
 		render(<App />)
 		const expected = new Date(retryAt).toLocaleString('fr-CA')
@@ -1442,7 +1583,7 @@ describe('public site', () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
 		const fetchMock = vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/portfolio/inventory'
 			? new Response(JSON.stringify({ code: 'unauthenticated' }), { status: 401 })
-			: new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true }), { status: 200 })))
+			: new Response(JSON.stringify({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }), { status: 200 })))
 		vi.stubGlobal('fetch', fetchMock)
 		render(<App />)
 
@@ -1459,7 +1600,7 @@ describe('public site', () => {
 		window.sessionStorage.setItem('private-task', 'secret')
 		document.cookie = 'findur_csrf=csrf-token; Path=/'
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
 			return Promise.resolve(new Response(null, { status: 204 }))
@@ -1478,7 +1619,7 @@ describe('public site', () => {
 	it('keeps the authenticated shell retryable when logout fails', async () => {
 		window.history.replaceState(null, '', '/portfolio')
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
 			return Promise.resolve(new Response(JSON.stringify({ code: 'forbidden' }), { status: 403 }))
@@ -1495,7 +1636,7 @@ describe('public site', () => {
 		window.history.replaceState(null, '', '/portfolio')
 		window.localStorage.setItem('protected-payload', 'secret')
 		const fetchMock = vi.fn().mockImplementation((path: string) => {
-			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: false, authenticated: true }))
+			if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: false, authenticated: true, reauthorizationRequired: false }))
 			if (path === '/api/preferences/display') return Promise.resolve(new Response(null, { status: 204 }))
 			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
 			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 0, committed: [] }))
@@ -1509,7 +1650,7 @@ describe('public site', () => {
 	})
 
 	it('keeps consent closed with localized guidance when the server gate is closed', async () => {
-		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: false, authenticated: false }), { status: 200 })))
+		vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: false, authenticated: false, reauthorizationRequired: false }), { status: 200 })))
 		window.history.replaceState(null, '', '/connect')
 		render(<App />)
 		const action = await screen.findByRole('button', { name: 'Continue with SnapTrade' })
@@ -1520,7 +1661,7 @@ describe('public site', () => {
 
   it('preserves consent route and focus while locale and theme change', async () => {
     window.history.replaceState(null, '', '/connect')
-	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200 })))
+	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: false }), { status: 200 })))
     render(<App />)
     fireEvent.click(screen.getAllByRole('radio', { name: 'FR' })[0])
     expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('Connectez-vous à Findur.')
@@ -1540,7 +1681,7 @@ describe('public site', () => {
 
   it('returns from consent without posting an authorization request', async () => {
     window.history.replaceState(null, '', '/connect')
-	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false }), { status: 200 })); vi.stubGlobal('fetch', fetchMock)
+	const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: false }), { status: 200 })); vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     fireEvent.click(await screen.findByRole('link', { name: 'Return home' }))
     expect(window.location.pathname).toBe('/')
@@ -1625,7 +1766,7 @@ describe('public site', () => {
 describe('authenticated FAQ routing', () => {
   function installAuthenticatedFaq() {
     const fetchMock = vi.fn().mockImplementation((path: string) => {
-      if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+      if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
       if (path === '/api/preferences/display') return Promise.resolve(jsonResponseBody({ locale: 'en', theme: 'system', version: 1 }))
       if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
       return Promise.resolve(new Response(null, { status: 404 }))
@@ -1665,7 +1806,7 @@ describe('authenticated FAQ routing', () => {
   it('recovers an unauthenticated direct FAQ request before protected copy mounts', async () => {
     window.history.replaceState(null, '', '/faq')
     vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
-      ? jsonResponseBody({ authorizationAvailable: true, authenticated: false })
+      ? jsonResponseBody({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: false })
       : new Response(null, { status: 404 }))))
     render(<App />)
 

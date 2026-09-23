@@ -229,7 +229,7 @@ func completeAttempt(ctx context.Context, tx pgx.Tx, owner uuid.UUID, value auth
 // FailCallback makes an exchanging callback terminal and restartable.
 func (r *OAuthAttemptRepository) FailCallback(ctx context.Context, stateHash []byte, now time.Time) error {
 	_, err := r.pool.Exec(ctx, `UPDATE oauth_attempts SET status=$3,terminal_outcome=$3,terminal_route=$4,completed_at=$2
-        WHERE state_hash=$1 AND status=$5`, stateHash, now, attemptRestartRequired, auth.AuthorizationResultRoute, attemptExchanging)
+		WHERE state_hash=$1 AND status=$5`, stateHash, now, attemptRestartRequired, auth.DefaultReturnRoute, attemptExchanging)
 	return err
 }
 
@@ -238,6 +238,28 @@ func (r *OAuthAttemptRepository) SessionActive(ctx context.Context, sessionHash 
 	var active bool
 	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.session_hash=$1 AND s.revoked_at IS NULL AND s.idle_expires_at>$2 AND s.absolute_expires_at>$2 AND u.active)`, sessionHash, now).Scan(&active)
 	return active, err
+}
+
+// SessionReauthorizationRequired reports whether an active session's SnapTrade grant needs renewal.
+func (r *OAuthAttemptRepository) SessionReauthorizationRequired(ctx context.Context, sessionHash []byte, now time.Time) (bool, error) {
+	var required bool
+	err := r.pool.QueryRow(ctx, `
+        SELECT EXISTS(
+            SELECT 1
+            FROM sessions s
+            JOIN users u
+                ON u.id = s.user_id
+            JOIN provider_authorizations pa
+                ON pa.user_id = u.id
+               AND pa.provider = $3
+            WHERE s.session_hash = $1
+              AND s.revoked_at IS NULL
+              AND s.idle_expires_at > $2
+              AND s.absolute_expires_at > $2
+              AND u.active
+			  AND pa.lifecycle_status = 'reauthorization-required'
+        )`, sessionHash, now, auth.SnapTradeProvider).Scan(&required)
+	return required, err
 }
 
 func nullableBytes(value []byte) any {

@@ -26,6 +26,7 @@ type completeFunc func(context.Context, auth.CallbackInput) (auth.CallbackResult
 type statusCompleter struct {
 	status          auth.AuthorizationStatus
 	receivedSession string
+	err             error
 }
 
 type sessionLifecycleStub struct {
@@ -148,7 +149,7 @@ func (s *statusCompleter) Complete(context.Context, auth.CallbackInput) (auth.Ca
 }
 func (s *statusCompleter) Status(_ context.Context, session string) (auth.AuthorizationStatus, error) {
 	s.receivedSession = session
-	return s.status, nil
+	return s.status, s.err
 }
 
 func (f beginFunc) Begin(ctx context.Context, route string) (auth.BeginResult, error) {
@@ -188,7 +189,7 @@ func showcaseHandler(sessions sessionLifecycle, showcase showcaseLifecycle) http
 }
 
 func TestShowcaseGETRequiresSessionAndSerializesOnlySafeFields(t *testing.T) {
-	showcase := &showcaseLifecycleStub{snapshot: portfolio.Showcase{Accounts: []portfolio.ShowcaseAccount{{Label: "Account (•••• 1234)", Brokerage: "Broker", SyncMode: portfolio.SyncModeRealtime, Balances: portfolio.ShowcaseDataset{Context: portfolio.DatasetContext{Source: "SnapTrade", Coverage: "included account", Currency: "CAD", Freshness: portfolio.FreshnessCurrent}, Balances: []portfolio.ShowcaseBalance{{Currency: "CAD", Cash: stringPtr("1.2300")}}}}}}}
+	showcase := &showcaseLifecycleStub{snapshot: portfolio.Showcase{Accounts: []portfolio.ShowcaseAccount{{ConnectionID: "connection-1", Label: "Account (•••• 1234)", Brokerage: "Broker", SyncMode: portfolio.SyncModeRealtime, Balances: portfolio.ShowcaseDataset{Context: portfolio.DatasetContext{Source: "SnapTrade", Coverage: "included account", Currency: "CAD", Freshness: portfolio.FreshnessCurrent}, Balances: []portfolio.ShowcaseBalance{{Currency: "CAD", Cash: stringPtr("1.2300")}}}}}}}
 	request := httptest.NewRequest(http.MethodGet, "/api/portfolio/showcase", nil)
 	request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "owner-session"})
 	response := httptest.NewRecorder()
@@ -197,7 +198,7 @@ func TestShowcaseGETRequiresSessionAndSerializesOnlySafeFields(t *testing.T) {
 		t.Fatalf("status=%d cache=%q calls=%d", response.Code, response.Header().Get("Cache-Control"), showcase.calls)
 	}
 	body := response.Body.String()
-	if strings.Contains(body, "owner-session") || !strings.Contains(body, "1.2300") || !strings.Contains(body, "•••• 1234") {
+	if strings.Contains(body, "owner-session") || !strings.Contains(body, `"connectionId":"connection-1"`) || !strings.Contains(body, "1.2300") || !strings.Contains(body, "•••• 1234") {
 		t.Fatalf("unsafe or missing body %q", body)
 	}
 	unauthenticated := httptest.NewRecorder()
@@ -675,7 +676,7 @@ func TestAuthorizationStatusIsNoStoreAndServerAuthoritative(t *testing.T) {
 		handler := callbackHandler(nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/auth/status", nil))
-		if response.Code != http.StatusOK || response.Body.String() != `{"authenticated":false,"authorizationAvailable":false}`+"\n" {
+		if response.Code != http.StatusOK || response.Body.String() != `{"authenticated":false,"authorizationAvailable":false,"reauthorizationRequired":false}`+"\n" {
 			t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
 		}
 	})
@@ -686,7 +687,63 @@ func TestAuthorizationStatusIsNoStoreAndServerAuthoritative(t *testing.T) {
 		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "active"})
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
-		if response.Code != http.StatusOK || response.Body.String() != `{"authenticated":true,"authorizationAvailable":false}`+"\n" {
+		if response.Code != http.StatusOK || response.Body.String() != `{"authenticated":true,"authorizationAvailable":false,"reauthorizationRequired":false}`+"\n" {
+			t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+		}
+	})
+	t.Run("permission renewal revokes the current session and expires browser cookies", func(t *testing.T) {
+		lifecycle := &sessionLifecycleStub{}
+		completer := &statusCompleter{status: auth.AuthorizationStatus{
+			AuthorizationAvailable:  true,
+			Authenticated:           true,
+			ReauthorizationRequired: true,
+		}}
+		readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+		readiness.SetReady(true)
+		handler := NewHandlerWithSessions(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, completer, lifecycle, true, "https://findur.example")
+		request := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "active"})
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"authenticated":false`) || !strings.Contains(response.Body.String(), `"reauthorizationRequired":true`) || completer.receivedSession != "active" {
+			t.Fatalf("status=%d body=%q session=%q", response.Code, response.Body.String(), completer.receivedSession)
+		}
+		if len(lifecycle.revoked) != 1 || lifecycle.revoked[0] != "active" {
+			t.Fatalf("revoked=%v", lifecycle.revoked)
+		}
+		responseCookies := response.Result().Cookies()
+		if len(responseCookies) != 2 || responseCookies[0].Name != sessionCookieName || responseCookies[0].MaxAge != -1 || responseCookies[1].Name != csrfCookieName || responseCookies[1].MaxAge != -1 {
+			t.Fatalf("cookies=%+v", responseCookies)
+		}
+	})
+	t.Run("concurrently inactive session expires browser cookies", func(t *testing.T) {
+		lifecycle := &sessionLifecycleStub{}
+		completer := &statusCompleter{status: auth.AuthorizationStatus{AuthorizationAvailable: true}}
+		readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+		readiness.SetReady(true)
+		handler := NewHandlerWithSessions(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, completer, lifecycle, true, "https://findur.example")
+		request := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "active"})
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"authenticated":false`) || len(lifecycle.revoked) != 0 {
+			t.Fatalf("status=%d body=%q revoked=%v", response.Code, response.Body.String(), lifecycle.revoked)
+		}
+		if cookies := response.Result().Cookies(); len(cookies) != 2 || cookies[0].MaxAge != -1 || cookies[1].MaxAge != -1 {
+			t.Fatalf("cookies=%+v", cookies)
+		}
+	})
+	t.Run("provider status error fails closed", func(t *testing.T) {
+		lifecycle := &sessionLifecycleStub{}
+		completer := &statusCompleter{err: errors.New("status unavailable")}
+		readiness := NewReadiness(pingFunc(func(context.Context) error { return nil }), time.Second)
+		readiness.SetReady(true)
+		handler := NewHandlerWithSessions(slog.New(slog.NewTextHandler(io.Discard, nil)), readiness, "development", nil, nil, completer, lifecycle, true, "https://findur.example")
+		request := httptest.NewRequest(http.MethodGet, "/api/auth/status", nil)
+		request.AddCookie(&http.Cookie{Name: sessionCookieName, Value: "active"})
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusServiceUnavailable || strings.Contains(response.Body.String(), `"authenticated":true`) {
 			t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
 		}
 	})
@@ -715,11 +772,11 @@ func TestAuthorizationCallbackRotatesSecureCookiesAndRedirectsCleanly(t *testing
 
 func TestAuthorizationCallbackFailureIsCategorical(t *testing.T) {
 	handler := callbackHandler(completeFunc(func(context.Context, auth.CallbackInput) (auth.CallbackResult, error) {
-		return auth.CallbackResult{Route: "/onboarding/accounts"}, errors.New("private provider detail")
+		return auth.CallbackResult{Route: auth.AuthorizationDeniedRoute}, errors.New("private provider detail")
 	}))
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/auth/snaptrade/callback?error=access_denied&error_description=private-provider-detail", nil))
-	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/onboarding/accounts" || strings.Contains(response.Body.String(), "provider") || len(response.Result().Cookies()) != 1 {
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != auth.AuthorizationDeniedRoute || strings.Contains(response.Body.String(), "provider") || len(response.Result().Cookies()) != 1 {
 		t.Fatalf("status=%d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
 	}
 }
@@ -782,6 +839,47 @@ func TestAuthorizationClosedAndFailuresAreCategoricalAndNoStore(t *testing.T) {
 				t.Fatal("failure created browser correlation")
 			}
 		})
+	}
+}
+
+func TestAuthorizationBrowserFailuresReturnToBrandedRecovery(t *testing.T) {
+	tests := map[string]struct {
+		handler  http.Handler
+		wantCode string
+	}{
+		"unavailable": {handler: authorizationHandler(beginFunc(func(context.Context, string) (auth.BeginResult, error) {
+			return auth.BeginResult{}, auth.ErrUnavailable
+		})), wantCode: "authorization_unavailable"},
+		"initialization failed": {handler: authorizationHandler(beginFunc(func(context.Context, string) (auth.BeginResult, error) {
+			return auth.BeginResult{}, auth.ErrInitialization
+		})), wantCode: "initialization_failed"},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, authorizationPath, strings.NewReader("returnTo=%2Fportfolio"))
+			request.Header.Set("Accept", "text/html,application/xhtml+xml")
+			request.Header.Set("Content-Type", formMediaType)
+			response := httptest.NewRecorder()
+			test.handler.ServeHTTP(response, request)
+			if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/connect?authorization="+test.wantCode || response.Header().Get("Cache-Control") != noStoreDirective || response.Body.Len() != 0 {
+				t.Fatalf("status=%d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
+			}
+		})
+	}
+}
+
+func TestAuthorizationBrowserValidationFailureReturnsToBrandedRecovery(t *testing.T) {
+	handler := authorizationHandler(beginFunc(func(context.Context, string) (auth.BeginResult, error) {
+		t.Fatal("invalid browser request reached initiator")
+		return auth.BeginResult{}, nil
+	}))
+	request := httptest.NewRequest(http.MethodPost, authorizationPath, strings.NewReader("returnTo=/portfolio"))
+	request.Header.Set("Accept", "text/html")
+	request.Header.Set("Content-Type", "text/plain")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/connect?authorization=invalid_request" || response.Body.Len() != 0 {
+		t.Fatalf("status=%d headers=%v body=%q", response.Code, response.Header(), response.Body.String())
 	}
 }
 
