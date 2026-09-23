@@ -116,3 +116,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-implement-resource-diagnostic-feedback.md`
   summary: Add safe structured logs for provider circuit-breaker transitions and rejected calls.
   evidence: The shared request gate currently enforces opening, rejection, and recovery, while worker logs expose only broad `provider_unavailable` or `rate_limited` outcomes; operators cannot distinguish an upstream response from a locally short-circuited request. Log categorical open, reject-while-open, and recovery events without provider bodies, credentials, account identifiers, or financial data.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-add-authenticated-portfolio-faq.md`
+  summary: Gate all authenticated route content until display-preference session validation settles.
+  evidence: `AuthenticatedPreferences` currently renders children while its independent preference request is loading, so an auth-true/preferences-401 race can briefly mount any protected route; this app-shell behavior predates FAQ and needs an app-wide loading/recovery contract.

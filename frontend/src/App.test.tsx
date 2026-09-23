@@ -258,13 +258,14 @@ describe('portfolio showcase', () => {
 		expect(showcaseCalls).toBe(3)
 	})
 	it('keeps retained rows and passive retry timing visible during a transient diagnostic', async () => {
-		const lastSuccessfulAt = '2026-09-22T12:00:00Z'
+		const publishedAt = '2026-09-22T10:00:00Z'
+		const lastSuccessfulAt = '2026-09-22T09:00:00Z'
 		const retryAt = '2026-09-23T12:15:00Z'
 		installShowcase({ accounts: [{
 			label: 'Retained account (•••• 5001)', brokerage: 'Synthetic Broker', syncMode: 'realtime',
-			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current' }, balances: [{ currency: 'CAD', cash: '100.00' }], positions: [], activities: [] },
+			balances: { context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'current', publishedAt: '2026-09-22T12:00:00Z' }, balances: [{ currency: 'CAD', cash: '100.00' }], positions: [], activities: [] },
 			positions: {
-				context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'stale_usable', diagnostic: { reason: 'provider_unavailable', recommendedAction: 'retry', lastSuccessfulAt, retryAt } },
+				context: { source: 'SnapTrade', coverage: 'included account', currency: 'CAD', freshness: 'stale_usable', publishedAt, diagnostic: { reason: 'provider_unavailable', recommendedAction: 'retry', lastSuccessfulAt, retryAt } },
 				balances: [], positions: [{ symbol: 'FND', kind: 'equity', currency: 'CAD', units: '2.0' }], activities: [],
 			},
 			activities: { context: { source: 'SnapTrade', coverage: 'included account; newest 50 activities', currency: 'CAD', freshness: 'current' }, balances: [], positions: [], activities: [] },
@@ -274,8 +275,16 @@ describe('portfolio showcase', () => {
 		const positions = (await screen.findByRole('heading', { name: 'Positions' })).closest('section') as HTMLElement
 		expect(within(positions).getByText('FND')).toBeVisible()
 		expect(within(positions).getByText('This data could not be refreshed. Saved values remain visible when safe.')).toBeVisible()
-		expect(within(positions).getByText(new Date(lastSuccessfulAt).toLocaleString('en-CA'))).toBeVisible()
+		expect(within(positions).getByText('Last sync')).toBeVisible()
+		expect(within(positions).getByText('Next sync')).toBeVisible()
+		expect(within(positions).getByText(new Date(publishedAt).toLocaleString('en-CA'))).toBeVisible()
 		expect(within(positions).getByText(new Date(retryAt).toLocaleString('en-CA'))).toBeVisible()
+		expect(within(positions).queryByText(new Date(lastSuccessfulAt).toLocaleString('en-CA'))).not.toBeInTheDocument()
+		const balances = screen.getByRole('heading', { name: 'Balances' }).closest('section') as HTMLElement
+		expect(within(balances).getByText(new Date('2026-09-23T12:00:00Z').toLocaleString('en-CA'))).toBeVisible()
+		expect(document.querySelector('.freshness')).not.toBeInTheDocument()
+		expect(document.querySelector('[class*="freshness--"]')).not.toBeInTheDocument()
+		expect(screen.queryByText('Stale, still usable')).not.toBeInTheDocument()
 		expect(within(positions).queryByRole('status')).not.toBeInTheDocument()
 		expect(within(positions).queryByRole('alert')).not.toBeInTheDocument()
 		expect(screen.queryByRole('button', { name: /Retry|Try again|Check again/ })).not.toBeInTheDocument()
@@ -290,7 +299,10 @@ describe('portfolio showcase', () => {
 
 		render(<App />)
 
-		expect(await screen.findByText((_, element) => element?.classList.contains('freshness') === true && element.textContent?.includes('Expired') === true)).toBeVisible()
+		expect(await screen.findAllByText('This data has expired, so its saved values are hidden until fresh data is available.')).not.toHaveLength(0)
+		expect(document.querySelector('.freshness')).not.toBeInTheDocument()
+		expect(document.querySelector('.balance-state--error')).not.toBeInTheDocument()
+		expect(document.querySelector('.showcase-note--unavailable')).not.toBeInTheDocument()
 		expect(screen.queryByText('CAD $999,999.00')).not.toBeInTheDocument()
 		const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
 		expect(positions).not.toBeNull()
@@ -970,10 +982,13 @@ describe('public site', () => {
 		await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
 		expect((await screen.findAllByText('Retirement (•••• 8443)')).length).toBeGreaterThan(0)
 		expect(await screen.findByText(/Some portfolio data is still syncing/)).toBeVisible()
-		const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
-		expect(positions).not.toBeNull()
-		expect(within(positions as HTMLElement).getByText(/Syncing/)).toBeVisible()
-	})
+			const positions = screen.getByRole('heading', { name: 'Positions' }).closest('section')
+			expect(positions).not.toBeNull()
+			expect(within(positions as HTMLElement).getByText('Last sync')).toBeVisible()
+			expect(within(positions as HTMLElement).getByText('Next sync')).toBeVisible()
+			expect(within(positions as HTMLElement).getAllByText('—')).toHaveLength(3)
+			expect(document.querySelector('.freshness')).not.toBeInTheDocument()
+		})
 
 	it('reconciles an ambiguous failed request as success when durable choices match', async () => {
 		window.history.replaceState(null, '', '/onboarding/accounts')
@@ -1604,5 +1619,57 @@ describe('public site', () => {
     expect(screen.getByText('API unavailable')).toBeInTheDocument()
     const request = fetchMock.mock.calls[0][1] as RequestInit
     expect(request.signal?.aborted).toBe(true)
+  })
+})
+
+describe('authenticated FAQ routing', () => {
+  function installAuthenticatedFaq() {
+    const fetchMock = vi.fn().mockImplementation((path: string) => {
+      if (path === '/api/auth/status') return Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true }))
+      if (path === '/api/preferences/display') return Promise.resolve(jsonResponseBody({ locale: 'en', theme: 'system', version: 1 }))
+      if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+      return Promise.resolve(new Response(null, { status: 404 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    return fetchMock
+  }
+
+  it.each(['/faq', '/faq/'])('opens %s directly, normalizes it, and shows the protected FAQ with title, heading focus, and current navigation after Profile', async (entry) => {
+    window.history.replaceState(null, '', entry)
+    const fetchMock = installAuthenticatedFaq()
+    render(<App />)
+
+    const heading = await screen.findByRole('heading', { level: 1, name: 'Portfolio questions, answered.' })
+    await waitFor(() => expect(heading).toHaveFocus())
+    expect(window.location.pathname).toBe('/faq')
+    expect(document.title).toBe('FAQ — Findur')
+    const links = within(screen.getByRole('navigation', { name: 'Account navigation' })).getAllByRole('link')
+    expect(links.map((link) => link.textContent)).toEqual(['Portfolio', 'Profile', 'FAQ'])
+    expect(links[2]).toHaveAttribute('aria-current', 'page')
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/portfolio/showcase', expect.anything())
+  })
+
+  it('preserves FAQ navigation through browser history', async () => {
+    window.history.replaceState(null, '', '/faq')
+    installAuthenticatedFaq()
+    render(<App />)
+    await screen.findByRole('heading', { level: 1, name: 'Portfolio questions, answered.' })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Portfolio' }))
+    await waitFor(() => expect(window.location.pathname).toBe('/portfolio'))
+    window.history.back()
+    await waitFor(() => expect(window.location.pathname).toBe('/faq'))
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Portfolio questions, answered.' })).toHaveFocus())
+  })
+
+  it('recovers an unauthenticated direct FAQ request before protected copy mounts', async () => {
+    window.history.replaceState(null, '', '/faq')
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((path: string) => Promise.resolve(path === '/api/auth/status'
+      ? jsonResponseBody({ authorizationAvailable: true, authenticated: false })
+      : new Response(null, { status: 404 }))))
+    render(<App />)
+
+    await waitFor(() => expect(window.location.pathname).toBe('/connect'))
+    expect(screen.queryByRole('heading', { name: 'Portfolio questions, answered.' })).not.toBeInTheDocument()
   })
 })

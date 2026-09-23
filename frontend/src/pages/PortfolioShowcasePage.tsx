@@ -7,6 +7,7 @@ import { getPortfolioShowcase, type PortfolioShowcase } from '../showcase'
 type Dataset = components['schemas']['ShowcaseDataset']
 type Locale = 'en' | 'fr'
 const preparationRefreshIntervalMs = 5_000
+const ordinarySyncIntervalMs = 24 * 60 * 60 * 1_000
 
 const copy = {
   en: {
@@ -32,14 +33,8 @@ const copy = {
     source: 'Source',
     coverage: 'Coverage',
     currencies: 'Currencies',
-    observed: 'Observed',
-    retrieved: 'Retrieved',
-    published: 'Published',
-    current: 'Current',
-    syncing: 'Syncing',
-    stale: 'Stale, still usable',
-    expired: 'Expired',
-    unavailable: 'Unavailable',
+    lastSync: 'Last sync',
+    nextSync: 'Next sync',
     balancePending: 'Balance information is still syncing.',
     balanceEmpty: 'No balance information is available.',
     balanceFailure: 'Balance information couldn’t be refreshed.',
@@ -47,8 +42,6 @@ const copy = {
     activitiesEmpty: 'No recent activity was reported.',
     unavailableDataset: 'This data is unavailable right now.',
     expiredDataset: 'This data has expired, so its saved values are hidden until fresh data is available.',
-    retryAt: 'Next attempt',
-    lastSuccessful: 'Last successful refresh',
     diagnosticReasons: {
       no_accounts_returned: 'No accounts were returned.',
       no_supported_accounts: 'The returned accounts are not supported.',
@@ -86,14 +79,8 @@ const copy = {
     source: 'Source',
     coverage: 'Couverture',
     currencies: 'Devises',
-    observed: 'Observé',
-    retrieved: 'Récupéré',
-    published: 'Publié',
-    current: 'À jour',
-    syncing: 'Synchronisation',
-    stale: 'Ancien, encore utilisable',
-    expired: 'Expiré',
-    unavailable: 'Indisponible',
+    lastSync: 'Dernière synchronisation',
+    nextSync: 'Prochaine synchronisation',
     balancePending: 'Les renseignements sur le solde sont encore en cours de synchronisation.',
     balanceEmpty: 'Aucun renseignement sur le solde n’est disponible.',
     balanceFailure: 'Les renseignements sur le solde n’ont pas pu être actualisés.',
@@ -101,8 +88,6 @@ const copy = {
     activitiesEmpty: 'Aucune activité récente n’a été déclarée.',
     unavailableDataset: 'Ces données sont indisponibles pour le moment.',
     expiredDataset: 'Ces données ont expiré; leurs valeurs enregistrées sont masquées jusqu’à ce que de nouvelles données soient disponibles.',
-    retryAt: 'Prochaine tentative',
-    lastSuccessful: 'Dernière actualisation réussie',
     diagnosticReasons: {
       no_accounts_returned: 'Aucun compte n’a été retourné.',
       no_supported_accounts: 'Les comptes retournés ne sont pas pris en charge.',
@@ -273,10 +258,10 @@ export function PortfolioShowcasePage({ headingRef, onEdit, onReconnect, onSessi
 
 function BalanceSummary({ dataset, locale }: { dataset: Dataset; locale: Locale }) {
   const text = copy[locale]
-  if (dataset.context.freshness === 'expired') return <div className="money"><p className="balance-state balance-state--error">{text.expiredDataset}</p></div>
+  if (dataset.context.freshness === 'expired') return <div className="money"><p className="balance-state">{text.expiredDataset}</p></div>
   if (dataset.balances.length === 0 && dataset.context.diagnostic?.reason === 'sync_pending') return <div className="money"><p className="balance-state balance-state--info">{text.balancePending}</p></div>
   if (dataset.balances.length === 0 && dataset.context.diagnostic) return <div className="money"><p className={`balance-state balance-state--${diagnosticTone(dataset.context.diagnostic.reason)}`}>{text.balanceFailure}</p></div>
-  if (dataset.context.freshness === 'unavailable') return <div className="money"><p className="balance-state balance-state--error">{text.balanceFailure}</p></div>
+  if (dataset.context.freshness === 'unavailable') return <div className="money"><p className="balance-state">{text.balanceFailure}</p></div>
   if (dataset.balances.length === 0) return <div className="money"><p className="balance-state">{text.balanceEmpty}</p></div>
   return <div className="money">
     {dataset.balances.map((row, index) => <div key={`${row.currency}-${index}`}>
@@ -289,35 +274,25 @@ function BalanceSummary({ dataset, locale }: { dataset: Dataset; locale: Locale 
 function Evidence({ title, dataset, rows, columns, locale, emptyMessage, activity = false }: { title: string; dataset: Dataset; rows: Array<Record<string, unknown>>; columns: readonly string[]; locale: Locale; emptyMessage: string; activity?: boolean }) {
   const text = copy[locale]
   const context = dataset.context
-  const recorded = context.observedAt ?? context.retrievedAt
-  const recordedLabel = context.observedAt ? text.observed : text.retrieved
-  const freshness = context.diagnostic?.reason === 'sync_pending' ? text.syncing : context.freshness === 'current' ? text.current : context.freshness === 'stale_usable' ? text.stale : context.freshness === 'expired' ? text.expired : text.unavailable
-  const freshnessTone = context.diagnostic?.reason === 'sync_pending' ? ' freshness--info' : context.diagnostic?.reason === 'provider_unavailable' ? ' freshness--waiting' : ''
-  const freshnessIcon = context.diagnostic?.reason === 'sync_pending' ? '◇' : context.freshness === 'current' ? '◆' : context.freshness === 'stale_usable' ? '◇' : '×'
+  const nextSync = nextSyncAt(context)
 
   return <section className="dataset">
     <header>
       <h3>{title}</h3>
-      <span className={`freshness freshness--${context.freshness}${freshnessTone}`}>
-        <i aria-hidden="true">{freshnessIcon}</i>
-        {freshness} · {recorded ? <time dateTime={recorded}>{formatTimestamp(recorded, locale)}</time> : '—'}
-      </span>
     </header>
     <dl className="dataset-context">
       <div><dt>{text.source}</dt><dd>{context.source}</dd></div>
       <div><dt>{text.coverage}</dt><dd>{activity ? text.activityCoverage : context.coverage}</dd></div>
       <div><dt>{text.currencies}</dt><dd>{context.currency || '—'}</dd></div>
-      <div><dt>{recordedLabel}</dt><dd>{recorded ? <time dateTime={recorded}>{formatTimestamp(recorded, locale)}</time> : '—'}</dd></div>
-      <div><dt>{text.published}</dt><dd>{context.publishedAt ? <time dateTime={context.publishedAt}>{formatTimestamp(context.publishedAt, locale)}</time> : '—'}</dd></div>
+      <div><dt>{text.lastSync}</dt><dd>{context.publishedAt ? <time dateTime={context.publishedAt}>{formatTimestamp(context.publishedAt, locale)}</time> : '—'}</dd></div>
+      <div><dt>{text.nextSync}</dt><dd>{nextSync ? <time dateTime={nextSync}>{formatTimestamp(nextSync, locale)}</time> : '—'}</dd></div>
     </dl>
     {activity && <p className="activity-cadence">△ {text.activityCadence}</p>}
     {context.diagnostic && context.diagnostic.reason !== 'sync_pending' && <div className={`showcase-note showcase-note--diagnostic showcase-note--${diagnosticTone(context.diagnostic.reason)}`}>
       <p>{text.diagnosticReasons[context.diagnostic.reason]}</p>
-      {context.diagnostic.lastSuccessfulAt && <p>{text.lastSuccessful}: <time dateTime={context.diagnostic.lastSuccessfulAt}>{formatTimestamp(context.diagnostic.lastSuccessfulAt, locale)}</time></p>}
-      {context.diagnostic.retryAt && <p>{text.retryAt}: <time dateTime={context.diagnostic.retryAt}>{formatTimestamp(context.diagnostic.retryAt, locale)}</time></p>}
     </div>}
     {context.freshness === 'expired' || context.freshness === 'unavailable' && !context.diagnostic
-      ? <div className="showcase-note showcase-note--unavailable">
+      ? <div className="showcase-note">
         <p>{context.freshness === 'expired' ? text.expiredDataset : text.unavailableDataset}</p>
       </div>
       : rows.length === 0
@@ -333,6 +308,13 @@ function Evidence({ title, dataset, rows, columns, locale, emptyMessage, activit
           </div>
         </>}
   </section>
+}
+
+function nextSyncAt(context: Dataset['context']) {
+  if (context.diagnostic) return context.diagnostic.retryAt
+  if (!context.publishedAt) return undefined
+  const publishedAt = Date.parse(context.publishedAt)
+  return Number.isNaN(publishedAt) ? undefined : new Date(publishedAt + ordinarySyncIntervalMs).toISOString()
 }
 
 function diagnosticTone(reason: components['schemas']['ResourceDiagnostic']['reason']) {
