@@ -32,6 +32,7 @@ const (
 	PortfolioReturnRoute     = "/portfolio"
 	ScopeOpenID              = "openid"
 	ScopeRead                = "read"
+	ScopeWebhook             = "webhook"
 	randomBytes              = 32
 )
 
@@ -125,6 +126,7 @@ type Config struct {
 	Random           io.Reader
 	Clock            func() time.Time
 	OperationTimeout time.Duration
+	RequestWebhook   bool
 }
 
 // Service creates and atomically claims short-lived OAuth attempts.
@@ -206,9 +208,13 @@ func (s *Service) attemptSecrets() (attemptSecrets, error) {
 }
 
 func (s *Service) authorizationURL(endpoint string, secrets attemptSecrets) (string, error) {
+	scopes := []string{ScopeOpenID, ScopeRead}
+	if s.config.RequestWebhook {
+		scopes = append(scopes, ScopeWebhook)
+	}
 	oauthConfig := oauth2.Config{
 		ClientID: s.config.ClientID, RedirectURL: s.config.CallbackURL,
-		Endpoint: oauth2.Endpoint{AuthURL: endpoint}, Scopes: []string{ScopeOpenID, ScopeRead},
+		Endpoint: oauth2.Endpoint{AuthURL: endpoint}, Scopes: scopes,
 	}
 	authorizationURL := oauthConfig.AuthCodeURL(secrets.state, oauth2.S256ChallengeOption(secrets.verifier), coreoidc.Nonce(secrets.nonce))
 	parsedAuthorizationURL, err := url.Parse(authorizationURL)

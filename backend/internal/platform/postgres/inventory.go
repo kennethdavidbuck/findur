@@ -714,7 +714,15 @@ func loadInventoryAccounts(ctx context.Context, tx pgx.Tx, owner uuid.UUID, gene
 			`+selectableInventoryAccountSQL+`
 			OR (
 				NOT account.selectable
-				AND account.usability_reason IN ('unsupported_category','connection_disabled')
+				AND (
+					account.usability_reason IN ('unsupported_category','connection_disabled')
+					OR (
+						account.usability_reason = 'provisional_category'
+						AND account.category = 'unknown'
+						AND account.sync_state = 'unknown'
+						AND NOT account.available
+					)
+				)
 			)
 		)
 		ORDER BY account.account_id`, owner, generation, connectionID)

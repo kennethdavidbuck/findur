@@ -3,14 +3,20 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kennethdavidbuck/findur/backend/internal/platform/buildinfo"
@@ -56,6 +62,41 @@ func TestBuildInventoryRemainsAvailableWhenAuthorizationInitiationIsClosed(t *te
 	inventory, err := buildInventory(cfg, &pgxpool.Pool{})
 	if err != nil || inventory == nil {
 		t.Fatalf("inventory=%v err=%v", inventory, err)
+	}
+}
+
+func TestBuildWebhookPropagatesLogOnlyMode(t *testing.T) {
+	cfg := config.Config{Webhook: config.WebhookConfig{
+		Enabled:           true,
+		ProcessingEnabled: false,
+		ClientID:          "client",
+		ConsumerKey:       []byte("consumer-key"),
+	}}
+	handler, err := buildWebhook(cfg, &pgxpool.Pool{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]any{
+		"connectionId":   "connection",
+		"eventTimestamp": time.Now().UTC().Format(time.RFC3339Nano),
+		"eventType":      "CONNECTION_BROKEN",
+		"oauthClientId":  "client",
+		"schemaVersion":  "oauth_v1",
+		"userId":         "subject",
+		"webhookId":      "delivery",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mac := hmac.New(sha256.New, cfg.Webhook.ConsumerKey)
+	_, _ = mac.Write(body)
+	request := httptest.NewRequest(http.MethodPost, "/api/webhooks/snaptrade", bytes.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Signature", base64.StdEncoding.EncodeToString(mac.Sum(nil)))
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
 	}
 }
 

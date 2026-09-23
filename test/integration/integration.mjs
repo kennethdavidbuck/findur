@@ -8,6 +8,7 @@ const base = process.env.BASE_URL
 const expectedSha = process.env.EXPECTED_SHA
 const browser = process.env.BROWSER_URL
 const wiremock = process.env.WIREMOCK_URL
+const webhookConsumerKey = process.env.SNAPTRADE_CONSUMER_KEY
 const request = (path, init = {}) => fetch(`${base}${path}`, {
   ...init,
   signal: init.signal ?? AbortSignal.timeout(15_000),
@@ -51,7 +52,7 @@ assert.equal(authorization.headers.get('cache-control'), 'no-store')
 const authorizationLocation = new URL(authorization.headers.get('location'))
 assert.equal(authorizationLocation.origin, 'http://127.0.0.1:8080')
 assert.equal(authorizationLocation.pathname, '/api/__fixture/oidc/authorize')
-assert.equal(authorizationLocation.searchParams.get('scope'), 'openid read')
+assert.equal(authorizationLocation.searchParams.get('scope'), 'openid read webhook')
 assert.equal(authorizationLocation.searchParams.get('redirect_uri'), 'http://127.0.0.1:8080/api/auth/snaptrade/callback')
 assert.equal(authorizationLocation.searchParams.get('response_type'), 'code')
 assert.doesNotMatch(authorizationLocation.toString(), /synthetic-oauth-client-secret/, 'client secret never enters the browser redirect')
@@ -143,7 +144,9 @@ await verifyBrowserOAuth({ browserUrl: browser, oauthOrigin: 'http://127.0.0.1:8
 await verifyBrowserSession({
   browserUrl: browser,
   publicOrigin: 'http://127.0.0.1:8080',
+  apiOrigin: base,
   wiremockUrl: wiremock,
+  webhookConsumerKey,
   diagnosticScenario: { accountID: scenarioAccountID, resource: 'activities', mappingID: scenarioMappingID },
 })
 

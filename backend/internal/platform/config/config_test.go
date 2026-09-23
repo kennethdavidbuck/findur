@@ -38,6 +38,46 @@ func TestLoadRejectsMissingDatabaseURL(t *testing.T) {
 	}
 }
 
+func TestLoadConfiguresOptionalWebhookReceiver(t *testing.T) {
+	tests := []struct {
+		name           string
+		consumerKey    string
+		clientID       string
+		processing     string
+		wantEnabled    bool
+		wantProcessing bool
+		wantErr        bool
+	}{
+		{name: "disabled without consumer key"},
+		{name: "enabled in log-only mode by default", consumerKey: "synthetic-consumer-key", clientID: "oauth-client", wantEnabled: true},
+		{name: "processing explicitly enabled", consumerKey: "synthetic-consumer-key", clientID: "oauth-client", processing: "true", wantEnabled: true, wantProcessing: true},
+		{name: "consumer key requires client", consumerKey: "synthetic-consumer-key", wantErr: true},
+		{name: "processing requires consumer key", processing: "true", wantErr: true},
+		{name: "invalid processing flag", processing: "sometimes", wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("DATABASE_URL", "postgres://localhost/findur")
+			t.Setenv("SNAPTRADE_CONSUMER_KEY", test.consumerKey)
+			t.Setenv("SNAPTRADE_OAUTH_CLIENT_ID", test.clientID)
+			t.Setenv("SNAPTRADE_WEBHOOK_PROCESSING_ENABLED", test.processing)
+			got, err := Load()
+			if (err != nil) != test.wantErr {
+				t.Fatalf("error=%v", err)
+			}
+			if err == nil && (got.Webhook.Enabled != test.wantEnabled || got.Authorization.WebhookScope != test.wantEnabled) {
+				t.Fatalf("webhook=%+v authorization_scope=%v", got.Webhook, got.Authorization.WebhookScope)
+			}
+			if err == nil && test.wantEnabled && (got.Webhook.ClientID != test.clientID || string(got.Webhook.ConsumerKey) != test.consumerKey) {
+				t.Fatalf("webhook=%+v", got.Webhook)
+			}
+			if err == nil && got.Webhook.ProcessingEnabled != test.wantProcessing {
+				t.Fatalf("processing_enabled=%v, want %v", got.Webhook.ProcessingEnabled, test.wantProcessing)
+			}
+		})
+	}
+}
+
 func TestLoadRejectsInvalidPort(t *testing.T) {
 	for _, port := range []string{"0", "65536", "http", "+80", "-1", "80.0"} {
 		t.Run(port, func(t *testing.T) {

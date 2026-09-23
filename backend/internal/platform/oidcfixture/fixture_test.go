@@ -256,6 +256,21 @@ func TestHandlerRevocationAndUnknownRoutes(t *testing.T) {
 	}
 }
 
+func TestHandlerCanRequireWebhookAuthorizationScope(t *testing.T) {
+	handler, err := NewWithWebhookScope(fixtureIssuer, fixtureClientID, fixtureClientSecret, fixtureCallbackURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := validAuthorizationQuery()
+	query.Set(scopeField, webhookAuthorizationScope)
+	request := httptest.NewRequest(http.MethodGet, fixtureIssuer+"/authorize?"+query.Encode(), nil)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d body=%q", response.Code, response.Body.String())
+	}
+}
+
 func fixtureHandler(t *testing.T) *Handler {
 	t.Helper()
 	handler, err := New(fixtureIssuer, fixtureClientID, fixtureClientSecret, fixtureCallbackURL)

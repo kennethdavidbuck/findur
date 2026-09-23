@@ -16,32 +16,34 @@ import (
 )
 
 const (
-	keyID                 = "synthetic-rs256"
-	testSubject           = "synthetic-test-subject"
-	testAccessToken       = "synthetic-access-token"
-	testRefreshToken      = "synthetic-refresh-token"
-	authorizationCodeFlow = "authorization_code"
-	clientIDField         = "client_id"
-	clientSecretField     = "client_secret"
-	codeField             = "code"
-	codeChallengeField    = "code_challenge"
-	codeChallengeMethod   = "code_challenge_method"
-	codeVerifierField     = "code_verifier"
-	redirectURIField      = "redirect_uri"
-	grantTypeField        = "grant_type"
-	refreshTokenGrant     = "refresh_token"
-	refreshTokenField     = "refresh_token"
-	nonceField            = "nonce"
-	responseTypeField     = "response_type"
-	scopeField            = "scope"
-	stateField            = "state"
-	denyNextPath          = "/deny-next"
-	authorizationScope    = "openid read"
-	authorizationResponse = "code"
-	pkceS256              = "S256"
-	bearerTokenType       = "Bearer"
-	jsonContentType       = "application/json"
-	noStore               = "no-store"
+	keyID                     = "synthetic-rs256"
+	testSubject               = "synthetic-test-subject"
+	testAccessToken           = "synthetic-access-token"
+	testRefreshToken          = "synthetic-refresh-token"
+	authorizationCodeFlow     = "authorization_code"
+	clientIDField             = "client_id"
+	clientSecretField         = "client_secret"
+	codeField                 = "code"
+	codeChallengeField        = "code_challenge"
+	codeChallengeMethod       = "code_challenge_method"
+	codeVerifierField         = "code_verifier"
+	redirectURIField          = "redirect_uri"
+	grantTypeField            = "grant_type"
+	refreshTokenGrant         = "refresh_token"
+	refreshTokenField         = "refresh_token"
+	nonceField                = "nonce"
+	responseTypeField         = "response_type"
+	scopeField                = "scope"
+	stateField                = "state"
+	denyNextPath              = "/deny-next"
+	baseAuthorizationScope    = "openid read"
+	webhookAuthorizationScope = "openid read webhook"
+	authorizationScope        = baseAuthorizationScope
+	authorizationResponse     = "code"
+	pkceS256                  = "S256"
+	bearerTokenType           = "Bearer"
+	jsonContentType           = "application/json"
+	noStore                   = "no-store"
 )
 
 // Handler serves a deterministic OIDC provider for integration tests.
@@ -53,16 +55,26 @@ type Handler struct {
 	refreshCalls                                int
 	denyNext                                    bool
 	tokenExpirySeconds                          int
+	authorizationScope                          string
 }
 
 // New creates an integration-only OIDC fixture handler.
 func New(issuer, clientID, clientSecret, callbackURL string) (*Handler, error) {
-	return NewWithTokenExpiry(issuer, clientID, clientSecret, callbackURL, 3600)
+	return newHandler(issuer, clientID, clientSecret, callbackURL, 3600, false)
+}
+
+// NewWithWebhookScope creates a fixture that requires the optional webhook scope.
+func NewWithWebhookScope(issuer, clientID, clientSecret, callbackURL string) (*Handler, error) {
+	return newHandler(issuer, clientID, clientSecret, callbackURL, 3600, true)
 }
 
 // NewWithTokenExpiry creates a fixture with an explicit code-grant lifetime.
 // Integration refresh scenarios use a nonpositive value to make credentials due.
 func NewWithTokenExpiry(issuer, clientID, clientSecret, callbackURL string, expirySeconds int) (*Handler, error) {
+	return newHandler(issuer, clientID, clientSecret, callbackURL, expirySeconds, false)
+}
+
+func newHandler(issuer, clientID, clientSecret, callbackURL string, expirySeconds int, webhookScope bool) (*Handler, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, err
@@ -72,7 +84,11 @@ func NewWithTokenExpiry(issuer, clientID, clientSecret, callbackURL string, expi
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{issuer: issuer, clientID: clientID, clientSecret: clientSecret, callbackURL: callbackURL, signer: signer, jwks: jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}, tokenExpirySeconds: expirySeconds}, nil
+	authorizationScope := baseAuthorizationScope
+	if webhookScope {
+		authorizationScope = webhookAuthorizationScope
+	}
+	return &Handler{issuer: issuer, clientID: clientID, clientSecret: clientSecret, callbackURL: callbackURL, signer: signer, jwks: jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}}, tokenExpirySeconds: expirySeconds, authorizationScope: authorizationScope}, nil
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -130,7 +146,7 @@ func (h *Handler) validAuthorizationRequest(query url.Values) bool {
 		exactQueryValue(query, clientIDField, h.clientID) &&
 		exactQueryValue(query, responseTypeField, authorizationResponse) &&
 		exactQueryValue(query, redirectURIField, h.callbackURL) &&
-		exactQueryValue(query, scopeField, authorizationScope) &&
+		exactQueryValue(query, scopeField, h.authorizationScope) &&
 		nonEmptyQueryValue(query, stateField) &&
 		nonEmptyQueryValue(query, nonceField) &&
 		nonEmptyQueryValue(query, codeChallengeField) &&

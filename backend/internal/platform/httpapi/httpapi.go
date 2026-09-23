@@ -193,45 +193,51 @@ func NewHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diag
 	if len(initiators) > 0 {
 		initiator = initiators[0]
 	}
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, nil, nil, nil, nil, nil, nil, nil, initiator != nil, "")
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, nil, nil, nil, nil, nil, nil, nil, nil, initiator != nil, "")
 }
 
 // NewHandlerWithCallback creates the API handler with optional authorization dependencies.
 func NewHandlerWithCallback(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, nil, nil, nil, nil, nil, nil, initiator != nil, "", integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, nil, nil, nil, nil, nil, nil, nil, initiator != nil, "", integrationFixtures...)
 }
 
 // NewHandlerWithSessions composes OAuth and the independent session lifecycle.
 func NewHandlerWithSessions(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, nil, nil, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, nil, nil, nil, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
 // NewHandlerWithInventory composes OAuth, sessions, and masked portfolio inventory.
 func NewHandlerWithInventory(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, nil, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, nil, nil, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
 // NewHandlerWithPortfolio composes OAuth, sessions, inventory, and account inclusion.
 func NewHandlerWithPortfolio(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, nil, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
 // NewHandlerWithShowcase additionally wires the read-only persisted showcase.
 func NewHandlerWithShowcase(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, nil, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
 // NewHandlerWithProfile composes all owner-private portfolio and profile services.
 func NewHandlerWithProfile(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, profiles, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, profiles, nil, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
 // NewHandlerWithProfilePreferences also wires owner display preferences.
 func NewHandlerWithProfilePreferences(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, preferences preferenceLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
-	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, profiles, preferences, authorizationAvailable, publicOrigin, integrationFixtures...)
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, profiles, preferences, nil, authorizationAvailable, publicOrigin, integrationFixtures...)
 }
 
-func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, preferences preferenceLifecycle, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
+// NewHandlerWithProfilePreferencesAndWebhook composes the owner-private API and
+// the public SnapTrade receiver without putting webhooks behind session or CSRF middleware.
+func NewHandlerWithProfilePreferencesAndWebhook(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, preferences preferenceLifecycle, webhook http.Handler, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
+	return newHandler(logger, readiness, buildSHA, diagnostics, initiator, completer, sessions, inventory, inclusion, showcase, profiles, preferences, webhook, authorizationAvailable, publicOrigin, integrationFixtures...)
+}
+
+func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diagnostics *Diagnostics, initiator authorizationInitiator, completer authorizationCompleter, sessions sessionLifecycle, inventory inventoryLifecycle, inclusion inclusionLifecycle, showcase showcaseLifecycle, profiles profileLifecycle, preferences preferenceLifecycle, webhook http.Handler, authorizationAvailable bool, publicOrigin string, integrationFixtures ...http.Handler) http.Handler {
 	logger = slog.New(NewRequestLogHandler(logger.Handler()))
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -254,6 +260,9 @@ func newHandler(logger *slog.Logger, readiness *Readiness, buildSHA string, diag
 	}
 	if len(integrationFixtures) > 0 && integrationFixtures[0] != nil {
 		mux.Handle("/api/__fixture/oidc/", integrationFixtures[0])
+	}
+	if webhook != nil {
+		mux.Handle(SnapTradeWebhookPath, webhook)
 	}
 	registerAuthorizationAPI(mux, logger, initiator, completer, sessions, inventory, inclusion, showcase, profiles, preferences, authorizationAvailable, publicOrigin)
 
@@ -322,6 +331,8 @@ func routeCategory(path string) string {
 		return "personal_profile"
 	case auth.SnapTradeCallbackPath:
 		return "authorization_callback"
+	case SnapTradeWebhookPath:
+		return "snaptrade_webhook"
 	default:
 		if strings.HasPrefix(path, "/api/__fixture/") {
 			return "fixture"
