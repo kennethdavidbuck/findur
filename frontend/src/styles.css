@@ -832,6 +832,7 @@ p { line-height: 1.65; }
   text-decoration: none;
 }
 .authenticated-nav a[aria-current="page"] { color: var(--secondary); background: var(--secondary-subtle); box-shadow: inset 0 3px var(--secondary); }
+.authenticated-nav[aria-busy="true"], .authenticated-nav[aria-busy="true"] a { cursor: progress; }
 .authenticated-nav a:focus-visible, .logout-control button:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .authenticated-nav--adaptive {
   position: fixed;

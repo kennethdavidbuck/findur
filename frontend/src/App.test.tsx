@@ -133,6 +133,91 @@ describe('portfolio showcase', () => {
 		expect(fetchMock).not.toHaveBeenCalledWith('/api/portfolio/inventory', expect.anything())
 		expect(screen.queryByText('Choose what Findur may use.')).not.toBeInTheDocument()
 	})
+	it('keeps the authenticated shell mounted while a protected route transition is rechecked', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		let statusCalls = 0
+		let resolveTransition!: (response: Response) => void
+		const fetchMock = vi.fn().mockImplementation((path: string) => {
+			if (path === '/api/auth/status') {
+				statusCalls += 1
+				return statusCalls === 1
+					? Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
+					: new Promise<Response>((resolve) => { resolveTransition = resolve })
+			}
+			if (path === '/api/preferences/display') return Promise.resolve(jsonResponseBody({ locale: 'en', theme: 'system', version: 1 }))
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 1, committed: [] }))
+			if (path === '/api/profile') return Promise.resolve(jsonResponseBody({ profile: null, locations: [] }))
+			return Promise.resolve(new Response(null, { status: 404 }))
+		})
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+
+		await screen.findByRole('heading', { level: 1, name: 'Your portfolio' })
+		const navigation = screen.getByRole('navigation', { name: 'Account navigation' })
+		fireEvent.click(screen.getByRole('link', { name: 'Profile' }))
+
+		await waitFor(() => expect(statusCalls).toBe(2))
+		expect(window.location.pathname).toBe('/profile')
+		expect(screen.getByRole('heading', { level: 1, name: 'Your portfolio' })).toBeVisible()
+		expect(screen.getByRole('navigation', { name: 'Account navigation' })).toBe(navigation)
+		expect(navigation).toHaveAttribute('aria-busy', 'true')
+		expect(screen.getByRole('link', { name: 'FAQ' })).toHaveAttribute('aria-disabled', 'true')
+		expect(screen.getByText('Checking your secure session…', { selector: 'p.visually-hidden' })).toBeInTheDocument()
+		expect(document.querySelector('.session-gate')).not.toBeInTheDocument()
+		expect(fetchMock.mock.calls.filter(([path]) => path === '/api/preferences/display')).toHaveLength(1)
+		fireEvent.click(screen.getByRole('link', { name: 'FAQ' }))
+		fireEvent.click(screen.getByRole('button', { name: 'Edit included accounts →' }))
+		expect(window.location.pathname).toBe('/profile')
+		expect(statusCalls).toBe(2)
+
+		await act(async () => {
+			resolveTransition(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
+		})
+		expect(await screen.findByRole('heading', { level: 1, name: 'Make the profile yours.' })).toBeVisible()
+		expect(screen.getByRole('navigation', { name: 'Account navigation' })).toBe(navigation)
+		expect(navigation).not.toHaveAttribute('aria-busy')
+		expect(fetchMock.mock.calls.filter(([path]) => path === '/api/preferences/display')).toHaveLength(1)
+	})
+	it('ignores a late authorization result after browser navigation supersedes a transition', async () => {
+		window.history.replaceState(null, '', '/portfolio')
+		let statusCalls = 0
+		const transitionResolvers: Array<(response: Response) => void> = []
+		const fetchMock = vi.fn().mockImplementation((path: string) => {
+			if (path === '/api/auth/status') {
+				statusCalls += 1
+				return statusCalls === 1
+					? Promise.resolve(jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
+					: new Promise<Response>((resolve) => { transitionResolvers.push(resolve) })
+			}
+			if (path === '/api/preferences/display') return Promise.resolve(jsonResponseBody({ locale: 'en', theme: 'system', version: 1 }))
+			if (path === '/api/portfolio/showcase') return Promise.resolve(jsonResponseBody(emptyShowcase()))
+			if (path === '/api/portfolio/inclusion') return Promise.resolve(jsonResponseBody({ version: 1, committed: [] }))
+			return Promise.resolve(new Response(null, { status: 404 }))
+		})
+		vi.stubGlobal('fetch', fetchMock)
+		render(<App />)
+
+		await screen.findByRole('heading', { level: 1, name: 'Your portfolio' })
+		fireEvent.click(screen.getByRole('link', { name: 'Profile' }))
+		await waitFor(() => expect(transitionResolvers).toHaveLength(1))
+
+		window.history.replaceState(null, '', '/portfolio')
+		window.dispatchEvent(new PopStateEvent('popstate'))
+		await waitFor(() => expect(transitionResolvers).toHaveLength(2))
+		await act(async () => {
+			transitionResolvers[0](jsonResponseBody({ authorizationAvailable: true, authenticated: false, reauthorizationRequired: true }))
+		})
+		expect(window.location.pathname).toBe('/portfolio')
+		expect(screen.getByRole('heading', { level: 1, name: 'Your portfolio' })).toBeVisible()
+		expect(screen.queryByText(/SnapTrade no longer gives Findur access/)).not.toBeInTheDocument()
+
+		await act(async () => {
+			transitionResolvers[1](jsonResponseBody({ authorizationAvailable: true, authenticated: true, reauthorizationRequired: false }))
+		})
+		expect(window.location.pathname).toBe('/portfolio')
+		expect(screen.getByRole('heading', { level: 1, name: 'Your portfolio' })).toBeVisible()
+	})
 	it('keeps each account dataset and its evidence context together', async () => {
 		const dataset = (kind: 'balances' | 'positions' | 'activities', observedAt: string) => ({
 			context: {
